@@ -8,6 +8,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Account struct {
+	ID              pgtype.UUID
+	EmailNormalized string
+	PasswordHash    string
+	Active          bool
+	CreatedAt       pgtype.Timestamptz
+}
+
+type AuthSession struct {
+	ID         pgtype.UUID
+	AccountID  pgtype.UUID
+	TokenHash  []byte
+	CsrfHash   []byte
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID        pgtype.UUID
 	Singleton bool
@@ -24,4 +43,12 @@ type OrganizationInvitation struct {
 	ExpiresAt       pgtype.Timestamptz
 	ConsumedAt      pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
+}
+
+type OrganizationMembership struct {
+	OrganizationID pgtype.UUID
+	AccountID      pgtype.UUID
+	MembershipKind string
+	IsAdmin        bool
+	CreatedAt      pgtype.Timestamptz
 }
