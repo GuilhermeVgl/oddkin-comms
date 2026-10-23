@@ -2,8 +2,78 @@ openapi: 3.0.3
 info:
   title: ODDKIN API
   version: 0.1.0
-  description: Initial operational endpoints. Business routes will be added with their authorization rules.
+  description: Operational and account session endpoints.
 paths:
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Create an account session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "204":
+          description: Session and CSRF cookies were set
+        "400":
+          description: Invalid request
+        "401":
+          description: Invalid credentials
+        "403":
+          description: Origin rejected
+        "429":
+          description: Too many attempts
+        "503":
+          description: Login temporarily unavailable
+  /api/v1/auth/me:
+    get:
+      operationId: getCurrentAccount
+      summary: Return the authenticated account
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentAccount"
+        "401":
+          description: No active session
+        "503":
+          description: Session lookup temporarily unavailable
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the current session
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Current session revoked
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "503":
+          description: Logout temporarily unavailable
+  /api/v1/auth/logout-all:
+    post:
+      operationId: logoutAll
+      summary: Revoke every session for the account
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: All sessions revoked
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "503":
+          description: Logout temporarily unavailable
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -20,3 +90,34 @@ paths:
           description: API is ready to serve requests
         "503":
           description: A required dependency is unavailable
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: oddkin_session
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+    CurrentAccount:
+      type: object
+      required: [id, email]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email

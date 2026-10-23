@@ -40,9 +40,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if address == "" {
 		address = ":8080"
 	}
+	handler, err := httpapi.NewAppHandler(pool)
+	if err != nil {
+		return fmt.Errorf("initialize API authentication: %w", err)
+	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           httpapi.NewHandler(pool),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}

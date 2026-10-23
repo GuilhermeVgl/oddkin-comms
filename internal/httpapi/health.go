@@ -14,6 +14,7 @@ type DatabaseProbe interface {
 
 type healthHandler struct {
 	database DatabaseProbe
+	auth     *authService
 }
 
 var _ gen.ServerInterface = (*healthHandler)(nil)
