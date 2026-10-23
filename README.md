@@ -44,7 +44,7 @@ A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arqu
 
 ## 🚧 Estado do projeto
 
-O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico, convites de organização e contas persistidos, schema de sessões, hash de senhas Argon2id e adaptador de envio pela API da Resend testado localmente. O adaptador ainda não é chamado por um fluxo de produto. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. O Compose da raiz inicia esta fundação localmente; os recursos de produto acima ainda não estão implementados. Não há autenticação HTTP, conteúdo cifrado ou configuração de produção.
+O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico, convites de organização e contas persistidos, tokens de sessão/CSRF armazenados como hash, hash de senhas Argon2id e adaptador de envio pela API da Resend testado localmente. O adaptador ainda não é chamado por um fluxo de produto. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. O Compose da raiz inicia esta fundação localmente; os recursos de produto acima ainda não estão implementados. Não há autenticação HTTP, conteúdo cifrado ou configuração de produção.
 
 - [Especificação funcional e técnica](./SPEC.md)
 - [Regras de desenvolvimento, TDD e quality gates](./CLAUDE.md)
@@ -69,7 +69,7 @@ Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL pr�
 
 Para verificar um envio real pela Resend, configure `RESEND_API_KEY` e `RESEND_FROM_EMAIL` no ambiente do processo e execute `go run ./cmd/email-smoke -to destinatario@exemplo.com`. O remetente deve pertencer a um domínio verificado na Resend. O comando envia apenas uma mensagem diagnóstica fixa e informa o ID aceito pelo provedor; ele não comprova entrega na caixa postal. Não use credenciais reais nos testes automatizados.
 
-As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md), [ADR 0004](./docs/adr/0004-organization-invitations.md), [ADR 0005](./docs/adr/0005-resend-transactional-email.md), [ADR 0006](./docs/adr/0006-password-hashing.md) e [ADR 0007](./docs/adr/0007-account-session-schema.md).
+As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md), [ADR 0004](./docs/adr/0004-organization-invitations.md), [ADR 0005](./docs/adr/0005-resend-transactional-email.md), [ADR 0006](./docs/adr/0006-password-hashing.md), [ADR 0007](./docs/adr/0007-account-session-schema.md) e [ADR 0008](./docs/adr/0008-session-secrets.md).
 
 **Licença:** será definida pelo mantenedor antes da primeira release pública. Nenhuma licença de código ou de marca é presumida nesta etapa.
 
