@@ -57,6 +57,8 @@ Instale as versões fixadas de Go e Node/pnpm e as versões mínimas de Docker E
 
 Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL próprio de desenvolvimento, rode `go run ./cmd/migrate` e depois `go run ./cmd/api`. `HTTP_ADDR` é opcional e usa `:8080` por padrão. `GET /api/v1/health/live` responde 204 com o processo ativo; `GET /api/v1/health/ready` responde 204 quando o banco está acessível ou 503 caso contrário. O frontend inicial pode ser aberto com `corepack pnpm --filter @oddkin/web dev`.
 
+Para verificar um envio real pela Resend, configure `RESEND_API_KEY` e `RESEND_FROM_EMAIL` no ambiente do processo e execute `go run ./cmd/email-smoke -to destinatario@exemplo.com`. O remetente deve pertencer a um domínio verificado na Resend. O comando envia apenas uma mensagem diagnóstica fixa e informa o ID aceito pelo provedor; ele não comprova entrega na caixa postal. Não use credenciais reais nos testes automatizados.
+
 As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md), [ADR 0004](./docs/adr/0004-organization-invitations.md) e [ADR 0005](./docs/adr/0005-resend-transactional-email.md).
 
 **Licença:** será definida pelo mantenedor antes da primeira release pública. Nenhuma licença de código ou de marca é presumida nesta etapa.
