@@ -14,12 +14,19 @@ import (
 const claimOrganizationInvitation = `-- name: ClaimOrganizationInvitation :one
 UPDATE organization_invitation
 SET consumed_at = clock_timestamp()
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > clock_timestamp()
+WHERE token_hash = $1
+  AND organization_invitation.email_normalized = $2
+  AND consumed_at IS NULL AND expires_at > clock_timestamp()
 RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at
 `
 
-func (q *Queries) ClaimOrganizationInvitation(ctx context.Context, tokenHash []byte) (OrganizationInvitation, error) {
-	row := q.db.QueryRow(ctx, claimOrganizationInvitation, tokenHash)
+type ClaimOrganizationInvitationParams struct {
+	TokenHash       []byte
+	EmailNormalized string
+}
+
+func (q *Queries) ClaimOrganizationInvitation(ctx context.Context, arg ClaimOrganizationInvitationParams) (OrganizationInvitation, error) {
+	row := q.db.QueryRow(ctx, claimOrganizationInvitation, arg.TokenHash, arg.EmailNormalized)
 	var i OrganizationInvitation
 	err := row.Scan(
 		&i.ID,

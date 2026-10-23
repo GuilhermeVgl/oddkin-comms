@@ -64,13 +64,21 @@ func TestOrganizationInvitationIsSingleUseAndTimeBound(t *testing.T) {
 	if valid.EmailNormalized != "person@example.test" || valid.MembershipKind != "external" {
 		t.Fatalf("stored invitation differs from request: %+v", valid)
 	}
+	_, err = queries.ClaimOrganizationInvitation(ctx, sqlc.ClaimOrganizationInvitationParams{
+		TokenHash: validRecord.Hash[:], EmailNormalized: "other@example.test",
+	})
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("a different email must not claim the invitation, got %v", err)
+	}
 
 	start := make(chan struct{})
 	results := make(chan error, 2)
 	for range 2 {
 		go func() {
 			<-start
-			_, claimErr := queries.ClaimOrganizationInvitation(ctx, validRecord.Hash[:])
+			_, claimErr := queries.ClaimOrganizationInvitation(ctx, sqlc.ClaimOrganizationInvitationParams{
+				TokenHash: validRecord.Hash[:], EmailNormalized: email,
+			})
 			results <- claimErr
 		}()
 	}
@@ -109,7 +117,9 @@ func TestOrganizationInvitationIsSingleUseAndTimeBound(t *testing.T) {
 	if err != nil {
 		t.Fatal("create expired invitation:", err)
 	}
-	_, err = queries.ClaimOrganizationInvitation(ctx, expiredRecord.Hash[:])
+	_, err = queries.ClaimOrganizationInvitation(ctx, sqlc.ClaimOrganizationInvitationParams{
+		TokenHash: expiredRecord.Hash[:], EmailNormalized: "expired@example.test",
+	})
 	if !errors.Is(err, pgx.ErrNoRows) {
 		t.Errorf("expired invitation must not be claimed, got %v", err)
 	}
