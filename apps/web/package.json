@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource/bodoni-moda": "5.3.0",
+    "@fontsource/dm-sans": "5.3.0",
     "@oddkin/api-client": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1"

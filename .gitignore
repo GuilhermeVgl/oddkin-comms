@@ -7,4 +7,5 @@ coverage/
 test-results/
 playwright-report/
 .trivy-cache/
+.impeccable/
 *.out

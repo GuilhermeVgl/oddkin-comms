@@ -1,0 +1,452 @@
+:root {
+  color: #173124;
+  background: #f8f4e9;
+  font-family: "DM Sans", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 3px solid #e9a48b;
+  outline-offset: 3px;
+}
+
+.login-layout {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+}
+
+.brand-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100%;
+  overflow: hidden;
+  padding: clamp(32px, 4.4vw, 72px);
+  color: #f8f4e9;
+  background: #294532;
+}
+
+.brand-panel::after {
+  position: absolute;
+  right: -8vw;
+  bottom: -17vw;
+  width: 42vw;
+  aspect-ratio: 1;
+  border: clamp(28px, 4vw, 64px) solid rgba(248, 244, 233, 0.08);
+  border-radius: 50%;
+  content: "";
+}
+
+.brand-lockup {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.kin-mark {
+  width: 64px;
+  color: #f8f4e9;
+}
+.kin-mark--small {
+  width: 38px;
+}
+
+.brand-message {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  margin: 96px 0;
+}
+
+.eyebrow {
+  margin: 0 0 20px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.brand-message h1,
+.workspace-content h1 {
+  max-width: 850px;
+  margin: 0;
+  font-family: "Bodoni Moda", serif;
+  font-size: clamp(3.3rem, 6.5vw, 7.3rem);
+  font-weight: 600;
+  line-height: 0.94;
+  letter-spacing: -0.055em;
+}
+
+.brand-message > p:last-child {
+  max-width: 570px;
+  margin: 38px 0 0;
+  color: rgba(248, 244, 233, 0.72);
+  font-size: clamp(1rem, 1.4vw, 1.22rem);
+  line-height: 1.65;
+}
+
+.brand-footnote {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(248, 244, 233, 0.55);
+  font-size: 0.82rem;
+}
+
+.login-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: clamp(28px, 5vw, 80px);
+  background: #f8f4e9;
+}
+
+.mobile-brand {
+  display: none;
+}
+.login-card {
+  width: min(100%, 440px);
+}
+.login-card .eyebrow {
+  color: #9a4b34;
+}
+
+.login-card h2 {
+  margin: 0;
+  font-family: "Bodoni Moda", serif;
+  font-size: clamp(2.25rem, 3.4vw, 3.6rem);
+  line-height: 1.03;
+  letter-spacing: -0.04em;
+}
+
+.login-intro {
+  margin: 18px 0 42px;
+  color: #627067;
+  line-height: 1.6;
+}
+.login-card form {
+  display: flex;
+  flex-direction: column;
+}
+.login-card label {
+  margin-bottom: 9px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.login-card input {
+  width: 100%;
+  height: 54px;
+  margin-bottom: 22px;
+  padding: 0 16px;
+  border: 1px solid #bdc2b9;
+  border-radius: 3px;
+  color: #173124;
+  background: rgba(255, 255, 255, 0.52);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.login-card input:hover,
+.login-card input:focus {
+  border-color: #53695a;
+  background: #fffdf7;
+}
+.login-card input::placeholder {
+  color: #8a918b;
+}
+
+.form-message {
+  min-height: 22px;
+  margin: -4px 0 14px;
+  color: #a33e29;
+  font-size: 0.85rem;
+}
+
+.login-card button {
+  min-height: 56px;
+  border: 0;
+  border-radius: 3px;
+  color: #fffdf7;
+  background: #d15f3e;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.login-card button:hover:not(:disabled) {
+  background: #b94d30;
+  transform: translateY(-1px);
+}
+.login-card button:active:not(:disabled) {
+  transform: translateY(0);
+}
+.login-card button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.login-note {
+  width: min(100%, 440px);
+  margin: 26px 0 0;
+  color: #7b847d;
+  font-size: 0.78rem;
+}
+
+.workspace-shell {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  grid-template-columns: 290px 1fr;
+  background: #f8f4e9;
+}
+
+.workspace-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 34px 28px;
+  color: #f8f4e9;
+  background: #294532;
+}
+
+.brand-lockup--sidebar {
+  margin-bottom: 72px;
+}
+.workspace-sidebar nav {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-sidebar nav a {
+  padding: 12px 14px;
+  background: rgba(248, 244, 233, 0.1);
+  color: #f8f4e9;
+  text-decoration: none;
+  font-weight: 600;
+}
+.account-block {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(248, 244, 233, 0.18);
+}
+.account-block > span {
+  display: block;
+  margin-bottom: 7px;
+  color: rgba(248, 244, 233, 0.55);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.account-block strong {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+}
+.text-button {
+  padding: 0;
+  border: 0;
+  color: #f0a086;
+  background: none;
+  font-weight: 700;
+  cursor: pointer;
+}
+.text-button:hover {
+  color: #ffd0c0;
+}
+.logout-error {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: #ffd0c0;
+  font-size: 0.75rem;
+}
+
+.workspace-content {
+  padding: clamp(48px, 8vw, 120px);
+}
+.workspace-content header {
+  max-width: 930px;
+}
+.workspace-content .eyebrow {
+  color: #9a4b34;
+}
+.workspace-content h1 {
+  color: #294532;
+  font-size: clamp(3rem, 6.5vw, 7rem);
+}
+.workspace-content header > p:last-child {
+  max-width: 580px;
+  margin: 28px 0 0;
+  color: #627067;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.empty-board {
+  display: grid;
+  max-width: 840px;
+  margin-top: clamp(64px, 11vw, 150px);
+  padding-top: 24px;
+  border-top: 1px solid #b9c0b8;
+  grid-template-columns: 90px 1fr;
+}
+
+.empty-board__number {
+  color: #d15f3e;
+  font-family: "Bodoni Moda", serif;
+  font-size: 2rem;
+}
+.empty-board h2 {
+  margin: 4px 0 12px;
+  font-family: "Bodoni Moda", serif;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  letter-spacing: -0.03em;
+}
+.empty-board p {
+  margin: 0;
+  color: #627067;
+  line-height: 1.6;
+}
+
+.status-screen {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  color: #f8f4e9;
+  background: #294532;
+  text-align: center;
+}
+
+.status-screen h1 {
+  max-width: 640px;
+  margin: 28px 0 8px;
+  font-family: "Bodoni Moda", serif;
+  font-size: clamp(2rem, 5vw, 4rem);
+}
+.status-screen p {
+  color: rgba(248, 244, 233, 0.65);
+}
+
+@media (max-width: 860px) {
+  .login-layout {
+    display: block;
+    background: #f8f4e9;
+  }
+  .brand-panel {
+    display: none;
+  }
+  .login-panel {
+    min-height: 100vh;
+    min-height: 100dvh;
+    justify-content: flex-start;
+    padding: 28px 24px 36px;
+  }
+  .mobile-brand {
+    display: flex;
+    width: min(100%, 440px);
+    align-items: center;
+    gap: 10px;
+    margin-bottom: clamp(58px, 13vh, 110px);
+    color: #294532;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.17em;
+  }
+  .mobile-brand .kin-mark {
+    color: #294532;
+  }
+  .login-note {
+    margin-top: auto;
+    padding-top: 38px;
+  }
+  .workspace-shell {
+    grid-template-columns: 1fr;
+  }
+  .workspace-sidebar {
+    min-height: auto;
+    padding: 18px 20px;
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+  .brand-lockup--sidebar {
+    margin: 0 auto 0 0;
+    font-size: 0.85rem;
+  }
+  .workspace-sidebar nav {
+    display: none;
+  }
+  .account-block {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .account-block > span,
+  .account-block strong {
+    display: none;
+  }
+  .logout-error {
+    display: none;
+  }
+  .workspace-content {
+    padding: 48px 24px;
+  }
+  .empty-board {
+    grid-template-columns: 56px 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

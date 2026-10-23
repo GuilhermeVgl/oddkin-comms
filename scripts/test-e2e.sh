@@ -19,4 +19,9 @@ fi
 TEST_DATABASE_URL="postgres://oddkin_test:synthetic_test_password@127.0.0.1:$database_port/oddkin_test"
 export TEST_DATABASE_URL
 DATABASE_URL="$TEST_DATABASE_URL" go run ./cmd/migrate
+DATABASE_URL="$TEST_DATABASE_URL" \
+  ODDKIN_ADMIN_EMAIL="admin@example.test" \
+  ODDKIN_ADMIN_PASSWORD="synthetic-admin-password" \
+  ODDKIN_TIMEZONE="UTC" \
+  go run ./cmd/bootstrap
 corepack pnpm test:e2e
