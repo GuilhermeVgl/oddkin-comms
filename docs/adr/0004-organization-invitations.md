@@ -8,6 +8,8 @@ A migration `00002` cria convites da organização vinculados ao registro único
 
 A query `ClaimOrganizationInvitation` usa o relógio do PostgreSQL. Um `UPDATE ... WHERE consumed_at IS NULL AND expires_at > clock_timestamp()` faz com que apenas uma tentativa concorrente consuma o convite. A query deve ser executada na **mesma transação** que criará a conta ou vínculo, depois da comprovação do e-mail; um rollback preservará o convite. Nenhuma rota HTTP chama essa query neste incremento.
 
+O destinatário passa por `identity.NormalizeEmail` antes de ser persistido: espaços nas bordas e diferença entre maiúsculas/minúsculas são eliminados; nomes de apresentação, listas, quebras de linha, endereços acima de 254 bytes e caracteres não ASCII são rejeitados. Não aplicamos regras específicas de provedor, como remover `+tag` ou pontos. O suporte a endereços internacionais depende de uma decisão posterior sobre SMTPUTF8 e normalização consistente entre Go, PostgreSQL e o provedor SMTP. A mesma função deverá ser usada para e-mail de conta e comparação no aceite.
+
 O teste de integração cobre banco vazio, upgrade de `00001` com organização já persistida, expiração, duas tentativas simultâneas e e-mail não normalizado. A migration `00001` permanece inalterada.
 
 ## Limites

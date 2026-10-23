@@ -43,13 +43,17 @@ func TestOrganizationInvitationIsSingleUseAndTimeBound(t *testing.T) {
 	}()
 	queries := sqlc.New(pool)
 	now := time.Now().UTC()
+	email, err := identity.NormalizeEmail(" Person@Example.TEST ")
+	if err != nil {
+		t.Fatal("normalize recipient email:", err)
+	}
 	_, validRecord, err := identity.IssueInvitationToken(now)
 	if err != nil {
 		t.Fatal("issue test token:", err)
 	}
 	valid, err := queries.CreateOrganizationInvitation(ctx, sqlc.CreateOrganizationInvitationParams{
 		OrganizationID:  orgID,
-		EmailNormalized: "person@example.test",
+		EmailNormalized: email,
 		MembershipKind:  "external",
 		TokenHash:       validRecord.Hash[:],
 		ExpiresAt:       pgtype.Timestamptz{Time: validRecord.ExpiresAt, Valid: true},
