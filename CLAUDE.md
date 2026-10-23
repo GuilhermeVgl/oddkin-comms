@@ -67,7 +67,7 @@ Nunca escrever testes que apenas reproduzem a implementação, testar getters tr
 - Persistência deve usar PostgreSQL real em testes de integração. SQLite e mock de driver não comprovam locks, constraints, SQL e isolamento PostgreSQL.
 - Uma operação atômica usa a mesma `pgx.Tx` em todos os repositórios, no outbox e no enqueue River. Não abra transação oculta dentro de um repositório já transacionado.
 - Mutação + outbox + chave de idempotência devem confirmar ou reverter juntos. Jobs externos são idempotentes e limitados por timeout/retry.
-- Não chame SMTP, R2 ou LiveKit mantendo lock do banco. Modele intenção, efeito externo e reconciliação para as falhas entre etapas.
+- Não chame a API da Resend, R2 ou LiveKit mantendo lock do banco. Modele intenção, efeito externo e reconciliação para as falhas entre etapas.
 - Mantenha constraints de integridade mesmo quando o serviço valida a mesma regra. Mutex Go não substitui lock transacional em admissão de chamadas, fechamento de sprint ou quota.
 - Migrations já aplicadas são imutáveis. Alterar schema com nova migration e testar banco vazio e upgrade. Mudanças destrutivas requerem plano de dados e autorização concreta; não aplicar contra produção por conveniência.
 - `cmd/migrate` executa migrations da aplicação e River na sequência documentada. API e worker não executam migration automaticamente ao iniciar.

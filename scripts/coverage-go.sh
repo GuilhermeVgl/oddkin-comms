@@ -9,6 +9,7 @@ expected=$(printf '%s\n' \
 	github.com/GuilhermeVgl/oddkin-comms/internal/identity \
   github.com/GuilhermeVgl/oddkin-comms/internal/jobs \
   github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration \
+  github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail \
   github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc | LC_ALL=C sort)
 if [[ "$actual" != "$expected" ]]; then
   printf 'New internal Go package requires an explicit coverage decision:\n%s\n' "$actual" >&2

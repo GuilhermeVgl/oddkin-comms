@@ -44,7 +44,7 @@ A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arqu
 
 ## 🚧 Estado do projeto
 
-O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico e Compose descartável para testes. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. Os recursos de produto acima ainda são planejados; não há instalação funcional, autenticação, conteúdo cifrado ou infraestrutura de produção.
+O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico, convites de organização persistidos e adaptador de envio pela API da Resend testado localmente. O adaptador ainda não é chamado por um fluxo de produto. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. Os recursos de produto acima ainda são planejados; não há instalação funcional, autenticação, conteúdo cifrado ou infraestrutura de produção.
 
 - [Especificação funcional e técnica](./SPEC.md)
 - [Regras de desenvolvimento, TDD e quality gates](./CLAUDE.md)
@@ -57,7 +57,7 @@ Instale as versões fixadas de Go e Node/pnpm e as versões mínimas de Docker E
 
 Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL próprio de desenvolvimento, rode `go run ./cmd/migrate` e depois `go run ./cmd/api`. `HTTP_ADDR` é opcional e usa `:8080` por padrão. `GET /api/v1/health/live` responde 204 com o processo ativo; `GET /api/v1/health/ready` responde 204 quando o banco está acessível ou 503 caso contrário. O frontend inicial pode ser aberto com `corepack pnpm --filter @oddkin/web dev`.
 
-As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md) e [ADR 0004](./docs/adr/0004-organization-invitations.md).
+As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md), [ADR 0004](./docs/adr/0004-organization-invitations.md) e [ADR 0005](./docs/adr/0005-resend-transactional-email.md).
 
 **Licença:** será definida pelo mantenedor antes da primeira release pública. Nenhuma licença de código ou de marca é presumida nesta etapa.
 
