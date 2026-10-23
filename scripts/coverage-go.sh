@@ -6,6 +6,7 @@ expected=$(printf '%s\n' \
   github.com/GuilhermeVgl/oddkin-comms/internal/commitcheck \
   github.com/GuilhermeVgl/oddkin-comms/internal/httpapi \
   github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen \
+	github.com/GuilhermeVgl/oddkin-comms/internal/identity \
   github.com/GuilhermeVgl/oddkin-comms/internal/jobs \
   github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration \
   github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc | LC_ALL=C sort)
