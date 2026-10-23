@@ -10,4 +10,4 @@ O horário de emissão é uma entrada explícita para permitir testes determiní
 
 ## Limites
 
-Este bloco implementa somente a primitiva de token. Ainda faltam armazenamento transacional, vínculo ao e-mail normalizado, comprovação de controle do e-mail, uso único, convite de conta existente e respostas sem enumeração. Portanto, AC-01 continua aberto.
+Este ADR descreve a primitiva de token. A persistência e o consumo único dos convites da organização são descritos em [ADR 0004](./0004-organization-invitations.md). Ainda faltam comprovação de controle do e-mail, criação de conta, convite de projeto e respostas sem enumeração. Portanto, AC-01 continua aberto.

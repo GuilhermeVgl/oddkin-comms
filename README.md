@@ -57,7 +57,7 @@ Instale as versões fixadas de Go e Node/pnpm e as versões mínimas de Docker E
 
 Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL próprio de desenvolvimento, rode `go run ./cmd/migrate` e depois `go run ./cmd/api`. `HTTP_ADDR` é opcional e usa `:8080` por padrão. `GET /api/v1/health/live` responde 204 com o processo ativo; `GET /api/v1/health/ready` responde 204 quando o banco está acessível ou 503 caso contrário. O frontend inicial pode ser aberto com `corepack pnpm --filter @oddkin/web dev`.
 
-As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md) e [ADR 0003](./docs/adr/0003-invitation-tokens.md).
+As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md), [ADR 0002](./docs/adr/0002-bootstrap-tooling.md), [ADR 0003](./docs/adr/0003-invitation-tokens.md) e [ADR 0004](./docs/adr/0004-organization-invitations.md).
 
 **Licença:** será definida pelo mantenedor antes da primeira release pública. Nenhuma licença de código ou de marca é presumida nesta etapa.
 

@@ -37,9 +37,9 @@ fi
 
 tables=$(docker compose -p "$project" -f "$compose_file" exec -T postgres \
   psql -U oddkin_smoke -d oddkin_smoke -Atqc \
-  "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('organization', 'goose_db_version', 'river_job')")
-if [ "$tables" != 3 ]; then
-  echo "Expected organization, Goose and River tables; found $tables" >&2
+  "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('organization', 'organization_invitation', 'goose_db_version', 'river_job')")
+if [ "$tables" != 4 ]; then
+  echo "Expected organization, invitation, Goose and River tables; found $tables" >&2
   exit 1
 fi
 worker_id=$(docker compose -p "$project" -f "$compose_file" ps -q worker)

@@ -14,3 +14,14 @@ type Organization struct {
 	Timezone  string
 	CreatedAt pgtype.Timestamptz
 }
+
+type OrganizationInvitation struct {
+	ID              pgtype.UUID
+	OrganizationID  pgtype.UUID
+	EmailNormalized string
+	MembershipKind  string
+	TokenHash       []byte
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
