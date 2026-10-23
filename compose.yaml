@@ -29,6 +29,22 @@ services:
         condition: service_healthy
     restart: "no"
 
+  bootstrap:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: bootstrap
+    environment:
+      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+      ODDKIN_ADMIN_EMAIL: ${ODDKIN_ADMIN_EMAIL:-admin@oddkin.local}
+      ODDKIN_ADMIN_PASSWORD: ${ODDKIN_ADMIN_PASSWORD:-oddkin-local-password}
+      ODDKIN_TIMEZONE: ${ODDKIN_TIMEZONE:-America/Campo_Grande}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   api:
     build:
       context: .
@@ -39,7 +55,7 @@ services:
       DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
       HTTP_ADDR: :8080
     depends_on:
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
     restart: unless-stopped
 
@@ -52,7 +68,7 @@ services:
     environment:
       DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
     depends_on:
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
     restart: unless-stopped
 
