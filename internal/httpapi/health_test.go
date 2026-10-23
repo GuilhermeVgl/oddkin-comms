@@ -63,8 +63,8 @@ func TestReadinessUsesRequestContext(t *testing.T) {
 	called := false
 	handler := NewHandler(probeFunc(func(got context.Context) error {
 		called = true
-		if got != ctx {
-			t.Fatal("database probe did not receive request context")
+		if got.Err() != context.Canceled {
+			t.Fatal("database probe did not inherit request cancellation")
 		}
 		return got.Err()
 	}))
@@ -72,5 +72,19 @@ func TestReadinessUsesRequestContext(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusServiceUnavailable || !called {
 		t.Fatalf("canceled readiness: status=%d called=%t", response.Code, called)
+	}
+}
+
+func TestReadinessBoundsDatabaseProbe(t *testing.T) {
+	t.Parallel()
+	deadlineSeen := false
+	handler := NewHandler(probeFunc(func(ctx context.Context) error {
+		_, deadlineSeen = ctx.Deadline()
+		return nil
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil))
+	if !deadlineSeen {
+		t.Fatal("database probe has no deadline")
 	}
 }

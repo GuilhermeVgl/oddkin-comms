@@ -1,0 +1,8 @@
+.git
+.trivy-cache
+node_modules
+**/node_modules
+apps/web/dist
+coverage
+playwright-report
+test-results

@@ -1,0 +1,50 @@
+name: Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out PR history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+
+      - name: Install JavaScript dependencies
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm exec playwright install --with-deps chromium firefox
+
+      - name: Run repository gate
+        env:
+          COMMIT_BASE: ${{ github.event.pull_request.base.sha }}
+          COMMIT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: make gate
+
+      - name: Check proposed squash title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          message_file=$(mktemp)
+          trap 'rm "$message_file"' EXIT
+          printf '%s\n' "$PR_TITLE" > "$message_file"
+          make commit-check COMMIT_MSG_FILE="$message_file"

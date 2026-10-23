@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
 )
@@ -26,7 +27,9 @@ func (h *healthHandler) GetLiveness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *healthHandler) GetReadiness(w http.ResponseWriter, r *http.Request) {
-	if err := h.database.Ping(r.Context()); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.database.Ping(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}

@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    environment:
+      POSTGRES_USER: oddkin_smoke
+      POSTGRES_PASSWORD: synthetic_smoke_password
+      POSTGRES_DB: oddkin_smoke
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oddkin_smoke -d oddkin_smoke"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: migrate
+    environment:
+      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: api
+    environment:
+      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
+      HTTP_ADDR: :8080
+    ports:
+      - "127.0.0.1::8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: worker
+    environment:
+      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

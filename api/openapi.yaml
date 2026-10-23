@@ -9,14 +9,14 @@ paths:
       operationId: getLiveness
       summary: Check whether the API process is running
       responses:
-        '204':
+        "204":
           description: Process is running
   /api/v1/health/ready:
     get:
       operationId: getReadiness
       summary: Check whether the API can access its required database
       responses:
-        '204':
+        "204":
           description: API is ready to serve requests
-        '503':
+        "503":
           description: A required dependency is unavailable

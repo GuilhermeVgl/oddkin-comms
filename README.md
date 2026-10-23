@@ -31,12 +31,12 @@ ODDKIN é uma ferramenta web de colaboração pensada para pequenas equipes de m
 
 ## 🛠️ Stack
 
-| Camada | Tecnologias |
-| --- | --- |
-| Backend | Go · PostgreSQL · pgx/sqlc · River |
-| Frontend | React · TypeScript · Vite · Tailwind |
-| Comunicação | WebSocket · LiveKit/WebRTC |
-| Infraestrutura | Docker Compose · Cloudflare R2 |
+| Camada         | Tecnologias                          |
+| -------------- | ------------------------------------ |
+| Backend        | Go · PostgreSQL · pgx/sqlc · River   |
+| Frontend       | React · TypeScript · Vite · Tailwind |
+| Comunicação    | WebSocket · LiveKit/WebRTC           |
+| Infraestrutura | Docker Compose · Cloudflare R2       |
 
 ## 🔐 Privacidade por projeto
 
@@ -44,7 +44,7 @@ A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arqu
 
 ## 🚧 Estado do projeto
 
-O desenvolvimento começou pela fundação do repositório e pela verificação de mensagens de commit (AC-43). Os recursos acima são o escopo planejado; ainda não há aplicação funcional ou instalação pronta. O gate completo, os geradores, a infraestrutura e os testes de produto ainda não existem.
+O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico e Compose descartável para testes. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. Os recursos de produto acima ainda são planejados; não há instalação funcional, autenticação, conteúdo cifrado ou infraestrutura de produção.
 
 - [Especificação funcional e técnica](./SPEC.md)
 - [Regras de desenvolvimento, TDD e quality gates](./CLAUDE.md)
@@ -52,6 +52,12 @@ O desenvolvimento começou pela fundação do repositório e pela verificação 
 Sugestões sobre escopo, experiência e arquitetura são bem-vindas. Para contribuir com a implementação, comece pela spec e pelas regras de desenvolvimento.
 
 Para verificar mensagens de commits novos, use `make commit-check COMMIT_BASE=<base> COMMIT_HEAD=<head>`. Para validar uma mensagem preparada para squash, use `make commit-check COMMIT_MSG_FILE=<caminho>`. Os testes desse gate rodam com `make test-commitcheck`. O hook local pode ser instalado com `./scripts/install-hooks.sh`; o instalador preserva uma configuração `core.hooksPath` já existente.
+
+Instale as versões fixadas de Go e Node/pnpm e as versões mínimas de Docker Engine e Compose indicadas no repositório. Rode `corepack pnpm install --frozen-lockfile` e `corepack pnpm exec playwright install chromium firefox`. `make doctor` verifica ferramentas e portas de teste; `make gate` executa as verificações da fundação. Os testes com PostgreSQL e containers requerem o daemon Docker. `make generate` atualiza OpenAPI Go/TS e sqlc; `make check-generated` compara os resultados sem alterar o checkout.
+
+Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL próprio de desenvolvimento, rode `go run ./cmd/migrate` e depois `go run ./cmd/api`. `HTTP_ADDR` é opcional e usa `:8080` por padrão. `GET /api/v1/health/live` responde 204 com o processo ativo; `GET /api/v1/health/ready` responde 204 quando o banco está acessível ou 503 caso contrário. O frontend inicial pode ser aberto com `corepack pnpm --filter @oddkin/web dev`.
+
+As decisões e limites deste incremento estão em [ADR 0001](./docs/adr/0001-api-foundation.md) e [ADR 0002](./docs/adr/0002-bootstrap-tooling.md).
 
 **Licença:** será definida pelo mantenedor antes da primeira release pública. Nenhuma licença de código ou de marca é presumida nesta etapa.
 
