@@ -97,6 +97,7 @@ build: build-api build-worker build-migrate build-email-smoke build-web
 
 container-check:
 	./scripts/container-check.sh
+	./scripts/local-compose-check.sh
 
 security-check:
 	node scripts/security-check.mjs

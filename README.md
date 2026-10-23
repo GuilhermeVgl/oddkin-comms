@@ -44,12 +44,22 @@ A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arqu
 
 ## 🚧 Estado do projeto
 
-O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico, convites de organização persistidos e adaptador de envio pela API da Resend testado localmente. O adaptador ainda não é chamado por um fluxo de produto. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. Os recursos de produto acima ainda são planejados; não há instalação funcional, autenticação, conteúdo cifrado ou infraestrutura de produção.
+O desenvolvimento está na fundação. Há API Go com endpoints de saúde gerados a partir de OpenAPI, cliente TypeScript gerado, frontend React inicial, migrations Goose/River, worker River com tarefa de diagnóstico, convites de organização persistidos e adaptador de envio pela API da Resend testado localmente. O adaptador ainda não é chamado por um fluxo de produto. O Makefile reúne geração, testes unitários, integração, E2E em Chromium/Firefox, cobertura, segurança, build e smoke de containers. O Compose da raiz inicia esta fundação localmente; os recursos de produto acima ainda não estão implementados. Não há autenticação, conteúdo cifrado ou configuração de produção.
 
 - [Especificação funcional e técnica](./SPEC.md)
 - [Regras de desenvolvimento, TDD e quality gates](./CLAUDE.md)
 
 Sugestões sobre escopo, experiência e arquitetura são bem-vindas. Para contribuir com a implementação, comece pela spec e pelas regras de desenvolvimento.
+
+### Rodar localmente com Docker
+
+Com Docker Engine e Compose ativos, na raiz do repositório:
+
+```sh
+docker compose up -d
+```
+
+Abra `http://127.0.0.1:3000`. O mesmo endereço encaminha `/api/*` à API; `curl -i http://127.0.0.1:3000/api/v1/health/ready` deve responder `204`. O Compose inicia PostgreSQL com volume persistente, executa as migrations e inicia API, worker e frontend. `docker compose down` para os serviços e mantém os dados; `docker compose down --volumes` também apaga o banco local. A configuração usa senha fixa de desenvolvimento e expõe a porta web apenas no loopback: não é uma implantação pública ou de produção. Para escolher outra porta local, use `ODDKIN_WEB_BIND=127.0.0.1:3001 docker compose up -d`.
 
 Para verificar mensagens de commits novos, use `make commit-check COMMIT_BASE=<base> COMMIT_HEAD=<head>`. Para validar uma mensagem preparada para squash, use `make commit-check COMMIT_MSG_FILE=<caminho>`. Os testes desse gate rodam com `make test-commitcheck`. O hook local pode ser instalado com `./scripts/install-hooks.sh`; o instalador preserva uma configuração `core.hooksPath` já existente.
 

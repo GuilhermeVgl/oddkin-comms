@@ -1,0 +1,76 @@
+name: oddkin
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    environment:
+      POSTGRES_USER: oddkin
+      POSTGRES_PASSWORD: oddkin_local_compose_only
+      POSTGRES_DB: oddkin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oddkin -d oddkin"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: migrate
+    environment:
+      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: api
+    environment:
+      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+      HTTP_ADDR: :8080
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+      args:
+        TARGET: worker
+    environment:
+      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.web
+    ports:
+      - "${ODDKIN_WEB_BIND:-127.0.0.1:3000}:8080"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

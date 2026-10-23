@@ -1,0 +1,12 @@
+FROM node:24.10.0-alpine3.22@sha256:775ba24d35a13e74dedce1d2af4ad510337b68d8e22be89e0ce2ccc299329083 AS build
+WORKDIR /src
+COPY . .
+RUN corepack pnpm install --frozen-lockfile
+RUN corepack pnpm --filter @oddkin/web build
+
+FROM caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /src/apps/web/dist /srv
+RUN mkdir -p /config/caddy /data/caddy && chown -R 10001:10001 /config /data /srv
+USER 10001:10001
+EXPOSE 8080

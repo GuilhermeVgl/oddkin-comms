@@ -1,4 +1,7 @@
 .git
+.env
+.env.*
+!.env.example
 .trivy-cache
 node_modules
 **/node_modules

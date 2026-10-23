@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "coverage:check": "vitest run --coverage",
     "build": "corepack pnpm --filter @oddkin/web build",
-    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs vitest.config.ts playwright.config.ts .github/workflows apps/web packages/api-client tests/e2e scripts/*.mjs api/openapi.yaml infra/*.yaml README.md docs",
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs vitest.config.ts playwright.config.ts .github/workflows apps/web packages/api-client tests/e2e scripts/*.mjs api/openapi.yaml compose.yaml infra/*.yaml README.md docs",
     "lint": "eslint apps/web packages/api-client"
   },
   "devDependencies": {
