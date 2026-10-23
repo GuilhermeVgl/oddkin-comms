@@ -4,7 +4,7 @@ Este arquivo orienta Claude e outros agentes que implementam ou revisam este rep
 
 ## 1. Fonte de verdade e estado do projeto
 
-- Leia [ODDKIN-SPEC.md](./ODDKIN-SPEC.md) antes de alterar arquitetura ou comportamento. Use seus critérios de aceite como referência dos testes.
+- Leia [SPEC.md](./SPEC.md) antes de alterar arquitetura ou comportamento. Use seus critérios de aceite como referência dos testes.
 - A spec define o produto; este arquivo define como desenvolvê-lo. O README apresenta a ideia e o estado real de implementação.
 - Instrução explícita atual do mantenedor prevalece sobre padrões propostos da spec. Atualize a documentação afetada junto com a mudança, sem substituir requisitos silenciosamente.
 - Inspecione o repositório e seu estado Git antes de trabalhar. Preserve alterações existentes de outras pessoas.

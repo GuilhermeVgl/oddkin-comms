@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: ODDKIN API
+  version: 0.1.0
+  description: Initial operational endpoints. Business routes will be added with their authorization rules.
+paths:
+  /api/v1/health/live:
+    get:
+      operationId: getLiveness
+      summary: Check whether the API process is running
+      responses:
+        '204':
+          description: Process is running
+  /api/v1/health/ready:
+    get:
+      operationId: getReadiness
+      summary: Check whether the API can access its required database
+      responses:
+        '204':
+          description: API is ready to serve requests
+        '503':
+          description: A required dependency is unavailable
