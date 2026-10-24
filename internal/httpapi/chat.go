@@ -748,6 +748,9 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err == nil {
+		err = announceProjectChanged(ctx, q, conversation.ProjectID)
+	}
+	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {

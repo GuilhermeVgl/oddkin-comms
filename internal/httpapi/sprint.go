@@ -214,6 +214,12 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 		return
 	}
 	if err == nil {
+		var internal []pgtype.UUID
+		if internal, err = q.ListInternalAccounts(ctx, sprint.OrganizationID); err == nil {
+			err = emitEvent(ctx, q, internal, eventSpec{Type: "sprint.changed", ResourceID: sprint.ID})
+		}
+	}
+	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {

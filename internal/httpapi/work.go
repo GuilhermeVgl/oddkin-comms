@@ -1209,6 +1209,9 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	if err == nil {
+		err = announceProjectChanged(ctx, q, project.ID)
+	}
+	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
@@ -1216,4 +1219,13 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// announceProjectChanged tells every project member to re-read names.
+func announceProjectChanged(ctx context.Context, q *sqlc.Queries, projectID pgtype.UUID) error {
+	members, err := projectRecipients(ctx, q, projectID, "")
+	if err != nil {
+		return err
+	}
+	return emitEvent(ctx, q, members, eventSpec{Type: "project.changed", ResourceID: projectID, ProjectID: projectID})
 }
