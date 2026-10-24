@@ -2089,6 +2089,34 @@ func (q *Queries) InsertKeyGeneration(ctx context.Context, arg InsertKeyGenerati
 	return err
 }
 
+const insertRecoveryAudit = `-- name: InsertRecoveryAudit :exec
+INSERT INTO recovery_audit (organization_id, approver_account_id, approver_device_id, domain_id, generation, recipient_device_id, recipient_account_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertRecoveryAuditParams struct {
+	OrganizationID     pgtype.UUID
+	ApproverAccountID  pgtype.UUID
+	ApproverDeviceID   pgtype.UUID
+	DomainID           pgtype.UUID
+	Generation         int32
+	RecipientDeviceID  pgtype.UUID
+	RecipientAccountID pgtype.UUID
+}
+
+func (q *Queries) InsertRecoveryAudit(ctx context.Context, arg InsertRecoveryAuditParams) error {
+	_, err := q.db.Exec(ctx, insertRecoveryAudit,
+		arg.OrganizationID,
+		arg.ApproverAccountID,
+		arg.ApproverDeviceID,
+		arg.DomainID,
+		arg.Generation,
+		arg.RecipientDeviceID,
+		arg.RecipientAccountID,
+	)
+	return err
+}
+
 const insertUserEvent = `-- name: InsertUserEvent :exec
 INSERT INTO user_event (account_id, seq, event_id, type, resource_id, resource_version, project_id, conversation_id, required_permission)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -3365,6 +3393,56 @@ func (q *Queries) ListReactions(ctx context.Context, arg ListReactionsParams) ([
 			&i.Emoji,
 			&i.Total,
 			&i.Mine,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecoveryAudit = `-- name: ListRecoveryAudit :many
+SELECT r.id, r.created_at, r.generation, r.domain_id, COALESCE(kd.kind, '')::text AS domain_kind,
+       COALESCE(ap.email_normalized, '')::text AS approver_email, COALESCE(rc.email_normalized, '')::text AS recipient_email
+FROM recovery_audit AS r
+LEFT JOIN key_domain AS kd ON kd.id = r.domain_id
+LEFT JOIN account AS ap ON ap.id = r.approver_account_id
+LEFT JOIN account AS rc ON rc.id = r.recipient_account_id
+WHERE r.organization_id = $1
+ORDER BY r.created_at DESC, r.id
+LIMIT 200
+`
+
+type ListRecoveryAuditRow struct {
+	ID             pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+	Generation     int32
+	DomainID       pgtype.UUID
+	DomainKind     string
+	ApproverEmail  string
+	RecipientEmail string
+}
+
+func (q *Queries) ListRecoveryAudit(ctx context.Context, organizationID pgtype.UUID) ([]ListRecoveryAuditRow, error) {
+	rows, err := q.db.Query(ctx, listRecoveryAudit, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecoveryAuditRow
+	for rows.Next() {
+		var i ListRecoveryAuditRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Generation,
+			&i.DomainID,
+			&i.DomainKind,
+			&i.ApproverEmail,
+			&i.RecipientEmail,
 		); err != nil {
 			return nil, err
 		}

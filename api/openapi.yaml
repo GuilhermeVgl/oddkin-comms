@@ -2022,6 +2022,98 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/recovery/gaps:
+    get:
+      operationId: listRecoveryGaps
+      summary: Authorized devices that lack the key of a generation (recovery administrator)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Gaps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecoveryGap"
+        "401":
+          description: No active session
+        "403":
+          description: Not the recovery administrator
+  /api/v1/recovery/audit:
+    get:
+      operationId: listRecoveryAudit
+      summary: Every use of the recovery identity, newest first (organization administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecoveryAuditEntry"
+        "401":
+          description: No active session
+        "403":
+          description: Role rejected
+  /api/v1/key-domains/{keyDomainId}/recovery-envelopes:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    get:
+      operationId: listRecoveryEnvelopes
+      summary: Envelopes addressed to the recovery identity of the caller
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Envelopes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyEnvelope"
+        "401":
+          description: No active session
+        "403":
+          description: Not the recovery administrator
+        "404":
+          description: Unknown key domain
+  /api/v1/key-domains/{keyDomainId}/recovery-grants:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    post:
+      operationId: grantRecoveryEnvelopes
+      summary: Re-seal a generation for authorized devices that lack it; audited and announced
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantEnvelopesRequest"
+      responses:
+        "200":
+          description: Envelopes stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "400":
+          description: Envelope signature, recipient or size is invalid
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or not the recovery administrator
+        "404":
+          description: Unknown key domain
+        "409":
+          description: Unknown generation or the device already holds it
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -2609,7 +2701,14 @@ components:
         kind:
           {
             type: string,
-            enum: [mention, assignment, direct_message, call_invite],
+            enum:
+              [
+                mention,
+                assignment,
+                direct_message,
+                call_invite,
+                recovery_access,
+              ],
           }
         resourceId: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
@@ -2980,3 +3079,27 @@ components:
         goalEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         signerDeviceId: { type: string, format: uuid }
         contentRevision: { type: integer }
+    RecoveryGap:
+      type: object
+      required: [domainId, kind, generation, device]
+      additionalProperties: false
+      properties:
+        domainId: { type: string, format: uuid }
+        kind: { type: string, enum: [work, chat, dm, sprint] }
+        projectId: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        generation: { type: integer }
+        device: { $ref: "#/components/schemas/DirectoryDevice" }
+    RecoveryAuditEntry:
+      type: object
+      required:
+        [id, createdAt, generation, domainKind, approverEmail, recipientEmail]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        generation: { type: integer }
+        domainId: { type: string, format: uuid }
+        domainKind: { type: string }
+        approverEmail: { type: string }
+        recipientEmail: { type: string }

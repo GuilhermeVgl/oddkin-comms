@@ -779,3 +779,18 @@ UPDATE sprint
 SET encrypted = true, name = '', goal = '', name_enc = $2, goal_enc = $3,
     content_revision = $4, content_author_id = $5, content_signer_device_id = $6, version = version + 1
 WHERE id = $1 AND content_revision = $4 - 1;
+
+-- name: InsertRecoveryAudit :exec
+INSERT INTO recovery_audit (organization_id, approver_account_id, approver_device_id, domain_id, generation, recipient_device_id, recipient_account_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: ListRecoveryAudit :many
+SELECT r.id, r.created_at, r.generation, r.domain_id, COALESCE(kd.kind, '')::text AS domain_kind,
+       COALESCE(ap.email_normalized, '')::text AS approver_email, COALESCE(rc.email_normalized, '')::text AS recipient_email
+FROM recovery_audit AS r
+LEFT JOIN key_domain AS kd ON kd.id = r.domain_id
+LEFT JOIN account AS ap ON ap.id = r.approver_account_id
+LEFT JOIN account AS rc ON rc.id = r.recipient_account_id
+WHERE r.organization_id = $1
+ORDER BY r.created_at DESC, r.id
+LIMIT 200;

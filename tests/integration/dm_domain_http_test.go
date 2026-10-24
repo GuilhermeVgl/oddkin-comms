@@ -374,3 +374,127 @@ func TestEncryptedNamesOfProjectsChannelsAndSprints(t *testing.T) {
 		t.Fatalf("replaying the revision: %d", code)
 	}
 }
+
+func TestAdministrativeRecoveryRestoresAccessWithAuditAndNotice(t *testing.T) {
+	f := newE2EEFixture(t, "7d000000-0000-4000-8000-000000000001", "rc", []string{"admin", "ana", "bia"})
+	admin, ana, bia := f.clients["admin"], f.clients["ana"], f.clients["bia"]
+	adminDevice, anaDevice, biaOld := f.activate("admin", "Admin", "device"), f.activate("ana", "Ana", "device"), f.activate("bia", "Bia", "device")
+
+	var project struct{ Id string }
+	admin.do(http.MethodPost, "/api/v1/projects", `{"name":"Equipe"}`, &project)
+	for _, name := range []string{"ana", "bia"} {
+		admin.do(http.MethodPost, "/api/v1/projects/"+project.Id+"/members", `{"email":"rc-`+name+`@example.test"}`, nil)
+	}
+	var dm struct{ Id string }
+	ana.do(http.MethodPost, "/api/v1/direct-conversations", `{"accountId":"`+f.accounts["bia"]+`"}`, &dm)
+	var domain domainDTO
+	ana.do(http.MethodPost, "/api/v1/conversations/"+dm.Id+"/key-domain", "", &domain)
+	if code := f.publish(ana, domain.Id, anaDevice, 1, []testDevice{anaDevice, biaOld, f.recovery}); code != http.StatusOK {
+		t.Fatalf("generation 1: %d", code)
+	}
+
+	// Bia loses her only device; Ana rotates; Bia returns with a new device that holds nothing.
+	bia.do(http.MethodPost, "/api/v1/devices/"+biaOld.id+"/revoke", "", nil)
+	if code := f.publish(ana, domain.Id, anaDevice, 2, []testDevice{anaDevice, f.recovery}); code != http.StatusOK {
+		t.Fatalf("generation 2: %d", code)
+	}
+	biaNew := f.activate("bia", "Bia nova", "device")
+	var current domainDTO
+	ana.do(http.MethodGet, "/api/v1/conversations/"+dm.Id+"/key-domain", "", &current)
+	if current.State != "pending_keys" {
+		t.Fatalf("the new device must leave the domain waiting for keys: %+v", current)
+	}
+	// Nobody else holds Bia's history: neither Ana nor the new device can restore it by themselves.
+	if code := f.publish(ana, domain.Id, anaDevice, 3, []testDevice{anaDevice, biaNew, f.recovery}); code != http.StatusOK {
+		t.Fatalf("a new generation lets Bia read from now on: %d", code)
+	}
+	var biaEnvelopes []struct{ Generation int }
+	bia.do(http.MethodGet, "/api/v1/key-domains/"+domain.Id+"/envelopes", "", &biaEnvelopes)
+	if len(biaEnvelopes) != 1 || biaEnvelopes[0].Generation != 3 {
+		t.Fatalf("before recovery Bia only reads from generation 3: %+v", biaEnvelopes)
+	}
+
+	// Recovery is the administrator's, and nobody else's.
+	if code := ana.do(http.MethodGet, "/api/v1/recovery/gaps", "", nil); code != http.StatusForbidden {
+		t.Fatalf("a member listing gaps: %d", code)
+	}
+	if code := ana.do(http.MethodGet, "/api/v1/key-domains/"+domain.Id+"/recovery-envelopes", "", nil); code != http.StatusForbidden {
+		t.Fatalf("a member reading recovery envelopes: %d", code)
+	}
+	var gaps []struct {
+		DomainId   string
+		Kind       string
+		Generation int
+		Device     struct{ DeviceId, Email string }
+	}
+	if code := admin.do(http.MethodGet, "/api/v1/recovery/gaps", "", &gaps); code != http.StatusOK || len(gaps) != 2 {
+		t.Fatalf("gaps: %d %+v", code, gaps)
+	}
+	for _, gap := range gaps {
+		if gap.DomainId != domain.Id || gap.Kind != "dm" || gap.Device.DeviceId != biaNew.id || gap.Device.Email != "rc-bia@example.test" {
+			t.Fatalf("unexpected gap %+v", gap)
+		}
+	}
+	var held []struct {
+		Generation        int
+		RecipientDeviceId string
+	}
+	if code := admin.do(http.MethodGet, "/api/v1/key-domains/"+domain.Id+"/recovery-envelopes", "", &held); code != http.StatusOK || len(held) != 3 {
+		t.Fatalf("the recovery identity holds every generation: %d %+v", code, held)
+	}
+	grant := func(client *workClient, signer testDevice, generation int, recipient testDevice) int {
+		sealed := make([]byte, 80)
+		_, _ = rand.Read(sealed)
+		signature := ed25519.Sign(signer.signSecret, keys.KeyEnvelopeBytes(keys.KeyEnvelope{RecipientDeviceID: recipient.id, DomainID: domain.Id, Generation: uint32(generation), Sealed: sealed}))
+		return client.do(http.MethodPost, "/api/v1/key-domains/"+domain.Id+"/recovery-grants", fmt.Sprintf(`{"generation":%d,"signerDeviceId":%q,"envelopes":[{"recipientDeviceId":%q,"sealed":%q,"signature":%q}]}`,
+			generation, signer.id, recipient.id, b64url.EncodeToString(sealed), b64url.EncodeToString(signature)), nil)
+	}
+	if code := grant(ana, anaDevice, 1, biaNew); code != http.StatusForbidden {
+		t.Fatalf("a member using the recovery path: %d", code)
+	}
+	if code := grant(admin, adminDevice, 1, biaOld); code != http.StatusBadRequest {
+		t.Fatalf("granting to a revoked device: %d", code)
+	}
+	if code := grant(admin, adminDevice, 9, biaNew); code != http.StatusConflict {
+		t.Fatalf("granting a generation that does not exist: %d", code)
+	}
+	for _, generation := range []int{1, 2} {
+		if code := grant(admin, adminDevice, generation, biaNew); code != http.StatusOK {
+			t.Fatalf("recover generation %d: %d", generation, code)
+		}
+	}
+	if code := grant(admin, adminDevice, 1, biaNew); code != http.StatusConflict {
+		t.Fatalf("granting twice: %d", code)
+	}
+	bia.do(http.MethodGet, "/api/v1/key-domains/"+domain.Id+"/envelopes", "", &biaEnvelopes)
+	if len(biaEnvelopes) != 3 {
+		t.Fatalf("Bia now holds the whole history: %+v", biaEnvelopes)
+	}
+	admin.do(http.MethodGet, "/api/v1/recovery/gaps", "", &gaps)
+	if len(gaps) != 0 {
+		t.Fatalf("no gap must remain: %+v", gaps)
+	}
+
+	// The use of the recovery identity is recorded and the person is told.
+	var audit []struct {
+		ApproverEmail, RecipientEmail, DomainKind string
+		Generation                                int
+	}
+	if code := admin.do(http.MethodGet, "/api/v1/recovery/audit", "", &audit); code != http.StatusOK || len(audit) != 2 || audit[0].ApproverEmail != "rc-admin@example.test" || audit[0].RecipientEmail != "rc-bia@example.test" || audit[0].DomainKind != "dm" {
+		t.Fatalf("audit: %d %+v", code, audit)
+	}
+	if code := ana.do(http.MethodGet, "/api/v1/recovery/audit", "", nil); code != http.StatusForbidden {
+		t.Fatalf("a member reading the audit: %d", code)
+	}
+	var notes []struct{ Kind string }
+	bia.do(http.MethodGet, "/api/v1/notifications", "", &notes)
+	var told int
+	for _, note := range notes {
+		if note.Kind == "recovery_access" {
+			told++
+		}
+	}
+	if told != 2 {
+		t.Fatalf("Bia must be notified of each restoration: %+v", notes)
+	}
+}

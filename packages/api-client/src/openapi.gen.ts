@@ -1272,6 +1272,78 @@ export interface paths {
     patch: operations["updateSprint"];
     trace?: never;
   };
+  "/api/v1/recovery/gaps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Authorized devices that lack the key of a generation (recovery administrator) */
+    get: operations["listRecoveryGaps"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/recovery/audit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every use of the recovery identity, newest first (organization administrators) */
+    get: operations["listRecoveryAudit"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/recovery-envelopes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    /** Envelopes addressed to the recovery identity of the caller */
+    get: operations["listRecoveryEnvelopes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/recovery-grants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Re-seal a generation for authorized devices that lack it; audited and announced */
+    post: operations["grantRecoveryEnvelopes"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/health/live": {
     parameters: {
       query?: never;
@@ -1709,7 +1781,12 @@ export interface components {
       /** Format: uuid */
       id: string;
       /** @enum {string} */
-      kind: "mention" | "assignment" | "direct_message" | "call_invite";
+      kind:
+        | "mention"
+        | "assignment"
+        | "direct_message"
+        | "call_invite"
+        | "recovery_access";
       /** Format: uuid */
       resourceId: string;
       /** Format: uuid */
@@ -1979,6 +2056,30 @@ export interface components {
       /** Format: uuid */
       signerDeviceId: string;
       contentRevision: number;
+    };
+    RecoveryGap: {
+      /** Format: uuid */
+      domainId: string;
+      /** @enum {string} */
+      kind: "work" | "chat" | "dm" | "sprint";
+      /** Format: uuid */
+      projectId?: string;
+      /** Format: uuid */
+      conversationId?: string;
+      generation: number;
+      device: components["schemas"]["DirectoryDevice"];
+    };
+    RecoveryAuditEntry: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      createdAt: string;
+      generation: number;
+      /** Format: uuid */
+      domainId?: string;
+      domainKind: string;
+      approverEmail: string;
+      recipientEmail: string;
     };
   };
   responses: never;
@@ -5957,6 +6058,178 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ApiError"];
         };
+      };
+    };
+  };
+  listRecoveryGaps: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Gaps */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RecoveryGap"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the recovery administrator */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listRecoveryAudit: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Audit entries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RecoveryAuditEntry"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listRecoveryEnvelopes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyEnvelope"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the recovery administrator */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  grantRecoveryEnvelopes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GrantEnvelopesRequest"];
+      };
+    };
+    responses: {
+      /** @description Envelopes stored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description Envelope signature, recipient or size is invalid */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or not the recovery administrator */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown generation or the device already holds it */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

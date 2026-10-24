@@ -503,10 +503,11 @@ func (e KeyDomainState) Valid() bool {
 
 // Defines values for NotificationKind.
 const (
-	Assignment    NotificationKind = "assignment"
-	CallInvite    NotificationKind = "call_invite"
-	DirectMessage NotificationKind = "direct_message"
-	Mention       NotificationKind = "mention"
+	Assignment     NotificationKind = "assignment"
+	CallInvite     NotificationKind = "call_invite"
+	DirectMessage  NotificationKind = "direct_message"
+	Mention        NotificationKind = "mention"
+	RecoveryAccess NotificationKind = "recovery_access"
 )
 
 // Valid indicates whether the value is a known member of the NotificationKind enum.
@@ -519,6 +520,8 @@ func (e NotificationKind) Valid() bool {
 	case DirectMessage:
 		return true
 	case Mention:
+		return true
+	case RecoveryAccess:
 		return true
 	default:
 		return false
@@ -537,6 +540,30 @@ func (e ProjectMemberMembershipKind) Valid() bool {
 	case ProjectMemberMembershipKindExternal:
 		return true
 	case ProjectMemberMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RecoveryGapKind.
+const (
+	RecoveryGapKindChat   RecoveryGapKind = "chat"
+	RecoveryGapKindDm     RecoveryGapKind = "dm"
+	RecoveryGapKindSprint RecoveryGapKind = "sprint"
+	RecoveryGapKindWork   RecoveryGapKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the RecoveryGapKind enum.
+func (e RecoveryGapKind) Valid() bool {
+	switch e {
+	case RecoveryGapKindChat:
+		return true
+	case RecoveryGapKindDm:
+		return true
+	case RecoveryGapKindSprint:
+		return true
+	case RecoveryGapKindWork:
 		return true
 	default:
 		return false
@@ -1217,6 +1244,30 @@ type ReadCursorRequest struct {
 	Seq int64 `json:"seq"`
 }
 
+// RecoveryAuditEntry defines model for RecoveryAuditEntry.
+type RecoveryAuditEntry struct {
+	ApproverEmail  string              `json:"approverEmail"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	DomainId       *openapi_types.UUID `json:"domainId,omitempty"`
+	DomainKind     string              `json:"domainKind"`
+	Generation     int                 `json:"generation"`
+	Id             openapi_types.UUID  `json:"id"`
+	RecipientEmail string              `json:"recipientEmail"`
+}
+
+// RecoveryGap defines model for RecoveryGap.
+type RecoveryGap struct {
+	ConversationId *openapi_types.UUID `json:"conversationId,omitempty"`
+	Device         DirectoryDevice     `json:"device"`
+	DomainId       openapi_types.UUID  `json:"domainId"`
+	Generation     int                 `json:"generation"`
+	Kind           RecoveryGapKind     `json:"kind"`
+	ProjectId      *openapi_types.UUID `json:"projectId,omitempty"`
+}
+
+// RecoveryGapKind defines model for RecoveryGap.Kind.
+type RecoveryGapKind string
+
 // RegisterDeviceRequest defines model for RegisterDeviceRequest.
 type RegisterDeviceRequest struct {
 	// BoxPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
@@ -1526,6 +1577,9 @@ type GrantKeyEnvelopesJSONRequestBody = GrantEnvelopesRequest
 // PublishKeyGenerationJSONRequestBody defines body for PublishKeyGeneration for application/json ContentType.
 type PublishKeyGenerationJSONRequestBody = PublishGenerationRequest
 
+// GrantRecoveryEnvelopesJSONRequestBody defines body for GrantRecoveryEnvelopes for application/json ContentType.
+type GrantRecoveryEnvelopesJSONRequestBody = GrantEnvelopesRequest
+
 // EditMessageJSONRequestBody defines body for EditMessage for application/json ContentType.
 type EditMessageJSONRequestBody = EditMessageRequest
 
@@ -1723,6 +1777,12 @@ type ServerInterface interface {
 	// ListKeyRecipients Which devices hold an envelope for which generation
 	// (GET /api/v1/key-domains/{keyDomainId}/recipients)
 	ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// ListRecoveryEnvelopes Envelopes addressed to the recovery identity of the caller
+	// (GET /api/v1/key-domains/{keyDomainId}/recovery-envelopes)
+	ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// GrantRecoveryEnvelopes Re-seal a generation for authorized devices that lack it; audited and announced
+	// (POST /api/v1/key-domains/{keyDomainId}/recovery-grants)
+	GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
 	// DeleteMessage Delete your own message, or any channel message as project manager
 	// (DELETE /api/v1/messages/{messageId})
 	DeleteMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
@@ -1792,6 +1852,12 @@ type ServerInterface interface {
 	// CreateWorkItem Create a task or subtask
 	// (POST /api/v1/projects/{projectId}/work-items)
 	CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListRecoveryAudit Every use of the recovery identity, newest first (organization administrators)
+	// (GET /api/v1/recovery/audit)
+	ListRecoveryAudit(w http.ResponseWriter, r *http.Request)
+	// ListRecoveryGaps Authorized devices that lack the key of a generation (recovery administrator)
+	// (GET /api/v1/recovery/gaps)
+	ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
 	// ListSprints List sprints visible to the account
 	// (GET /api/v1/sprints)
 	ListSprints(w http.ResponseWriter, r *http.Request)
@@ -2918,6 +2984,58 @@ func (siw *ServerInterfaceWrapper) ListKeyRecipients(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListRecoveryEnvelopes operation middleware
+func (siw *ServerInterfaceWrapper) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecoveryEnvelopes(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantRecoveryEnvelopes operation middleware
+func (siw *ServerInterfaceWrapper) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantRecoveryEnvelopes(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteMessage operation middleware
 func (siw *ServerInterfaceWrapper) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 
@@ -3459,6 +3577,34 @@ func (siw *ServerInterfaceWrapper) CreateWorkItem(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateWorkItem(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRecoveryAudit operation middleware
+func (siw *ServerInterfaceWrapper) ListRecoveryAudit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecoveryAudit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRecoveryGaps operation middleware
+func (siw *ServerInterfaceWrapper) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecoveryGaps(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4051,6 +4197,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/e2ee/sprint-domain", wrapper.CreateSprintKeyDomain)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/conversations/{conversationId}", wrapper.UpdateConversation)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/sprints/{sprintId}", wrapper.UpdateSprint)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/recovery/gaps", wrapper.ListRecoveryGaps)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/recovery/audit", wrapper.ListRecoveryAudit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recovery-envelopes", wrapper.ListRecoveryEnvelopes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recovery-grants", wrapper.GrantRecoveryEnvelopes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 
