@@ -36,6 +36,7 @@ import React, {
 } from "react";
 import { useEvents } from "../events";
 import { Keyring } from "./keyring";
+import { CallCrypto } from "./callCrypto";
 import { ContentCrypto, type Scope } from "./projectCrypto";
 import { browserStore, type KeyValueStore } from "./storage";
 import { Vault, type VaultRecord } from "./vault";
@@ -94,6 +95,7 @@ export type E2EEApi = {
   openOrganization(options?: {
     maintain?: boolean;
   }): Promise<ContentCrypto | null>;
+  openCall(callId: string): Promise<CallCrypto | null>;
   hasRecoveryIdentity: boolean;
   /** Administrative recovery; only the recovery administrator, only while unlocked. */
   recoveryGaps(): Promise<RecoveryGap[]>;
@@ -511,6 +513,14 @@ export function E2EEProvider({
 
       openOrganization(options) {
         return this.openScope({ type: "organization" }, options);
+      },
+
+      async openCall(_callId) {
+        const { crypto, vault } = await runtimeOf();
+        const current = record.current;
+        const ring = keyring.current;
+        if (current === null || ring === null || !vault.unlocked) return null;
+        return new CallCrypto(client, crypto, vault, ring, current.deviceId, csrf);
       },
 
       hasRecoveryIdentity: hasRecovery,

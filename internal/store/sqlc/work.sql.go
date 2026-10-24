@@ -75,7 +75,7 @@ func (q *Queries) ActivateDevice(ctx context.Context, arg ActivateDeviceParams) 
 }
 
 const activeAdmissionForAccount = `-- name: ActiveAdmissionForAccount :one
-SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at FROM call_admission WHERE account_id = $1 AND state IN ('reserved', 'joined')
+SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at, device_id FROM call_admission WHERE account_id = $1 AND state IN ('reserved', 'joined')
 `
 
 func (q *Queries) ActiveAdmissionForAccount(ctx context.Context, accountID pgtype.UUID) (CallAdmission, error) {
@@ -91,12 +91,13 @@ func (q *Queries) ActiveAdmissionForAccount(ctx context.Context, accountID pgtyp
 		&i.CreatedAt,
 		&i.JoinedAt,
 		&i.LeftAt,
+		&i.DeviceID,
 	)
 	return i, err
 }
 
 const activeCallForConversation = `-- name: ActiveCallForConversation :one
-SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason FROM call WHERE conversation_id = $1 AND state = 'active'
+SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation FROM call WHERE conversation_id = $1 AND state = 'active'
 `
 
 func (q *Queries) ActiveCallForConversation(ctx context.Context, conversationID pgtype.UUID) (Call, error) {
@@ -112,6 +113,7 @@ func (q *Queries) ActiveCallForConversation(ctx context.Context, conversationID 
 		&i.CreatedAt,
 		&i.EndedAt,
 		&i.EndedReason,
+		&i.KeyGeneration,
 	)
 	return i, err
 }
@@ -150,6 +152,20 @@ func (q *Queries) AddReaction(ctx context.Context, arg AddReactionParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const advanceCallKey = `-- name: AdvanceCallKey :exec
+UPDATE call SET key_generation = $2 WHERE id = $1
+`
+
+type AdvanceCallKeyParams struct {
+	ID            pgtype.UUID
+	KeyGeneration int32
+}
+
+func (q *Queries) AdvanceCallKey(ctx context.Context, arg AdvanceCallKeyParams) error {
+	_, err := q.db.Exec(ctx, advanceCallKey, arg.ID, arg.KeyGeneration)
+	return err
 }
 
 const advanceKeyDomain = `-- name: AdvanceKeyDomain :exec
@@ -301,7 +317,7 @@ func (q *Queries) CreateBoardColumn(ctx context.Context, arg CreateBoardColumnPa
 }
 
 const createCall = `-- name: CreateCall :one
-INSERT INTO call (conversation_id, started_by, room_name) VALUES ($1, $2, $3) RETURNING id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason
+INSERT INTO call (conversation_id, started_by, room_name) VALUES ($1, $2, $3) RETURNING id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation
 `
 
 type CreateCallParams struct {
@@ -323,6 +339,7 @@ func (q *Queries) CreateCall(ctx context.Context, arg CreateCallParams) (Call, e
 		&i.CreatedAt,
 		&i.EndedAt,
 		&i.EndedReason,
+		&i.KeyGeneration,
 	)
 	return i, err
 }
@@ -1389,7 +1406,7 @@ func (q *Queries) GetBoardColumn(ctx context.Context, arg GetBoardColumnParams) 
 }
 
 const getCall = `-- name: GetCall :one
-SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason FROM call WHERE id = $1
+SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation FROM call WHERE id = $1
 `
 
 func (q *Queries) GetCall(ctx context.Context, id pgtype.UUID) (Call, error) {
@@ -1405,12 +1422,13 @@ func (q *Queries) GetCall(ctx context.Context, id pgtype.UUID) (Call, error) {
 		&i.CreatedAt,
 		&i.EndedAt,
 		&i.EndedReason,
+		&i.KeyGeneration,
 	)
 	return i, err
 }
 
 const getCallByRoom = `-- name: GetCallByRoom :one
-SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason FROM call WHERE room_name = $1
+SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation FROM call WHERE room_name = $1
 `
 
 func (q *Queries) GetCallByRoom(ctx context.Context, roomName string) (Call, error) {
@@ -1426,6 +1444,7 @@ func (q *Queries) GetCallByRoom(ctx context.Context, roomName string) (Call, err
 		&i.CreatedAt,
 		&i.EndedAt,
 		&i.EndedReason,
+		&i.KeyGeneration,
 	)
 	return i, err
 }
@@ -1666,7 +1685,7 @@ func (q *Queries) GetKeyDomainByProjectKind(ctx context.Context, arg GetKeyDomai
 }
 
 const getLatestAdmission = `-- name: GetLatestAdmission :one
-SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at FROM call_admission WHERE call_id = $1 AND account_id = $2 ORDER BY created_at DESC LIMIT 1
+SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at, device_id FROM call_admission WHERE call_id = $1 AND account_id = $2 ORDER BY created_at DESC LIMIT 1
 `
 
 type GetLatestAdmissionParams struct {
@@ -1687,6 +1706,7 @@ func (q *Queries) GetLatestAdmission(ctx context.Context, arg GetLatestAdmission
 		&i.CreatedAt,
 		&i.JoinedAt,
 		&i.LeftAt,
+		&i.DeviceID,
 	)
 	return i, err
 }
@@ -2014,15 +2034,16 @@ func (q *Queries) GetWorkItemForUpdate(ctx context.Context, id pgtype.UUID) (Wor
 }
 
 const insertAdmission = `-- name: InsertAdmission :one
-INSERT INTO call_admission (call_id, account_id, session_id, reserved_until)
-VALUES ($1, $2, $3, now() + make_interval(secs => $4::double precision))
-RETURNING id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at
+INSERT INTO call_admission (call_id, account_id, session_id, device_id, reserved_until)
+VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5::double precision))
+RETURNING id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at, device_id
 `
 
 type InsertAdmissionParams struct {
 	CallID    pgtype.UUID
 	AccountID pgtype.UUID
 	SessionID pgtype.UUID
+	DeviceID  pgtype.UUID
 	Seconds   float64
 }
 
@@ -2031,6 +2052,7 @@ func (q *Queries) InsertAdmission(ctx context.Context, arg InsertAdmissionParams
 		arg.CallID,
 		arg.AccountID,
 		arg.SessionID,
+		arg.DeviceID,
 		arg.Seconds,
 	)
 	var i CallAdmission
@@ -2044,8 +2066,50 @@ func (q *Queries) InsertAdmission(ctx context.Context, arg InsertAdmissionParams
 		&i.CreatedAt,
 		&i.JoinedAt,
 		&i.LeftAt,
+		&i.DeviceID,
 	)
 	return i, err
+}
+
+const insertCallKeyEnvelope = `-- name: InsertCallKeyEnvelope :exec
+INSERT INTO call_key_envelope (call_id, generation, recipient_device_id, signer_device_id, sealed, signature)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertCallKeyEnvelopeParams struct {
+	CallID            pgtype.UUID
+	Generation        int32
+	RecipientDeviceID pgtype.UUID
+	SignerDeviceID    pgtype.UUID
+	Sealed            []byte
+	Signature         []byte
+}
+
+func (q *Queries) InsertCallKeyEnvelope(ctx context.Context, arg InsertCallKeyEnvelopeParams) error {
+	_, err := q.db.Exec(ctx, insertCallKeyEnvelope,
+		arg.CallID,
+		arg.Generation,
+		arg.RecipientDeviceID,
+		arg.SignerDeviceID,
+		arg.Sealed,
+		arg.Signature,
+	)
+	return err
+}
+
+const insertCallKeyGeneration = `-- name: InsertCallKeyGeneration :exec
+INSERT INTO call_key_generation (call_id, generation, created_by_device) VALUES ($1, $2, $3)
+`
+
+type InsertCallKeyGenerationParams struct {
+	CallID          pgtype.UUID
+	Generation      int32
+	CreatedByDevice pgtype.UUID
+}
+
+func (q *Queries) InsertCallKeyGeneration(ctx context.Context, arg InsertCallKeyGenerationParams) error {
+	_, err := q.db.Exec(ctx, insertCallKeyGeneration, arg.CallID, arg.Generation, arg.CreatedByDevice)
+	return err
 }
 
 const insertKeyEnvelope = `-- name: InsertKeyEnvelope :exec
@@ -2150,7 +2214,7 @@ func (q *Queries) InsertUserEvent(ctx context.Context, arg InsertUserEventParams
 }
 
 const listActiveCalls = `-- name: ListActiveCalls :many
-SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason FROM call WHERE state = 'active' ORDER BY created_at
+SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation FROM call WHERE state = 'active' ORDER BY created_at
 `
 
 func (q *Queries) ListActiveCalls(ctx context.Context) ([]Call, error) {
@@ -2172,6 +2236,7 @@ func (q *Queries) ListActiveCalls(ctx context.Context) ([]Call, error) {
 			&i.CreatedAt,
 			&i.EndedAt,
 			&i.EndedReason,
+			&i.KeyGeneration,
 		); err != nil {
 			return nil, err
 		}
@@ -2431,6 +2496,72 @@ func (q *Queries) ListCallInvitations(ctx context.Context, callID pgtype.UUID) (
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCallKeyEnvelopes = `-- name: ListCallKeyEnvelopes :many
+SELECT call_id, generation, recipient_device_id, signer_device_id, sealed, signature, created_at FROM call_key_envelope WHERE call_id = $1 AND recipient_device_id = $2 ORDER BY generation
+`
+
+type ListCallKeyEnvelopesParams struct {
+	CallID            pgtype.UUID
+	RecipientDeviceID pgtype.UUID
+}
+
+func (q *Queries) ListCallKeyEnvelopes(ctx context.Context, arg ListCallKeyEnvelopesParams) ([]CallKeyEnvelope, error) {
+	rows, err := q.db.Query(ctx, listCallKeyEnvelopes, arg.CallID, arg.RecipientDeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CallKeyEnvelope
+	for rows.Next() {
+		var i CallKeyEnvelope
+		if err := rows.Scan(
+			&i.CallID,
+			&i.Generation,
+			&i.RecipientDeviceID,
+			&i.SignerDeviceID,
+			&i.Sealed,
+			&i.Signature,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCallKeyHolders = `-- name: ListCallKeyHolders :many
+SELECT recipient_device_id FROM call_key_envelope WHERE call_id = $1 AND generation = $2
+`
+
+type ListCallKeyHoldersParams struct {
+	CallID     pgtype.UUID
+	Generation int32
+}
+
+func (q *Queries) ListCallKeyHolders(ctx context.Context, arg ListCallKeyHoldersParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listCallKeyHolders, arg.CallID, arg.Generation)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var recipient_device_id pgtype.UUID
+		if err := rows.Scan(&recipient_device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, recipient_device_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -3454,6 +3585,32 @@ func (q *Queries) ListRecoveryAudit(ctx context.Context, organizationID pgtype.U
 	return items, nil
 }
 
+const listSeatDevices = `-- name: ListSeatDevices :many
+SELECT DISTINCT device_id FROM call_admission
+WHERE call_id = $1 AND state IN ('reserved', 'joined') AND device_id IS NOT NULL
+ORDER BY device_id
+`
+
+func (q *Queries) ListSeatDevices(ctx context.Context, callID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listSeatDevices, callID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var device_id pgtype.UUID
+		if err := rows.Scan(&device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, device_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSprintTasksForAccount = `-- name: ListSprintTasksForAccount :many
 SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id
 FROM work_item AS w
@@ -3838,7 +3995,7 @@ func (q *Queries) ListWorkItems(ctx context.Context, projectID pgtype.UUID) ([]W
 }
 
 const lockCall = `-- name: LockCall :one
-SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason FROM call WHERE id = $1 FOR UPDATE
+SELECT id, conversation_id, started_by, state, room_name, screen_sharer_id, created_at, ended_at, ended_reason, key_generation FROM call WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockCall(ctx context.Context, id pgtype.UUID) (Call, error) {
@@ -3854,6 +4011,7 @@ func (q *Queries) LockCall(ctx context.Context, id pgtype.UUID) (Call, error) {
 		&i.CreatedAt,
 		&i.EndedAt,
 		&i.EndedReason,
+		&i.KeyGeneration,
 	)
 	return i, err
 }
@@ -4201,19 +4359,25 @@ func (q *Queries) RemoveReaction(ctx context.Context, arg RemoveReactionParams) 
 }
 
 const renewAdmission = `-- name: RenewAdmission :one
-UPDATE call_admission SET session_id = $2, reserved_until = now() + make_interval(secs => $3::double precision)
+UPDATE call_admission SET session_id = $2, device_id = $3, reserved_until = now() + make_interval(secs => $4::double precision)
 WHERE id = $1 AND state IN ('reserved', 'joined')
-RETURNING id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at
+RETURNING id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at, device_id
 `
 
 type RenewAdmissionParams struct {
 	ID        pgtype.UUID
 	SessionID pgtype.UUID
+	DeviceID  pgtype.UUID
 	Seconds   float64
 }
 
 func (q *Queries) RenewAdmission(ctx context.Context, arg RenewAdmissionParams) (CallAdmission, error) {
-	row := q.db.QueryRow(ctx, renewAdmission, arg.ID, arg.SessionID, arg.Seconds)
+	row := q.db.QueryRow(ctx, renewAdmission,
+		arg.ID,
+		arg.SessionID,
+		arg.DeviceID,
+		arg.Seconds,
+	)
 	var i CallAdmission
 	err := row.Scan(
 		&i.ID,
@@ -4225,6 +4389,7 @@ func (q *Queries) RenewAdmission(ctx context.Context, arg RenewAdmissionParams) 
 		&i.CreatedAt,
 		&i.JoinedAt,
 		&i.LeftAt,
+		&i.DeviceID,
 	)
 	return i, err
 }

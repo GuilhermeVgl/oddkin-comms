@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/keys"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
 	"github.com/google/uuid"
@@ -101,6 +103,30 @@ func eligibleInvitees(ctx context.Context, q *sqlc.Queries, conversation sqlc.Co
 	return slices.DeleteFunc(readers, func(id pgtype.UUID) bool { return !slices.Contains(joiners, id) }), nil
 }
 
+// callKeyState derives, from who holds a seat and who holds the current key,
+// whether media may keep flowing: someone who left and still holds the key
+// forces a rotation; someone who joined without it makes the call wait for one.
+func callKeyState(ctx context.Context, q *sqlc.Queries, call sqlc.Call) (string, error) {
+	if call.KeyGeneration == 0 {
+		return "pending_keys", nil
+	}
+	seats, err := q.ListSeatDevices(ctx, call.ID)
+	if err != nil {
+		return "", err
+	}
+	holders, err := q.ListCallKeyHolders(ctx, sqlc.ListCallKeyHoldersParams{CallID: call.ID, Generation: call.KeyGeneration})
+	if err != nil {
+		return "", err
+	}
+	if slices.ContainsFunc(holders, func(id pgtype.UUID) bool { return !slices.Contains(seats, id) }) {
+		return "rotation_required", nil
+	}
+	if slices.ContainsFunc(seats, func(id pgtype.UUID) bool { return !slices.Contains(holders, id) }) {
+		return "pending_keys", nil
+	}
+	return "ok", nil
+}
+
 func buildCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, rights callRights, me pgtype.UUID) (gen.Call, error) {
 	participants, err := q.ListCallParticipants(ctx, call.ID)
 	if err != nil {
@@ -117,7 +143,12 @@ func buildCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, rights call
 			starter = account.EmailNormalized
 		}
 	}
+	keyState, err := callKeyState(ctx, q, call)
+	if err != nil {
+		return gen.Call{}, err
+	}
 	response := gen.Call{
+		KeyGeneration: int(call.KeyGeneration), KeyState: gen.CallKeyState(keyState),
 		Id: fromPG(call.ID), ConversationId: fromPG(call.ConversationID), State: gen.CallState(call.State),
 		StartedBy: starter, MaxParticipants: calls.MaxParticipants,
 		Participants: []gen.CallParticipant{}, Invitations: []gen.CallInvitationState{},
@@ -387,6 +418,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 		return
 	}
 	transfer := payload.Transfer != nil && *payload.Transfer
+	deviceID := pgUUID(uuidFrom(payload.DeviceId))
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
@@ -404,6 +436,17 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 	}
 	if !rights.join {
 		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	// Media is end-to-end encrypted: a seat needs an active device of the caller
+	// to seal the call key for. There is no unencrypted way in.
+	device, deviceErr := q.GetDevice(ctx, deviceID)
+	if errors.Is(deviceErr, pgx.ErrNoRows) || (deviceErr == nil && (device.AccountID != session.AccountID || device.State != "active" || device.Kind != "device")) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if deviceErr != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	if call.State != "active" {
@@ -441,7 +484,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 			writeConflict(w, gen.OtherDevice)
 			return
 		}
-		_, err = q.RenewAdmission(ctx, sqlc.RenewAdmissionParams{ID: existing.ID, SessionID: session.ID, Seconds: float64(calls.ReservationSeconds)})
+		_, err = q.RenewAdmission(ctx, sqlc.RenewAdmissionParams{ID: existing.ID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
 	case errors.Is(err, pgx.ErrNoRows):
 		seats, countErr := q.CountCallSeats(ctx, call.ID)
 		if countErr != nil {
@@ -452,7 +495,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 			writeConflict(w, gen.CallFull)
 			return
 		}
-		_, err = q.InsertAdmission(ctx, sqlc.InsertAdmissionParams{CallID: call.ID, AccountID: session.AccountID, SessionID: session.ID, Seconds: float64(calls.ReservationSeconds)})
+		_, err = q.InsertAdmission(ctx, sqlc.InsertAdmissionParams{CallID: call.ID, AccountID: session.AccountID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
 	}
 	if isUniqueViolation(err) {
 		writeConflict(w, gen.InOtherCall)
@@ -803,4 +846,200 @@ func (h *healthHandler) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 		_ = h.auth.rooms.DeleteRoom(ctx, roomName)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// seatOf returns the caller's seat in this call, answering 403 otherwise.
+func seatOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID) (sqlc.CallAdmission, bool) {
+	if err := q.ExpireStaleAdmissionsForCall(ctx, call.ID); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return sqlc.CallAdmission{}, false
+	}
+	seat, err := q.ActiveAdmissionForAccount(ctx, account)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (seat.CallID != call.ID || !seat.DeviceID.Valid)) {
+		w.WriteHeader(http.StatusForbidden)
+		return seat, false
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return seat, false
+	}
+	return seat, true
+}
+
+func (h *healthHandler) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, false)
+	if !ok {
+		return
+	}
+	if _, ok = seatOf(ctx, w, q, call, session.AccountID); !ok {
+		return
+	}
+	seats, err := q.ListSeatDevices(ctx, call.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	devices := make([]gen.DirectoryDevice, 0, len(seats))
+	for _, id := range seats {
+		device, getErr := q.GetDevice(ctx, id)
+		if getErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		email := ""
+		if owner, ownerErr := q.GetAccountByID(ctx, device.AccountID); ownerErr == nil {
+			email = owner.EmailNormalized
+		}
+		devices = append(devices, directoryEntry(device.ID, device.AccountID, email, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
+	}
+	writeJSON(w, http.StatusOK, devices)
+}
+
+func (h *healthHandler) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, false)
+	if !ok {
+		return
+	}
+	seat, ok := seatOf(ctx, w, q, call, session.AccountID)
+	if !ok {
+		return
+	}
+	rows, err := q.ListCallKeyEnvelopes(ctx, sqlc.ListCallKeyEnvelopesParams{CallID: call.ID, RecipientDeviceID: seat.DeviceID})
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	envelopes := make([]gen.KeyEnvelope, 0, len(rows))
+	for _, row := range rows {
+		envelopes = append(envelopes, gen.KeyEnvelope{
+			Generation: int(row.Generation), RecipientDeviceId: fromPG(row.RecipientDeviceID), SignerDeviceId: fromPG(row.SignerDeviceID),
+			Sealed: b64(row.Sealed), Signature: b64(row.Signature),
+		})
+	}
+	writeJSON(w, http.StatusOK, envelopes)
+}
+
+// PublishCallKey stores the next ephemeral media key, sealed for exactly the
+// devices that hold a seat right now. The server only checks who may receive
+// it and who sealed it; it never sees the key. The recovery identity is not a
+// recipient: calls are not recorded and not recoverable.
+func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.PublishGenerationRequest
+	if !decodeJSONBodyLimit(w, r, &payload, 1<<20) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
+	if !ok {
+		return
+	}
+	if !rights.join {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if call.State != "active" {
+		writeConflict(w, gen.CallEnded)
+		return
+	}
+	seat, ok := seatOf(ctx, w, q, call, session.AccountID)
+	if !ok {
+		return
+	}
+	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.ID != seat.DeviceID || signer.State != "active")) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if int32(payload.Generation) != call.KeyGeneration+1 {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	seats, err := q.ListSeatDevices(ctx, call.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	given := make([]pgtype.UUID, 0, len(payload.Envelopes))
+	for _, envelope := range payload.Envelopes {
+		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		if slices.Contains(given, recipient) || !slices.Contains(seats, recipient) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		given = append(given, recipient)
+	}
+	if len(given) != len(seats) {
+		// Someone joined or left while the client was preparing the envelopes.
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err = q.InsertCallKeyGeneration(ctx, sqlc.InsertCallKeyGenerationParams{CallID: call.ID, Generation: int32(payload.Generation), CreatedByDevice: signer.ID}); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	for _, envelope := range payload.Envelopes {
+		sealed, validSealed := unb64(envelope.Sealed, 0)
+		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
+		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
+			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
+				RecipientDeviceID: uuidString(recipient), DomainID: "call:" + uuidString(call.ID), Generation: uint32(payload.Generation), Sealed: sealed,
+			}, signature) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if err = q.InsertCallKeyEnvelope(ctx, sqlc.InsertCallKeyEnvelopeParams{
+			CallID: call.ID, Generation: int32(payload.Generation), RecipientDeviceID: recipient,
+			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
+		}); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+	}
+	if err = q.AdvanceCallKey(ctx, sqlc.AdvanceCallKeyParams{ID: call.ID, KeyGeneration: int32(payload.Generation)}); err == nil {
+		call.KeyGeneration = int32(payload.Generation)
+		err = calls.Announce(ctx, q, call)
+	}
+	var response gen.Call
+	if err == nil {
+		response, err = buildCall(ctx, q, call, rights, session.AccountID)
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }

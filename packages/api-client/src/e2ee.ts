@@ -199,6 +199,48 @@ export type EnvelopeInput = {
   signature: string;
 };
 
+/** Devices holding a call seat, and its short lived media-key envelopes. */
+export async function listCallKeyDevices(
+  client: Client,
+  callId: string,
+): Promise<DirectoryDevice[]> {
+  const { data, response } = await client.GET(
+    "/api/v1/calls/{callId}/key-devices",
+    { params: { path: { callId } } },
+  );
+  return expect("listCallKeyDevices", response, data, 200);
+}
+
+export async function listCallKeyEnvelopes(
+  client: Client,
+  callId: string,
+): Promise<KeyEnvelope[]> {
+  const { data, response } = await client.GET(
+    "/api/v1/calls/{callId}/key-envelopes",
+    { params: { path: { callId } } },
+  );
+  return expect("listCallKeyEnvelopes", response, data, 200);
+}
+
+export async function publishCallKey(
+  client: Client,
+  token: string,
+  callId: string,
+  generation: number,
+  signerDeviceId: string,
+  envelopes: EnvelopeInput[],
+): Promise<Schemas["Call"]> {
+  const { data, response } = await client.POST(
+    "/api/v1/calls/{callId}/key-generations",
+    {
+      params: { path: { callId } },
+      body: { generation, signerDeviceId, envelopes },
+      headers: csrf(token),
+    },
+  );
+  return expect("publishCallKey", response, data, 200);
+}
+
 export async function publishKeyGeneration(
   client: Client,
   token: string,

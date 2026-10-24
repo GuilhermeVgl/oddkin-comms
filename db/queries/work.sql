@@ -545,12 +545,12 @@ WHERE call_id = $1 AND state IN ('reserved', 'joined');
 SELECT * FROM call_admission WHERE account_id = $1 AND state IN ('reserved', 'joined');
 
 -- name: InsertAdmission :one
-INSERT INTO call_admission (call_id, account_id, session_id, reserved_until)
-VALUES ($1, $2, $3, now() + make_interval(secs => sqlc.arg('seconds')::double precision))
+INSERT INTO call_admission (call_id, account_id, session_id, device_id, reserved_until)
+VALUES ($1, $2, $3, $4, now() + make_interval(secs => sqlc.arg('seconds')::double precision))
 RETURNING *;
 
 -- name: RenewAdmission :one
-UPDATE call_admission SET session_id = $2, reserved_until = now() + make_interval(secs => sqlc.arg('seconds')::double precision)
+UPDATE call_admission SET session_id = $2, device_id = $3, reserved_until = now() + make_interval(secs => sqlc.arg('seconds')::double precision)
 WHERE id = $1 AND state IN ('reserved', 'joined')
 RETURNING *;
 
@@ -794,3 +794,24 @@ LEFT JOIN account AS rc ON rc.id = r.recipient_account_id
 WHERE r.organization_id = $1
 ORDER BY r.created_at DESC, r.id
 LIMIT 200;
+
+-- name: ListSeatDevices :many
+SELECT DISTINCT device_id FROM call_admission
+WHERE call_id = $1 AND state IN ('reserved', 'joined') AND device_id IS NOT NULL
+ORDER BY device_id;
+
+-- name: InsertCallKeyGeneration :exec
+INSERT INTO call_key_generation (call_id, generation, created_by_device) VALUES ($1, $2, $3);
+
+-- name: InsertCallKeyEnvelope :exec
+INSERT INTO call_key_envelope (call_id, generation, recipient_device_id, signer_device_id, sealed, signature)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: AdvanceCallKey :exec
+UPDATE call SET key_generation = $2 WHERE id = $1;
+
+-- name: ListCallKeyHolders :many
+SELECT recipient_device_id FROM call_key_envelope WHERE call_id = $1 AND generation = $2;
+
+-- name: ListCallKeyEnvelopes :many
+SELECT * FROM call_key_envelope WHERE call_id = $1 AND recipient_device_id = $2 ORDER BY generation;

@@ -69,6 +69,27 @@ func (e BoardColumnCategory) Valid() bool {
 	}
 }
 
+// Defines values for CallKeyState.
+const (
+	CallKeyStateOk               CallKeyState = "ok"
+	CallKeyStatePendingKeys      CallKeyState = "pending_keys"
+	CallKeyStateRotationRequired CallKeyState = "rotation_required"
+)
+
+// Valid indicates whether the value is a known member of the CallKeyState enum.
+func (e CallKeyState) Valid() bool {
+	switch e {
+	case CallKeyStateOk:
+		return true
+	case CallKeyStatePendingKeys:
+		return true
+	case CallKeyStateRotationRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CallState.
 const (
 	CallStateActive CallState = "active"
@@ -731,17 +752,24 @@ type BoardColumnCategory string
 
 // Call defines model for Call.
 type Call struct {
-	CanEnd          bool                  `json:"canEnd"`
-	ConversationId  openapi_types.UUID    `json:"conversationId"`
-	Id              openapi_types.UUID    `json:"id"`
-	Invitations     []CallInvitationState `json:"invitations"`
-	InvitedMe       bool                  `json:"invitedMe"`
-	MaxParticipants int                   `json:"maxParticipants"`
-	Participants    []CallParticipant     `json:"participants"`
-	ScreenSharerId  *openapi_types.UUID   `json:"screenSharerId,omitempty"`
-	StartedBy       string                `json:"startedBy"`
-	State           CallState             `json:"state"`
+	CanEnd         bool                  `json:"canEnd"`
+	ConversationId openapi_types.UUID    `json:"conversationId"`
+	Id             openapi_types.UUID    `json:"id"`
+	Invitations    []CallInvitationState `json:"invitations"`
+	InvitedMe      bool                  `json:"invitedMe"`
+	KeyGeneration  int                   `json:"keyGeneration"`
+
+	// KeyState rotation_required means someone left; hold publishing until a new generation arrives
+	KeyState        CallKeyState        `json:"keyState"`
+	MaxParticipants int                 `json:"maxParticipants"`
+	Participants    []CallParticipant   `json:"participants"`
+	ScreenSharerId  *openapi_types.UUID `json:"screenSharerId,omitempty"`
+	StartedBy       string              `json:"startedBy"`
+	State           CallState           `json:"state"`
 }
+
+// CallKeyState rotation_required means someone left; hold publishing until a new generation arrives
+type CallKeyState string
 
 // CallState defines model for Call.State.
 type CallState string
@@ -1083,6 +1111,9 @@ type InvitationMembershipKind string
 
 // JoinCallRequest defines model for JoinCallRequest.
 type JoinCallRequest struct {
+	// DeviceId Your active device; media is end-to-end encrypted with keys sealed for it
+	DeviceId openapi_types.UUID `json:"deviceId"`
+
 	// Transfer Move your seat from another device to this one
 	Transfer *bool `json:"transfer,omitempty"`
 }
@@ -1538,6 +1569,9 @@ type StartCallJSONRequestBody = StartCallRequest
 // JoinCallJSONRequestBody defines body for JoinCall for application/json ContentType.
 type JoinCallJSONRequestBody = JoinCallRequest
 
+// PublishCallKeyJSONRequestBody defines body for PublishCallKey for application/json ContentType.
+type PublishCallKeyJSONRequestBody = PublishGenerationRequest
+
 // EncryptCommentJSONRequestBody defines body for EncryptComment for application/json ContentType.
 type EncryptCommentJSONRequestBody = EncryptCommentRequest
 
@@ -1672,6 +1706,15 @@ type ServerInterface interface {
 	// JoinCall Reserve a seat atomically and receive a short media token (calls.join)
 	// (POST /api/v1/calls/{callId}/join)
 	JoinCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// ListCallKeyDevices Devices that hold a seat in the call and must receive its media key
+	// (GET /api/v1/calls/{callId}/key-devices)
+	ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId CallId)
+	// ListCallKeyEnvelopes Media-key envelopes addressed to your seated device
+	// (GET /api/v1/calls/{callId}/key-envelopes)
+	ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId CallId)
+	// PublishCallKey Publish the next ephemeral media key, sealed for exactly the seated devices
+	// (POST /api/v1/calls/{callId}/key-generations)
+	PublishCallKey(w http.ResponseWriter, r *http.Request, callId CallId)
 	// LeaveCall Free your seat; the call closes when it becomes empty
 	// (POST /api/v1/calls/{callId}/leave)
 	LeaveCall(w http.ResponseWriter, r *http.Request, callId CallId)
@@ -2216,6 +2259,84 @@ func (siw *ServerInterfaceWrapper) JoinCall(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.JoinCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCallKeyDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListCallKeyDevices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCallKeyDevices(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCallKeyEnvelopes operation middleware
+func (siw *ServerInterfaceWrapper) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCallKeyEnvelopes(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishCallKey operation middleware
+func (siw *ServerInterfaceWrapper) PublishCallKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishCallKey(w, r, callId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4201,6 +4322,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/recovery/audit", wrapper.ListRecoveryAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recovery-envelopes", wrapper.ListRecoveryEnvelopes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recovery-grants", wrapper.GrantRecoveryEnvelopes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/{callId}/key-devices", wrapper.ListCallKeyDevices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/key-generations", wrapper.PublishCallKey)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/{callId}/key-envelopes", wrapper.ListCallKeyEnvelopes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 

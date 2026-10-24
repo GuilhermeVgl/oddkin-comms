@@ -1344,6 +1344,63 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/calls/{callId}/key-devices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    /** Devices that hold a seat in the call and must receive its media key */
+    get: operations["listCallKeyDevices"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/calls/{callId}/key-generations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Publish the next ephemeral media key, sealed for exactly the seated devices */
+    post: operations["publishCallKey"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/calls/{callId}/key-envelopes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    /** Media-key envelopes addressed to your seated device */
+    get: operations["listCallKeyEnvelopes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/health/live": {
     parameters: {
       query?: never;
@@ -1844,6 +1901,11 @@ export interface components {
       inviteeIds?: string[];
     };
     JoinCallRequest: {
+      /**
+       * Format: uuid
+       * @description Your active device; media is end-to-end encrypted with keys sealed for it
+       */
+      deviceId: string;
       /** @description Move your seat from another device to this one */
       transfer?: boolean;
     };
@@ -1862,6 +1924,12 @@ export interface components {
       state: "pending" | "accepted" | "declined" | "cancelled";
     };
     Call: {
+      keyGeneration: number;
+      /**
+       * @description rotation_required means someone left; hold publishing until a new generation arrives
+       * @enum {string}
+       */
+      keyState: "ok" | "pending_keys" | "rotation_required";
       /** Format: uuid */
       id: string;
       /** Format: uuid */
@@ -6226,6 +6294,153 @@ export interface operations {
       };
       /** @description Unknown generation or the device already holds it */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listCallKeyDevices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Devices with certificates */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryDevice"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description You do not hold a seat */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible call */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  publishCallKey: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PublishGenerationRequest"];
+      };
+    };
+    responses: {
+      /** @description Generation published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Call"];
+        };
+      };
+      /** @description Envelope signature, recipient or size is invalid */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or you do not hold a seat with that device */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible call */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the next generation, or the seated devices changed */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listCallKeyEnvelopes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        callId: components["parameters"]["CallId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyEnvelope"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description You do not hold a seat */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible call */
+      404: {
         headers: {
           [name: string]: unknown;
         };

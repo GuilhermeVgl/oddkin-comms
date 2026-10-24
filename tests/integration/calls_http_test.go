@@ -5,6 +5,8 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -19,6 +21,7 @@ import (
 	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/keys"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -125,6 +128,36 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	}
 	external, outsider := login(handler, emails[6]), login(handler, emails[7])
 
+	// Every seat needs a trusted device: media keys are sealed for it.
+	rootPublic, rootSecret, _ := ed25519.GenerateKey(rand.Reader)
+	if code := admin.do(http.MethodPut, "/api/v1/e2ee/trust-root", fmt.Sprintf(`{"signPublicKey":%q}`, b64url.EncodeToString(rootPublic)), nil); code != http.StatusOK {
+		t.Fatalf("trust root: %d", code)
+	}
+	activate := func(client *workClient, email string) string {
+		public, secret, _ := ed25519.GenerateKey(rand.Reader)
+		box := make([]byte, 32)
+		_, _ = rand.Read(box)
+		var created deviceDTO
+		if code := client.do(http.MethodPost, "/api/v1/devices", fmt.Sprintf(`{"name":"Dispositivo","signPublicKey":%q,"boxPublicKey":%q}`, b64url.EncodeToString(public), b64url.EncodeToString(box)), &created); code != http.StatusCreated {
+			t.Fatalf("register device: %d", code)
+		}
+		_ = secret
+		certificate := b64url.EncodeToString(ed25519.Sign(rootSecret, keys.DeviceCertificateBytes(keys.DeviceCertificate{AccountID: ids[email], DeviceID: created.Id, SignPublicKey: public, BoxPublicKey: box})))
+		if code := admin.do(http.MethodPost, "/api/v1/devices/"+created.Id+"/authorize", fmt.Sprintf(`{"certificate":%q}`, certificate), nil); code != http.StatusOK {
+			t.Fatalf("authorize device: %d", code)
+		}
+		return created.Id
+	}
+	clientOf := map[string]*workClient{emails[0]: admin, emails[6]: external, emails[7]: outsider}
+	for i := range users {
+		clientOf[emails[i+1]] = users[i]
+	}
+	deviceOf := map[string]string{}
+	for _, email := range emails[:7] {
+		deviceOf[email] = activate(clientOf[email], email)
+	}
+	joinBody := func(email string) string { return `{"deviceId":"` + deviceOf[email] + `"}` }
+
 	var project struct{ Id string }
 	if code := admin.do(http.MethodPost, "/api/v1/projects", `{"name":"Chamadas"}`, &project); code != http.StatusCreated {
 		t.Fatalf("project: %d", code)
@@ -173,12 +206,13 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	if code := external.do(http.MethodGet, "/api/v1/call-invitations", "", &pending); code != http.StatusOK || len(pending) != 1 {
 		t.Fatalf("external invitations: %d %+v", code, pending)
 	}
-	if code := outsider.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusNotFound {
+	if code := outsider.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{"deviceId":"00000000-0000-4000-8000-000000000999"}`, nil); code != http.StatusNotFound {
 		t.Fatalf("outsider join: %d", code)
 	}
 
 	// Six people try to take five seats at the same time.
 	joiners := []*workClient{users[0], users[1], users[2], users[3], users[4], external}
+	joinerEmails := []string{emails[1], emails[2], emails[3], emails[4], emails[5], emails[6]}
 	var wg sync.WaitGroup
 	results := make([]int, len(joiners))
 	tickets := make([]ticketDTO, len(joiners))
@@ -187,7 +221,7 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 		go func(i int, person *workClient) {
 			defer wg.Done()
 			var ticket ticketDTO
-			results[i] = person.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, &ticket)
+			results[i] = person.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(joinerEmails[i]), &ticket)
 			tickets[i] = ticket
 		}(i, person)
 	}
@@ -232,7 +266,6 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 		break
 	}
 	// Who got in is decided by the race; the rest of the test follows the outcome.
-	joinerEmails := []string{emails[1], emails[2], emails[3], emails[4], emails[5], emails[6]}
 	var internals []int
 	refusedIndex := -1
 	for i, code := range results {
@@ -250,17 +283,19 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	memberA, emailA := pick(0)
 	memberB, emailB := pick(1)
 	memberC, emailC := pick(2)
-	memberD, _ := pick(3)
+	memberD, emailD := pick(3)
 
 	// Rejoining from the same session renews; another device must transfer.
-	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusOK {
+	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(emailB), nil); code != http.StatusOK {
 		t.Fatalf("same-session reconnect: %d", code)
 	}
 	secondDevice := login(handler, emailC)
-	if code := secondDevice.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusConflict {
+	secondDeviceID := activate(secondDevice, emailC)
+	secondBody := `{"deviceId":"` + secondDeviceID + `"}`
+	if code := secondDevice.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", secondBody, nil); code != http.StatusConflict {
 		t.Fatalf("second device without transfer: %d", code)
 	}
-	if code := secondDevice.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{"transfer":true}`, nil); code != http.StatusOK {
+	if code := secondDevice.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{"transfer":true,"deviceId":"`+secondDeviceID+`"}`, nil); code != http.StatusOK {
 		t.Fatalf("second device with transfer: %d", code)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM call_admission WHERE call_id = $1 AND state IN ('reserved','joined')`, call.Id).Scan(&seats); err != nil || seats != 5 {
@@ -277,7 +312,7 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	}
 	memberB.do(http.MethodGet, "/api/v1/calls/active?conversationId="+dm.Id, "", &active)
 	dmCall := active[0]
-	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+dmCall.Id+"/join", `{}`, nil); code != http.StatusConflict {
+	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+dmCall.Id+"/join", joinBody(emailB), nil); code != http.StatusConflict {
 		t.Fatalf("second simultaneous call: %d", code)
 	}
 	if code := memberC.do(http.MethodPost, "/api/v1/calls/"+dmCall.Id+"/end", "", nil); code != http.StatusForbidden {
@@ -291,16 +326,16 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	if code := memberD.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/leave", "", nil); code != http.StatusNoContent {
 		t.Fatalf("leave: %d", code)
 	}
-	if code := refusedPerson.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusOK {
+	if code := refusedPerson.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(joinerEmails[refusedIndex]), nil); code != http.StatusOK {
 		t.Fatalf("join after a seat was freed: %d", code)
 	}
-	if code := memberD.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusConflict {
+	if code := memberD.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(emailD), nil); code != http.StatusConflict {
 		t.Fatalf("seat is taken again: %d", code)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE call_admission SET reserved_until = now() - interval '1 second' WHERE call_id = $1 AND account_id = $2 AND state = 'reserved'`, call.Id, ids[emailC]); err != nil {
 		t.Fatal(err)
 	}
-	if code := memberD.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusOK {
+	if code := memberD.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(emailD), nil); code != http.StatusOK {
 		t.Fatalf("an expired reservation frees its seat: %d", code)
 	}
 
@@ -398,7 +433,7 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	if _, stillThere := rooms.Rooms[roomName]; stillThere {
 		t.Fatal("the media room must be deleted")
 	}
-	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", `{}`, nil); code != http.StatusConflict {
+	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/join", joinBody(emailB), nil); code != http.StatusConflict {
 		t.Fatalf("join an ended call: %d", code)
 	}
 	if code := memberB.do(http.MethodPost, "/api/v1/calls", startBody(channel), nil); code != http.StatusCreated {

@@ -2114,6 +2114,83 @@ paths:
           description: Unknown key domain
         "409":
           description: Unknown generation or the device already holds it
+  /api/v1/calls/{callId}/key-devices:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    get:
+      operationId: listCallKeyDevices
+      summary: Devices that hold a seat in the call and must receive its media key
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Devices with certificates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectoryDevice"
+        "401":
+          description: No active session
+        "403":
+          description: You do not hold a seat
+        "404":
+          description: Unknown or inaccessible call
+  /api/v1/calls/{callId}/key-generations:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: publishCallKey
+      summary: Publish the next ephemeral media key, sealed for exactly the seated devices
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishGenerationRequest"
+      responses:
+        "200":
+          description: Generation published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "400":
+          description: Envelope signature, recipient or size is invalid
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or you do not hold a seat with that device
+        "404":
+          description: Unknown or inaccessible call
+        "409":
+          description: Not the next generation, or the seated devices changed
+  /api/v1/calls/{callId}/key-envelopes:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    get:
+      operationId: listCallKeyEnvelopes
+      summary: Media-key envelopes addressed to your seated device
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Envelopes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyEnvelope"
+        "401":
+          description: No active session
+        "403":
+          description: You do not hold a seat
+        "404":
+          description: Unknown or inaccessible call
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -2784,8 +2861,13 @@ components:
           items: { type: string, format: uuid }
     JoinCallRequest:
       type: object
+      required: [deviceId]
       additionalProperties: false
       properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: Your active device; media is end-to-end encrypted with keys sealed for it
         transfer:
           type: boolean
           description: Move your seat from another device to this one
@@ -2818,9 +2900,16 @@ components:
           invitations,
           canEnd,
           invitedMe,
+          keyGeneration,
+          keyState,
         ]
       additionalProperties: false
       properties:
+        keyGeneration: { type: integer }
+        keyState:
+          type: string
+          enum: [ok, pending_keys, rotation_required]
+          description: rotation_required means someone left; hold publishing until a new generation arrives
         id: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
         state: { type: string, enum: [active, ended] }

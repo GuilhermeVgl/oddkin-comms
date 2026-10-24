@@ -727,13 +727,14 @@ export async function joinCall(
   client: Client,
   token: string,
   callId: string,
+  deviceId: string,
   transfer = false,
 ): Promise<CallTicket> {
   const { data, error, response } = await client.POST(
     "/api/v1/calls/{callId}/join",
     {
       params: { path: { callId } },
-      body: transfer ? { transfer: true } : {},
+      body: transfer ? { deviceId, transfer: true } : { deviceId },
       headers: csrf(token),
     },
   );

@@ -66,6 +66,7 @@ type Call struct {
 	CreatedAt      pgtype.Timestamptz
 	EndedAt        pgtype.Timestamptz
 	EndedReason    pgtype.Text
+	KeyGeneration  int32
 }
 
 type CallAdmission struct {
@@ -78,6 +79,7 @@ type CallAdmission struct {
 	CreatedAt     pgtype.Timestamptz
 	JoinedAt      pgtype.Timestamptz
 	LeftAt        pgtype.Timestamptz
+	DeviceID      pgtype.UUID
 }
 
 type CallInvitation struct {
@@ -86,6 +88,23 @@ type CallInvitation struct {
 	State       string
 	CreatedAt   pgtype.Timestamptz
 	RespondedAt pgtype.Timestamptz
+}
+
+type CallKeyEnvelope struct {
+	CallID            pgtype.UUID
+	Generation        int32
+	RecipientDeviceID pgtype.UUID
+	SignerDeviceID    pgtype.UUID
+	Sealed            []byte
+	Signature         []byte
+	CreatedAt         pgtype.Timestamptz
+}
+
+type CallKeyGeneration struct {
+	CallID          pgtype.UUID
+	Generation      int32
+	CreatedByDevice pgtype.UUID
+	CreatedAt       pgtype.Timestamptz
 }
 
 type Conversation struct {

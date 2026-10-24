@@ -18,7 +18,13 @@ import {
   type CallTicket,
   type ProjectMember,
 } from "@oddkin/api-client";
-import { Room, RoomEvent, Track, type Participant } from "livekit-client";
+import {
+  ExternalE2EEKeyProvider,
+  Room,
+  RoomEvent,
+  Track,
+  type Participant,
+} from "livekit-client";
 import React, {
   useCallback,
   useEffect,
@@ -27,6 +33,7 @@ import React, {
   useState,
 } from "react";
 import { useEvents } from "./events";
+import { useOptionalE2EE } from "./e2ee/E2EE";
 
 type Client = ReturnType<typeof createApiClient>;
 
@@ -53,6 +60,29 @@ function describe(error: unknown): string {
       return "O servidor de chamadas não está disponível.";
   }
   return "Não foi possível concluir a ação.";
+}
+
+function supportsMediaE2EE(): boolean {
+  const sender = globalThis.RTCRtpSender?.prototype as
+    | { createEncodedStreams?: unknown }
+    | undefined;
+  const transform = globalThis as typeof globalThis & {
+    RTCRtpScriptTransform?: unknown;
+  };
+  return (
+    typeof sender?.createEncodedStreams === "function" ||
+    typeof transform.RTCRtpScriptTransform === "function"
+  );
+}
+
+function e2eeWorker(): Worker {
+  return new Worker(new URL("livekit-client/e2ee-worker", import.meta.url), {
+    type: "module",
+  });
+}
+
+function keyBuffer(key: Uint8Array): ArrayBuffer {
+  return Uint8Array.from(key).buffer;
 }
 
 /** Start/join controls shown inside a conversation. */
@@ -296,6 +326,7 @@ export function CallRoom({
   callId: string;
   onClose: () => void;
 }) {
+  const e2ee = useOptionalE2EE();
   const [phase, setPhase] = useState<Phase>("preview");
   const [call, setCall] = useState<Call | null>(null);
   const [withCamera, setWithCamera] = useState(true);
@@ -309,7 +340,11 @@ export function CallRoom({
   const [sharing, setSharing] = useState(false);
   const [needsTransfer, setNeedsTransfer] = useState(false);
   const room = useRef<Room | null>(null);
+  const mediaKey = useRef<Uint8Array | null>(null);
+  const keyProvider = useRef<ExternalE2EEKeyProvider | null>(null);
   const preview = useRef<HTMLVideoElement>(null);
+  const encryptionReady =
+    e2ee?.phase === "unlocked" && supportsMediaE2EE();
 
   useEffect(() => {
     getCall(client, callId)
@@ -372,17 +407,48 @@ export function CallRoom({
     ]);
   }, []);
 
+  async function provisionMediaKey(nextCall: Call): Promise<Uint8Array> {
+    if (e2ee?.phase !== "unlocked")
+      throw new Error("unlock_required");
+    const crypto = await e2ee.openCall(nextCall.id);
+    if (crypto === null) throw new Error("unlock_required");
+    const key = await crypto.keyFor(nextCall);
+    mediaKey.current = key;
+    if (keyProvider.current !== null) {
+      await keyProvider.current.setKey(
+        keyBuffer(key),
+      );
+    }
+    return key;
+  }
+
   async function connect(ticket: CallTicket, publishScreen: boolean) {
-    const next = new Room({ adaptiveStream: true, dynacast: true });
+    const key = mediaKey.current;
+    if (key === null) throw new Error("media_key_missing");
+    const provider = new ExternalE2EEKeyProvider({ keySize: 256 });
+    await provider.setKey(keyBuffer(key));
+    const worker = e2eeWorker();
+    const next = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+      e2ee: { keyProvider: provider, worker },
+    });
     room.current = next;
+    keyProvider.current = provider;
     next
       .on(RoomEvent.ParticipantConnected, syncParticipants)
       .on(RoomEvent.ParticipantDisconnected, syncParticipants)
       .on(RoomEvent.TrackSubscribed, syncParticipants)
+      .on(RoomEvent.EncryptionError, () => {
+        next.disconnect();
+        setMessage("A criptografia da chamada falhou. Nenhuma mídia foi enviada.");
+        setPhase("error");
+      })
       .on(RoomEvent.Disconnected, () =>
         setPhase((value) => (value === "connected" ? "error" : value)),
       );
     await next.connect(ticket.url, ticket.token);
+    await next.setE2EEEnabled(true);
     await next.localParticipant.setMicrophoneEnabled(
       true,
       microphoneId === "" ? undefined : { deviceId: microphoneId },
@@ -415,7 +481,20 @@ export function CallRoom({
     setPhase("joining");
     setMessage("");
     try {
-      const ticket = await joinCall(client, token, callId, transfer);
+      if (!encryptionReady || e2ee === null)
+        throw new Error("e2ee_unavailable");
+      const device = await e2ee.openCall(callId);
+      if (device === null) throw new Error("unlock_required");
+      const ticket = await joinCall(
+        client,
+        token,
+        callId,
+        device.deviceId,
+        transfer,
+      );
+      const active = await getCall(client, callId);
+      setCall(active);
+      await provisionMediaKey(active);
       await connect(ticket, false);
       setPhase("connected");
     } catch (error) {
@@ -424,10 +503,25 @@ export function CallRoom({
       setNeedsTransfer(
         error instanceof CallConflictError && error.code === "other_device",
       );
-      setMessage(describe(error));
+      if (error instanceof Error && error.message === "unlock_required") {
+        setMessage("Desbloqueie a identidade deste navegador antes de entrar.");
+      } else if (error instanceof Error && error.message === "e2ee_unavailable") {
+        setMessage("Este navegador não suporta criptografia de mídia obrigatória.");
+      } else {
+        setMessage(describe(error));
+      }
       setPhase("preview");
     }
   }
+
+  useEffect(() => {
+    if (phase !== "connected" || call === null) return;
+    void provisionMediaKey(call).catch(() => {
+      room.current?.disconnect();
+      setMessage("A nova chave de mídia não foi confirmada. A chamada foi suspensa.");
+      setPhase("error");
+    });
+  }, [call?.id, call?.keyGeneration, call?.keyState, phase]);
 
   async function toggleScreen() {
     const token = csrf();
@@ -455,6 +549,8 @@ export function CallRoom({
     const token = csrf();
     room.current?.disconnect();
     room.current = null;
+    keyProvider.current = null;
+    mediaKey.current = null;
     if (token !== null) {
       await (
         everyone
@@ -468,6 +564,8 @@ export function CallRoom({
   useEffect(
     () => () => {
       room.current?.disconnect();
+      keyProvider.current = null;
+      mediaKey.current = null;
     },
     [],
   );
@@ -489,8 +587,19 @@ export function CallRoom({
       role="dialog"
     >
       <p className="call-room__notice">
-        Esta versão da chamada ainda não usa criptografia de ponta a ponta.
+        Mídia protegida com criptografia de ponta a ponta. A chave existe apenas
+        nos dispositivos conectados e é renovada quando alguém entra ou sai.
       </p>
+      {!supportsMediaE2EE() ? (
+        <p className="form-message">
+          Este navegador não suporta a criptografia de mídia exigida para chamadas.
+        </p>
+      ) : null}
+      {e2ee?.phase !== "unlocked" ? (
+        <p className="form-message">
+          Desbloqueie a identidade de segurança deste navegador para participar.
+        </p>
+      ) : null}
       {call !== null ? (
         <p>
           {call.participants.length}/{call.maxParticipants} participantes
@@ -545,7 +654,7 @@ export function CallRoom({
           ) : null}
           <div className="inline-form">
             <button
-              disabled={phase === "joining"}
+              disabled={phase === "joining" || !encryptionReady}
               onClick={() => void join(false)}
               type="button"
             >
