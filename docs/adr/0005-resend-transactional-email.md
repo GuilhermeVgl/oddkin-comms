@@ -10,6 +10,8 @@ Cada intenção de envio deve fornecer uma chave de idempotência estável, de a
 
 Configuração dos processos de envio: `RESEND_API_KEY` e `RESEND_FROM_EMAIL`, com domínio remetente verificado. A chave fica apenas no servidor. O cliente valida ambos ao ser construído, usa timeout de 10 segundos e não segue redirects. Testes não usam credenciais nem chamadas reais à Resend.
 
-## Limites
+## Implementação atual
 
-O adaptador envia uma mensagem quando chamado. `cmd/email-smoke` permite ao operador disparar uma mensagem diagnóstica fixa para validar credenciais e remetente; nenhum endpoint, job ou serviço de identidade o chama ainda. A emissão de convites, o outbox transacional, a composição de mensagens de produto, a reconciliação de entrega e os webhooks ainda precisam ser implementados. Aceitação da API não significa entrega na caixa postal. Não declarar AC-01 concluído com este transporte isolado.
+Convites criados pela API são persistidos junto ao job River na mesma transação. O worker recupera o token cifrado, chama a Resend com uma chave de idempotência estável e registra aceitação ou falha permanente. O Compose usa um stub local do mesmo contrato e expõe uma caixa de entrada no loopback. `cmd/email-smoke` continua disponível para validar credenciais e remetente reais.
+
+Aceitação da API não significa entrega na caixa postal. Webhooks e reconciliação de entrega após aceitação pelo provedor ainda precisam ser implementados.
