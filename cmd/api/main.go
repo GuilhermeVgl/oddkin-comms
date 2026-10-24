@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,9 +42,33 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if address == "" {
 		address = ":8080"
 	}
-	handler, err := httpapi.NewAppHandler(pool)
+	deliveryKey := []byte(os.Getenv("INVITATION_DELIVERY_KEY"))
+	if len(deliveryKey) != 0 && len(deliveryKey) != 32 {
+		return errors.New("INVITATION_DELIVERY_KEY must contain exactly 32 bytes")
+	}
+	store, err := objectstore.FromEnv()
+	if err != nil {
+		return err
+	}
+	quota, err := objectstore.QuotaFromEnv()
+	if err != nil {
+		return err
+	}
+	livekit, err := calls.FromEnv()
+	if err != nil {
+		return err
+	}
+	handler, err := httpapi.NewAppHandlerWithConfig(pool, httpapi.AppConfig{
+		InvitationDeliveryKey: deliveryKey, ObjectStore: store, StorageQuotaBytes: quota, LiveKit: livekit,
+	})
 	if err != nil {
 		return fmt.Errorf("initialize API authentication: %w", err)
+	}
+	if livekit.APIKey == "" {
+		logger.Warn("LiveKit is not configured; calls are disabled")
+	}
+	if store == nil {
+		logger.Warn("object storage is not configured; uploads are disabled")
 	}
 	server := &http.Server{
 		Addr:              address,

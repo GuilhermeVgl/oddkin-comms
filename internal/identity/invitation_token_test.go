@@ -26,6 +26,9 @@ func TestInvitationTokenIsRandomHashedAndExpires(t *testing.T) {
 	if record.Hash != sha256.Sum256([]byte(raw)) {
 		t.Fatal("stored hash does not match the token digest")
 	}
+	if hash, ok := HashInvitationToken(raw); !ok || hash != record.Hash {
+		t.Fatal("valid token did not produce its storage hash")
+	}
 	if !record.Verify(raw, now.Add(InvitationLifetime-time.Nanosecond)) {
 		t.Fatal("valid unexpired token rejected")
 	}
@@ -71,6 +74,9 @@ func TestInvitationTokenRejectsMalformedEncoding(t *testing.T) {
 		t.Fatal("issued empty token")
 	}
 	for _, candidate := range []string{"", raw + "=", raw[:len(raw)-1], strings.Repeat("!", len(raw))} {
+		if _, ok := HashInvitationToken(candidate); ok {
+			t.Errorf("malformed token %q produced a hash", candidate)
+		}
 		if record.Verify(candidate, time.Now()) {
 			t.Errorf("malformed token %q accepted", candidate)
 		}

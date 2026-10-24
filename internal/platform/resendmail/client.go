@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,14 +49,21 @@ type Client struct {
 }
 
 func New(apiKey, from string) (*Client, error) {
+	return NewWithEndpoint(apiKey, from, sendEndpoint)
+}
+
+func NewWithEndpoint(apiKey, from, endpoint string) (*Client, error) {
 	normalizedFrom, err := identity.NormalizeEmail(from)
-	if !visibleASCII(apiKey, 512) || err != nil || normalizedFrom != from {
+	parsedEndpoint, endpointErr := url.Parse(endpoint)
+	if !visibleASCII(apiKey, 512) || err != nil || normalizedFrom != from || endpointErr != nil ||
+		(parsedEndpoint.Scheme != "https" && parsedEndpoint.Scheme != "http") || parsedEndpoint.Host == "" ||
+		parsedEndpoint.User != nil || parsedEndpoint.RawQuery != "" || parsedEndpoint.Fragment != "" {
 		return nil, ErrInvalidConfig
 	}
 	return &Client{
 		apiKey:   apiKey,
 		from:     from,
-		endpoint: sendEndpoint,
+		endpoint: endpoint,
 		http: &http.Client{
 			Timeout: sendTimeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error {

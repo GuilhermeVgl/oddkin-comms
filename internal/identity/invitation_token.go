@@ -21,6 +21,14 @@ func IssueInvitationToken(now time.Time) (string, InvitationToken, error) {
 	return issueInvitationTokenWithReader(now, rand.Reader)
 }
 
+func HashInvitationToken(raw string) ([sha256.Size]byte, bool) {
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil || len(decoded) != invitationEntropyBytes || base64.RawURLEncoding.EncodeToString(decoded) != raw {
+		return [sha256.Size]byte{}, false
+	}
+	return sha256.Sum256([]byte(raw)), true
+}
+
 func issueInvitationTokenWithReader(now time.Time, reader io.Reader) (string, InvitationToken, error) {
 	var entropy [invitationEntropyBytes]byte
 	if _, err := io.ReadFull(reader, entropy[:]); err != nil {
@@ -34,11 +42,9 @@ func issueInvitationTokenWithReader(now time.Time, reader io.Reader) (string, In
 }
 
 func (token InvitationToken) Verify(raw string, now time.Time) bool {
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil || len(decoded) != invitationEntropyBytes ||
-		base64.RawURLEncoding.EncodeToString(decoded) != raw {
+	hash, ok := HashInvitationToken(raw)
+	if !ok {
 		return false
 	}
-	hash := sha256.Sum256([]byte(raw))
 	return subtle.ConstantTimeCompare(hash[:], token.Hash[:]) == 1 && now.Before(token.ExpiresAt)
 }

@@ -25,3 +25,11 @@ func NewWorkers(pool *pgxpool.Pool) *river.Workers {
 	river.AddWorker(workers, &probeWorker{pool: pool})
 	return workers
 }
+
+func NewWorkersWithInvitationEmail(pool *pgxpool.Pool, mailer InvitationMailer, deliveryKey []byte, publicURL string) *river.Workers {
+	workers := NewWorkers(pool)
+	river.AddWorker(workers, &invitationEmailWorker{
+		pool: pool, mailer: mailer, deliveryKey: append([]byte(nil), deliveryKey...), publicURL: publicURL,
+	})
+	return workers
+}

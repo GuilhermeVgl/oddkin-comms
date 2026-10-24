@@ -63,6 +63,11 @@ func TestSendRejectsInvalidDataBeforeNetwork(t *testing.T) {
 			t.Errorf("invalid config accepted: client=%v err=%v", client, err)
 		}
 	}
+	for _, endpoint := range []string{"", "://bad", "ftp://example.test/emails", "https://user@example.test/emails", "https://example.test/emails?key=value"} {
+		if client, err := NewWithEndpoint("synthetic_test_key", "notices@example.test", endpoint); err == nil || client != nil {
+			t.Errorf("invalid endpoint accepted: %q", endpoint)
+		}
+	}
 	client, err := New("synthetic_test_key", "notices@example.test")
 	if err != nil {
 		t.Fatal(err)
