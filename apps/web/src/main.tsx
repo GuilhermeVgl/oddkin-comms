@@ -32,6 +32,52 @@ type SessionState =
   | { status: "unavailable" };
 
 type PendingInvitation = { email: string; token: string };
+type WorkspaceSection =
+  "overview" | "activities" | "sprints" | "messages" | "team" | "security";
+
+const WORKSPACE_SECTIONS: {
+  id: WorkspaceSection;
+  label: string;
+  title: string;
+  description: string;
+}[] = [
+  {
+    id: "overview",
+    label: "Visão geral",
+    title: "Visão geral",
+    description: "O que importa para a equipe agora.",
+  },
+  {
+    id: "activities",
+    label: "Atividades",
+    title: "Atividades",
+    description: "Pequenos passos. Grandes entregas.",
+  },
+  {
+    id: "sprints",
+    label: "Sprints",
+    title: "Sprints",
+    description: "Dê ritmo às próximas entregas.",
+  },
+  {
+    id: "messages",
+    label: "Conversas",
+    title: "Conversas",
+    description: "Fale com quem move o trabalho junto com você.",
+  },
+  {
+    id: "team",
+    label: "Equipe",
+    title: "Equipe",
+    description: "Convide as próximas pessoas para a expedição.",
+  },
+  {
+    id: "security",
+    label: "Segurança",
+    title: "Segurança",
+    description: "Proteja o acesso e mantenha suas chaves sob seu controle.",
+  },
+];
 
 function readInvitationHash(): PendingInvitation | null {
   const match = /^#accept-invitation\?(.*)$/.exec(window.location.hash);
@@ -165,6 +211,10 @@ function LoginScreen({
             progresso visível.
           </p>
         </div>
+        <div aria-hidden="true" className="explorer-pair login-explorer">
+          <span className="pixel-explorer pixel-explorer--bot" />
+          <span className="pixel-explorer pixel-explorer--scout" />
+        </div>
         <p className="brand-footnote">Comunicação com ritmo humano.</p>
       </section>
 
@@ -296,6 +346,10 @@ function InvitationScreen({
           </h1>
           <p>Confirme seu acesso e encontre a equipe no mesmo espaço.</p>
         </div>
+        <div aria-hidden="true" className="explorer-pair login-explorer">
+          <span className="pixel-explorer pixel-explorer--bot" />
+          <span className="pixel-explorer pixel-explorer--scout" />
+        </div>
         <p className="brand-footnote">Um convite. Um começo compartilhado.</p>
       </section>
       <section className="login-panel" aria-labelledby="invitation-title">
@@ -368,6 +422,11 @@ function Workspace({
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState("");
   const [celebration, setCelebration] = useState<string | null>(null);
+  const [activeSection, setActiveSection] =
+    useState<WorkspaceSection>("activities");
+  const section = WORKSPACE_SECTIONS.find(
+    (entry) => entry.id === activeSection,
+  )!;
 
   async function handleLogout() {
     const csrfToken = readCookie(document.cookie, "oddkin_csrf");
@@ -417,21 +476,19 @@ function Workspace({
           <span>ODDKIN</span>
         </div>
         <nav aria-label="Navegação principal">
-          <a href="#inicio">Visão geral</a>
-          <a aria-current="page" href="#atividades">
-            Atividades
-          </a>
-          <a href="#sprints">Sprints</a>
-          <a href="#conversas">Conversas</a>
-          <a href="#seguranca">Segurança</a>
+          {WORKSPACE_SECTIONS.map((entry) => (
+            <button
+              aria-current={entry.id === activeSection ? "page" : undefined}
+              key={entry.id}
+              onClick={() => setActiveSection(entry.id)}
+              type="button"
+            >
+              {entry.label}
+            </button>
+          ))}
         </nav>
-        <NotificationsPanel />
-        <div id="seguranca">
-          <SecurityPanel account={account} />
-        </div>
-        <CallInvitations client={client} />
         <div className="account-block">
-          <span>Sessão ativa</span>
+          <span>Em expedição</span>
           <strong>{account.email}</strong>
           <button
             className="text-button"
@@ -447,28 +504,62 @@ function Workspace({
         </div>
       </aside>
 
-      <section className="workspace-content" id="inicio">
+      <section className="workspace-content">
         <header className="workspace-header">
           <div>
-            <h1>Atividades</h1>
-            <p>Pequenos passos. Grandes entregas.</p>
+            <h1>{section.title}</h1>
+            <p>{section.description}</p>
           </div>
-          <div
-            aria-hidden="true"
-            className="explorer-pair explorer-pair--header"
-          >
-            <span className="pixel-explorer pixel-explorer--bot" />
-            <span className="pixel-explorer pixel-explorer--scout" />
+          <div className="workspace-header__actions">
+            <NotificationsPanel />
+            <div
+              aria-hidden="true"
+              className="explorer-pair explorer-pair--header"
+            >
+              <span className="pixel-explorer pixel-explorer--bot" />
+              <span className="pixel-explorer pixel-explorer--scout" />
+            </div>
           </div>
         </header>
-        <ProjectsArea account={account} onCelebrate={setCelebration} />
-        <div id="sprints">
-          <SprintsArea account={account} />
-        </div>
-        <div id="conversas">
-          <DirectArea account={account} />
-        </div>
-        {account.isAdmin ? (
+        {activeSection === "overview" ? (
+          <section className="overview-panel">
+            <div className="overview-panel__copy">
+              <span>Próximo passo</span>
+              <h2>Comece pelo primeiro projeto.</h2>
+              <p>
+                Todo trabalho bem feito começa com um mapa simples, uma equipe
+                por perto e um passo possível agora.
+              </p>
+              <button
+                onClick={() => setActiveSection("activities")}
+                type="button"
+              >
+                Abrir atividades
+              </button>
+            </div>
+            <div
+              aria-hidden="true"
+              className="explorer-pair overview-panel__art"
+            >
+              <span className="pixel-explorer pixel-explorer--bot" />
+              <span className="pixel-explorer pixel-explorer--scout" />
+            </div>
+          </section>
+        ) : null}
+        {activeSection === "activities" ? (
+          <ProjectsArea account={account} onCelebrate={setCelebration} />
+        ) : null}
+        {activeSection === "sprints" ? (
+          <div className="workspace-view">
+            <SprintsArea account={account} />
+          </div>
+        ) : null}
+        {activeSection === "messages" ? (
+          <div className="workspace-view">
+            <DirectArea account={account} />
+          </div>
+        ) : null}
+        {activeSection === "team" && account.isAdmin ? (
           <section className="invite-panel" aria-labelledby="invite-title">
             <div>
               <p className="eyebrow">Equipe</p>
@@ -507,6 +598,17 @@ function Workspace({
               </p>
             </form>
           </section>
+        ) : null}
+        {activeSection === "team" && !account.isAdmin ? (
+          <p className="empty-note">
+            Somente administradores podem convidar pessoas.
+          </p>
+        ) : null}
+        {activeSection === "security" ? (
+          <div className="security-view">
+            <SecurityPanel account={account} />
+            <CallInvitations client={client} />
+          </div>
         ) : null}
       </section>
       {celebration !== null ? (
