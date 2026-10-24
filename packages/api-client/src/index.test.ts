@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  acceptInvitation,
+  createInvitation,
   createApiClient,
   fetchCurrentAccount,
   fetchReadiness,
@@ -125,5 +127,70 @@ describe("account session", () => {
       "a value=",
     );
     expect(readCookie("oddkin_csrf_extra=wrong", "oddkin_csrf")).toBeNull();
+  });
+
+  it("creates an invitation with CSRF protection", async () => {
+    const invitation = {
+      id: "20000000-0000-4000-8000-000000000001",
+      email: "person@example.test",
+      membershipKind: "external" as const,
+      expiresAt: "2026-10-30T12:00:00Z",
+      deliveryState: "pending" as const,
+    };
+    let request: Request | undefined;
+    const client = createApiClient("http://localhost:8080", async (input) => {
+      request = input instanceof Request ? input : new Request(input);
+      return Response.json(invitation, { status: 201 });
+    });
+    await expect(
+      createInvitation(client, invitation.email, "external", "csrf-token"),
+    ).resolves.toEqual(invitation);
+    expect(request?.headers.get("X-CSRF-Token")).toBe("csrf-token");
+  });
+
+  it("rejects an unexpected invitation response", async () => {
+    const client = createApiClient(
+      "http://localhost:8080",
+      async () => new Response(null, { status: 403 }),
+    );
+    await expect(
+      createInvitation(client, "person@example.test", "internal", "csrf"),
+    ).rejects.toThrow("Unexpected invitation status: 403");
+  });
+
+  it.each([
+    [204, "accepted"],
+    [400, "invalid"],
+    [503, "unavailable"],
+  ] as const)(
+    "maps invitation acceptance HTTP %i",
+    async (status, expected) => {
+      const client = createApiClient(
+        "http://localhost:8080",
+        async () => new Response(null, { status }),
+      );
+      await expect(
+        acceptInvitation(
+          client,
+          "synthetic-invitation-token-000000000000000",
+          "person@example.test",
+          "sufficient password",
+        ),
+      ).resolves.toBe(expected);
+    },
+  );
+
+  it("rejects an unexpected invitation acceptance response", async () => {
+    const client = createApiClient(
+      "http://localhost:8080",
+      async () => new Response(null, { status: 401 }),
+    );
+    await expect(
+      acceptInvitation(
+        client,
+        "synthetic-invitation-token-000000000000000",
+        "person@example.test",
+      ),
+    ).rejects.toThrow("Unexpected invitation acceptance status: 401");
   });
 });
