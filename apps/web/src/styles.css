@@ -1912,6 +1912,118 @@ a:focus-visible {
   flex: 0 1 190px;
 }
 
+.activity-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin: 24px 0 16px;
+  padding: 11px;
+  border: 1px solid #dcdbd4;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.view-switch {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid #d0d1c9;
+  border-radius: 7px;
+}
+
+.view-switch button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 0;
+  color: #647065;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.view-switch button[aria-pressed="true"] {
+  color: #fff;
+  background: #63745a;
+}
+
+.activity-tools input,
+.activity-tools select {
+  height: 34px;
+  border: 1px solid #d0d1c9;
+  border-radius: 7px;
+  color: #202321;
+  background: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.activity-search input {
+  width: min(260px, 38vw);
+  padding: 0 10px;
+}
+
+.activity-tools select {
+  padding: 0 8px;
+}
+
+.activity-tools p {
+  margin: 0 0 0 auto;
+  color: #687168;
+  font-size: 0.77rem;
+}
+
+.activity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-list__item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 15px;
+  border: 1px solid #deded7;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.activity-list__item > button {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: #202321;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-list__item strong {
+  overflow: hidden;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-list__item span {
+  color: #687168;
+  font-size: 0.78rem;
+}
+
+.activity-list__item select {
+  max-width: 180px;
+  height: 34px;
+  padding: 0 7px;
+  border: 1px solid #d0d1c9;
+  border-radius: 7px;
+  color: #63745a;
+  background: #fff;
+}
+
 .inline-form input {
   min-height: 40px;
   border-color: #d4d4cc;
@@ -2104,6 +2216,25 @@ a:focus-visible {
   .inline-form {
     width: 100%;
     margin-left: 0;
+  }
+
+  .activity-tools p {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .activity-search input {
+    width: min(100%, 260px);
+  }
+
+  .activity-list__item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .activity-list__item select {
+    max-width: 100%;
   }
 
   .overview-panel__art {

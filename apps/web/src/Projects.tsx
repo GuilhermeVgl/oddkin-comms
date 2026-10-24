@@ -285,6 +285,10 @@ function ProjectView({
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
+  const [query, setQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [columnFilter, setColumnFilter] = useState("all");
   const e2ee = useOptionalE2EE();
   const unlocked = e2ee?.phase === "unlocked";
   const [pc, setPc] = useState<ProjectCrypto | null>(null);
@@ -368,6 +372,18 @@ function ProjectView({
   const subtasksOf = (id: string) =>
     items.filter((item) => item.parentId === id);
   const open = items.find((item) => item.id === openId) ?? null;
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleTasks = tasks.filter((task) => {
+    const matchesText =
+      normalizedQuery.length === 0 ||
+      task.title.toLocaleLowerCase().includes(normalizedQuery) ||
+      task.description.toLocaleLowerCase().includes(normalizedQuery);
+    return (
+      matchesText &&
+      (priorityFilter === "all" || task.priority === priorityFilter) &&
+      (columnFilter === "all" || task.columnId === columnFilter)
+    );
+  });
 
   if (state === "loading") return <p>Carregando quadro…</p>;
   if (state === "forbidden")
@@ -585,80 +601,202 @@ function ProjectView({
         </form>
       </section>
 
-      <div className="board">
-        {columns.map((column) => {
-          const cards = tasks.filter((task) => task.columnId === column.id);
-          return (
-            <section
-              aria-label={`${column.name}, ${cards.length} atividades`}
-              className="board-column"
-              key={column.id}
-            >
-              <h3>
-                {column.name} <span>{cards.length}</span>
-              </h3>
-              {cards.length === 0 ? <p className="empty-note">Vazio</p> : null}
-              {cards.map((card) => {
-                const subs = subtasksOf(card.id);
-                const finished = subs.filter(
-                  (sub) =>
-                    columns.find((c) => c.id === sub.columnId)?.category ===
-                    "done",
-                ).length;
-                return (
-                  <article className="card" key={card.id}>
-                    <button
-                      className="card__title"
-                      onClick={() => setOpenId(card.id)}
-                      type="button"
-                    >
-                      {card.title}
-                    </button>
-                    <p className="card__meta">
-                      {PRIORITY_LABEL[card.priority]}
-                      {subs.length > 0
-                        ? ` · ${finished}/${subs.length} subtarefas`
-                        : ""}
-                    </p>
-                    <label
-                      className="visually-hidden"
-                      htmlFor={`move-${card.id}`}
-                    >
-                      Mover {card.title}
-                    </label>
-                    <select
-                      id={`move-${card.id}`}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        const justFinished =
-                          columns.find((column) => column.id === next)
-                            ?.category === "done" &&
-                          columns.find((column) => column.id === card.columnId)
-                            ?.category !== "done";
-                        void run(async () => {
-                          await updateWorkItem(client, csrfToken(), card.id, {
-                            version: card.version,
-                            columnId: next,
-                            completeSubtasks: true,
+      <section className="activity-tools" aria-label="Visualização e filtros">
+        <div className="view-switch" role="group" aria-label="Visualização">
+          <button
+            aria-pressed={viewMode === "board"}
+            onClick={() => setViewMode("board")}
+            type="button"
+          >
+            Quadro
+          </button>
+          <button
+            aria-pressed={viewMode === "list"}
+            onClick={() => setViewMode("list")}
+            type="button"
+          >
+            Lista
+          </button>
+        </div>
+        <label className="activity-search" htmlFor="activity-search">
+          <span className="visually-hidden">
+            Buscar nas atividades carregadas
+          </span>
+          <input
+            id="activity-search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar atividades carregadas"
+            type="search"
+            value={query}
+          />
+        </label>
+        <label>
+          <span className="visually-hidden">Filtrar por prioridade</span>
+          <select
+            aria-label="Filtrar por prioridade"
+            onChange={(event) => setPriorityFilter(event.target.value)}
+            value={priorityFilter}
+          >
+            <option value="all">Todas prioridades</option>
+            {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="visually-hidden">Filtrar por coluna</span>
+          <select
+            aria-label="Filtrar por coluna"
+            onChange={(event) => setColumnFilter(event.target.value)}
+            value={columnFilter}
+          >
+            <option value="all">Todas colunas</option>
+            {columns.map((column) => (
+              <option key={column.id} value={column.id}>
+                {column.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p>
+          {visibleTasks.length} de {tasks.length} atividades carregadas
+        </p>
+      </section>
+
+      {viewMode === "board" ? (
+        <div className="board">
+          {columns.map((column) => {
+            const cards = visibleTasks.filter(
+              (task) => task.columnId === column.id,
+            );
+            return (
+              <section
+                aria-label={`${column.name}, ${cards.length} atividades`}
+                className="board-column"
+                key={column.id}
+              >
+                <h3>
+                  {column.name} <span>{cards.length}</span>
+                </h3>
+                {cards.length === 0 ? (
+                  <p className="empty-note">Vazio</p>
+                ) : null}
+                {cards.map((card) => {
+                  const subs = subtasksOf(card.id);
+                  const finished = subs.filter(
+                    (sub) =>
+                      columns.find((c) => c.id === sub.columnId)?.category ===
+                      "done",
+                  ).length;
+                  return (
+                    <article className="card" key={card.id}>
+                      <button
+                        className="card__title"
+                        onClick={() => setOpenId(card.id)}
+                        type="button"
+                      >
+                        {card.title}
+                      </button>
+                      <p className="card__meta">
+                        {PRIORITY_LABEL[card.priority]}
+                        {subs.length > 0
+                          ? ` · ${finished}/${subs.length} subtarefas`
+                          : ""}
+                      </p>
+                      <label
+                        className="visually-hidden"
+                        htmlFor={`move-${card.id}`}
+                      >
+                        Mover {card.title}
+                      </label>
+                      <select
+                        id={`move-${card.id}`}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          const justFinished =
+                            columns.find((column) => column.id === next)
+                              ?.category === "done" &&
+                            columns.find(
+                              (column) => column.id === card.columnId,
+                            )?.category !== "done";
+                          void run(async () => {
+                            await updateWorkItem(client, csrfToken(), card.id, {
+                              version: card.version,
+                              columnId: next,
+                              completeSubtasks: true,
+                            });
+                            if (justFinished)
+                              onCelebrate("Atividade concluída!");
                           });
-                          if (justFinished) onCelebrate("Atividade concluída!");
-                        });
-                      }}
-                      value={card.columnId}
-                    >
-                      {columns.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  </article>
-                );
-              })}
-            </section>
-          );
-        })}
-      </div>
+                        }}
+                        value={card.columnId}
+                      >
+                        {columns.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    </article>
+                  );
+                })}
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <section className="activity-list" aria-label="Lista de atividades">
+          {visibleTasks.length === 0 ? (
+            <p className="empty-note">
+              Nenhuma atividade carregada corresponde aos filtros.
+            </p>
+          ) : null}
+          {visibleTasks.map((task) => {
+            const subs = subtasksOf(task.id);
+            const column = columns.find((entry) => entry.id === task.columnId);
+            return (
+              <article className="activity-list__item" key={task.id}>
+                <button onClick={() => setOpenId(task.id)} type="button">
+                  <strong>{task.title}</strong>
+                  <span>
+                    {column?.name ?? "Sem coluna"} ·{" "}
+                    {PRIORITY_LABEL[task.priority]}
+                    {subs.length > 0 ? ` · ${subs.length} subtarefas` : ""}
+                  </span>
+                </button>
+                <label
+                  className="visually-hidden"
+                  htmlFor={`list-move-${task.id}`}
+                >
+                  Mover {task.title}
+                </label>
+                <select
+                  id={`list-move-${task.id}`}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    void run(() =>
+                      updateWorkItem(client, csrfToken(), task.id, {
+                        version: task.version,
+                        columnId: next,
+                        completeSubtasks: true,
+                      }),
+                    );
+                  }}
+                  value={task.columnId}
+                >
+                  {columns.map((columnOption) => (
+                    <option key={columnOption.id} value={columnOption.id}>
+                      {columnOption.name}
+                    </option>
+                  ))}
+                </select>
+              </article>
+            );
+          })}
+        </section>
+      )}
 
       {open !== null ? (
         <ItemDetail
