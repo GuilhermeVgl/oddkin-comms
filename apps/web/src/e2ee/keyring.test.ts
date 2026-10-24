@@ -16,6 +16,7 @@ beforeAll(async () => {
 });
 
 type Person = {
+  kind?: "device" | "recovery";
   account: string;
   deviceId: string;
   keys: DeviceKeys;
@@ -24,7 +25,11 @@ type Person = {
 };
 
 /** A tiny in-memory server speaking the key-directory endpoints the keyring uses. */
-function fakeServer(domain: KeyDomain, devices: Person[]) {
+function fakeServer(
+  domain: KeyDomain,
+  devices: Person[],
+  known: Person[] = [],
+) {
   const envelopes: {
     generation: number;
     recipient: string;
@@ -36,7 +41,7 @@ function fakeServer(domain: KeyDomain, devices: Person[]) {
     deviceId: p.deviceId,
     accountId: p.account,
     email: `${p.account}@example.test`,
-    kind: "device",
+    kind: p.kind ?? "device",
     state: "active",
     signPublicKey: toBase64Url(p.keys.signPublicKey),
     boxPublicKey: toBase64Url(p.keys.boxPublicKey),
@@ -53,10 +58,54 @@ function fakeServer(domain: KeyDomain, devices: Person[]) {
         Response.json(body, { status });
       const device = /\/devices\/([^/]+)$/.exec(path);
       if (device !== null) {
-        const found = devices.find((p) => p.deviceId === device[1]);
+        const found = [...devices, ...known].find(
+          (p) => p.deviceId === device[1],
+        );
         return found === undefined
           ? new Response(null, { status: 404 })
           : json(record(found));
+      }
+      if (path.endsWith("/recovery/gaps")) {
+        const holders = (generation: number) =>
+          new Set(
+            envelopes
+              .filter((e) => e.generation === generation)
+              .map((e) => e.recipient),
+          );
+        const gaps = [];
+        for (
+          let generation = 1;
+          generation <= domain.currentGeneration;
+          generation += 1
+        ) {
+          for (const device of devices) {
+            if (!holders(generation).has(device.deviceId)) {
+              gaps.push({
+                domainId: domain.id,
+                kind: "work",
+                generation,
+                device: record(device),
+              });
+            }
+          }
+        }
+        return json(gaps);
+      }
+      if (path.endsWith("/recovery-envelopes")) {
+        const recovery = devices
+          .filter((p) => p.kind === "recovery")
+          .map((p) => p.deviceId);
+        return json(
+          envelopes
+            .filter((e) => recovery.includes(e.recipient))
+            .map((e) => ({
+              generation: e.generation,
+              recipientDeviceId: e.recipient,
+              signerDeviceId: e.signer,
+              sealed: e.sealed,
+              signature: e.signature,
+            })),
+        );
       }
       if (path.endsWith("/authorized-devices"))
         return json(devices.map(record));
@@ -85,7 +134,9 @@ function fakeServer(domain: KeyDomain, devices: Person[]) {
       }
       if (
         request.method === "POST" &&
-        (path.endsWith("/generations") || path.endsWith("/envelopes"))
+        (path.endsWith("/generations") ||
+          path.endsWith("/envelopes") ||
+          path.endsWith("/recovery-grants"))
       ) {
         const body = (await request.json()) as {
           generation: number;
@@ -144,11 +195,20 @@ function ring(
   server: ReturnType<typeof fakeServer>,
   me: Person,
   root: DeviceKeys,
+  recovery?: Person,
 ) {
   const client = createApiClient("http://api.test", server.handler(me));
   const vault = {
     deviceKeys: () => me.keys,
     unlocked: true,
+    recoveryKeys: () =>
+      recovery === undefined
+        ? undefined
+        : {
+            deviceId: recovery.deviceId,
+            boxPublicKey: recovery.keys.boxPublicKey,
+            boxSecretKey: recovery.keys.boxSecretKey,
+          },
   } as unknown as Vault;
   return new Keyring({
     client,
@@ -297,5 +357,49 @@ describe("keyring stewardship", () => {
     const anaRing = ring(server, ana, root);
     await anaRing.loadKeys(domain);
     expect(anaRing.keyFor("domain-1", 1)).toBeUndefined();
+  });
+
+  it("restores history for a device that lost it, using only the recovery identity", async () => {
+    const root = c.generateDeviceKeys();
+    const ana = person(root, "ana", "d-ana");
+    const admin = person(root, "admin", "d-admin");
+    const recovery = {
+      ...person(root, "admin", "d-recovery"),
+      kind: "recovery" as const,
+    };
+    const domain = newDomain();
+    const devices = [ana, recovery];
+    const server = fakeServer(domain, devices, [admin]);
+    const anaRing = ring(server, ana, root);
+    await anaRing.maintain({ ...domain });
+    const key = anaRing.keyFor("domain-1", 1) as Uint8Array;
+
+    // Bia lost every device; her new one is authorized but holds nothing, and nobody else can help.
+    const bia = person(root, "bia", "d-bia");
+    devices.push(bia);
+    const adminRing = ring(server, admin, root, recovery);
+    const result = await adminRing.recoverGaps();
+    expect(result).toEqual({ granted: 1, failed: 0 });
+    const biaRing = ring(server, bia, root);
+    await biaRing.loadKeys({ ...domain });
+    expect(biaRing.keyFor("domain-1", 1)).toEqual(key);
+  });
+
+  it("does nothing without the recovery identity's keys", async () => {
+    const root = c.generateDeviceKeys();
+    const ana = person(root, "ana", "d-ana");
+    const admin = person(root, "admin", "d-admin");
+    const recovery = {
+      ...person(root, "admin", "d-recovery"),
+      kind: "recovery" as const,
+    };
+    const domain = newDomain();
+    const devices = [ana, recovery];
+    const server = fakeServer(domain, devices);
+    await ring(server, ana, root).maintain({ ...domain });
+    devices.push(person(root, "bia", "d-bia"));
+    const result = await ring(server, admin, root).recoverGaps();
+    expect(result.granted).toBe(0);
+    expect(result.failed).toBe(1);
   });
 });

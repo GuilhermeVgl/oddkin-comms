@@ -40,6 +40,10 @@ import {
   decryptComments,
   decryptEpics,
   decryptItems,
+  decryptProject,
+  decryptSprints,
+  encryptProject,
+  encryptChannel,
   EncryptionUnavailableError,
   migrateProject,
   saveItem,
@@ -109,10 +113,24 @@ export function ProjectsArea({ account }: { account: CurrentAccount }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const e2eeArea = useOptionalE2EE();
+  const areaUnlocked = e2eeArea?.phase === "unlocked";
 
   const reload = useCallback(async () => {
     try {
-      const list = await listProjects(client);
+      const raw = await listProjects(client);
+      // Encrypted names are read with each project's own key; locked or
+      // unreadable ones show a placeholder.
+      const list = await Promise.all(
+        raw.map(async (entry) => {
+          if (!entry.encrypted) return entry;
+          const opened =
+            areaUnlocked && e2eeArea !== null
+              ? await e2eeArea.openProject(entry.id).catch(() => null)
+              : null;
+          return decryptProject(opened, entry);
+        }),
+      );
       setProjects(list);
       setSelected((current) =>
         current !== null && list.some((p) => p.id === current)
@@ -123,11 +141,16 @@ export function ProjectsArea({ account }: { account: CurrentAccount }) {
       setMessage("Não foi possível carregar os projetos.");
       setProjects([]);
     }
-  }, [client]);
+  }, [client, areaUnlocked, e2eeArea]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEvents((event) => {
+    if (event === "resync" || event.eventType === "key-domain.changed")
+      void reload();
+  });
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,6 +158,24 @@ export function ProjectsArea({ account }: { account: CurrentAccount }) {
       const project = await createProject(client, csrfToken(), name);
       setName("");
       setMessage("");
+      // With encryption available, a new project starts encrypted, name included.
+      if (areaUnlocked && e2eeArea !== null) {
+        try {
+          const opened = await e2eeArea.openProject(project.id);
+          if (opened !== null) {
+            await opened.enable(csrfToken);
+            await encryptProject(client, csrfToken(), opened, project);
+            for (const channel of await listConversations(client, project.id)) {
+              if (!channel.encrypted)
+                await encryptChannel(client, csrfToken(), opened, channel);
+            }
+          }
+        } catch {
+          setMessage(
+            "Projeto criado, mas não foi possível ativar a criptografia agora.",
+          );
+        }
+      }
       await reload();
       setSelected(project.id);
     } catch (error) {
@@ -329,7 +370,7 @@ function ProjectView({
     if (pc === null) return;
     setMigration("Ativando…");
     try {
-      await pc.enable();
+      await pc.enable(csrfToken);
       await reload();
       setMigration("");
     } catch (error) {
@@ -345,6 +386,14 @@ function ProjectView({
       const channels = await listConversations(client, project.id).catch(
         () => [],
       );
+      if (project.isManager) {
+        if (!project.encrypted)
+          await encryptProject(client, csrfToken(), pc, project);
+        const channel = channels[0];
+        if (channel !== undefined && !channel.encrypted) {
+          await encryptChannel(client, csrfToken(), pc, channel);
+        }
+      }
       const report: MigrationReport = await migrateProject(
         client,
         csrfToken(),
@@ -652,13 +701,22 @@ function ItemDetail({
     }
   }, [client, item.id, pc]);
 
+  const detailE2ee = useOptionalE2EE();
+  const detailUnlocked = detailE2ee?.phase === "unlocked";
   useEffect(() => {
-    listSprints(client)
-      .then((list) =>
-        setSprints(list.filter((sprint) => sprint.state !== "closed")),
-      )
-      .catch(() => setSprints([]));
-  }, [client]);
+    let alive = true;
+    (async () => {
+      const opened =
+        detailUnlocked && detailE2ee !== null
+          ? await detailE2ee.openOrganization().catch(() => null)
+          : null;
+      const list = await decryptSprints(opened, await listSprints(client));
+      if (alive) setSprints(list.filter((sprint) => sprint.state !== "closed"));
+    })().catch(() => alive && setSprints([]));
+    return () => {
+      alive = false;
+    };
+  }, [client, detailUnlocked, detailE2ee]);
 
   useEffect(() => {
     void loadComments();

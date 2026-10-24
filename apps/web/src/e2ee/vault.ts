@@ -31,9 +31,16 @@ export type VaultRecord = {
   };
 };
 
+export type RecoveryKeys = {
+  deviceId: string;
+  boxPublicKey: Uint8Array;
+  boxSecretKey: Uint8Array;
+};
+
 export type UnlockedSecrets = {
   device: DeviceKeys;
   rootSecretKey?: Uint8Array;
+  recovery?: RecoveryKeys;
 };
 
 const keyFor = (accountId: string) => `vault:${accountId}`;
@@ -124,6 +131,14 @@ export class Vault {
         record.root.wrapped,
       );
     }
+    if (record.recovery !== undefined) {
+      const raw = this.keystore.unwrap(passphrase, record.recovery.wrapped);
+      next.recovery = {
+        deviceId: record.recovery.deviceId,
+        boxPublicKey: fromBase64Url(record.recovery.boxPublicKey),
+        boxSecretKey: raw.slice(64, 96),
+      };
+    }
     this.secrets = next;
   }
 
@@ -134,6 +149,11 @@ export class Vault {
   deviceKeys(): DeviceKeys {
     if (this.secrets === null) throw new Error("vault is locked");
     return this.secrets.device;
+  }
+
+  /** Present only on the recovery administrator's browser, and only while unlocked. */
+  recoveryKeys(): RecoveryKeys | undefined {
+    return this.secrets?.recovery;
   }
 
   rootSecretKey(): Uint8Array | undefined {

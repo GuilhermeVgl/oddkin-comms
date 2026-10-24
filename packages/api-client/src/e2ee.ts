@@ -393,3 +393,163 @@ export async function editMessageRaw(
     200,
   );
 }
+
+// --- DM and sprint domains, names, recovery -----------------------------
+
+export type RecoveryGap = Schemas["RecoveryGap"];
+export type RecoveryAuditEntry = Schemas["RecoveryAuditEntry"];
+
+export async function getConversationKeyDomain(
+  client: Client,
+  conversationId: string,
+): Promise<KeyDomain | null> {
+  const { data, response } = await client.GET(
+    "/api/v1/conversations/{conversationId}/key-domain",
+    { params: { path: { conversationId } } },
+  );
+  if (response.status === 404) return null;
+  return expect("getConversationKeyDomain", response, data, 200);
+}
+
+export async function createConversationKeyDomain(
+  client: Client,
+  token: string,
+  conversationId: string,
+): Promise<KeyDomain> {
+  const { data, response } = await client.POST(
+    "/api/v1/conversations/{conversationId}/key-domain",
+    { params: { path: { conversationId } }, headers: csrf(token) },
+  );
+  return expect("createConversationKeyDomain", response, data, 201);
+}
+
+export async function getSprintKeyDomain(
+  client: Client,
+): Promise<KeyDomain | null> {
+  const { data, response } = await client.GET("/api/v1/e2ee/sprint-domain");
+  if (response.status === 404) return null;
+  return expect("getSprintKeyDomain", response, data, 200);
+}
+
+export async function createSprintKeyDomain(
+  client: Client,
+  token: string,
+): Promise<KeyDomain> {
+  const { data, response } = await client.POST("/api/v1/e2ee/sprint-domain", {
+    headers: csrf(token),
+  });
+  return expect("createSprintKeyDomain", response, data, 201);
+}
+
+async function noContent(
+  operation: string,
+  result: { response: Response; error?: unknown },
+): Promise<void> {
+  if (result.response.status === 204) return;
+  if (result.response.status === 409 || result.response.status === 400) {
+    throw encryptionErrorFrom(result.response.status, result.error);
+  }
+  throw new ApiStatusError(result.response.status, operation);
+}
+
+export async function updateProjectContent(
+  client: Client,
+  token: string,
+  projectId: string,
+  body: Schemas["UpdateProjectRequest"],
+): Promise<void> {
+  return noContent(
+    "updateProject",
+    await client.PATCH("/api/v1/projects/{projectId}", {
+      params: { path: { projectId } },
+      body,
+      headers: csrf(token),
+    }),
+  );
+}
+
+export async function updateConversationContent(
+  client: Client,
+  token: string,
+  conversationId: string,
+  body: Schemas["UpdateConversationRequest"],
+): Promise<void> {
+  return noContent(
+    "updateConversation",
+    await client.PATCH("/api/v1/conversations/{conversationId}", {
+      params: { path: { conversationId } },
+      body,
+      headers: csrf(token),
+    }),
+  );
+}
+
+export async function updateSprintContent(
+  client: Client,
+  token: string,
+  sprintId: string,
+  body: Schemas["UpdateSprintRequest"],
+): Promise<void> {
+  return noContent(
+    "updateSprint",
+    await client.PATCH("/api/v1/sprints/{sprintId}", {
+      params: { path: { sprintId } },
+      body,
+      headers: csrf(token),
+    }),
+  );
+}
+
+export async function createSprintRaw(
+  client: Client,
+  token: string,
+  body: Schemas["CreateSprintRequest"],
+): Promise<Schemas["Sprint"]> {
+  return written(
+    "createSprint",
+    await client.POST("/api/v1/sprints", { body, headers: csrf(token) }),
+    201,
+  );
+}
+
+export async function listRecoveryGaps(client: Client): Promise<RecoveryGap[]> {
+  const { data, response } = await client.GET("/api/v1/recovery/gaps");
+  return expect("listRecoveryGaps", response, data, 200);
+}
+
+export async function listRecoveryEnvelopes(
+  client: Client,
+  keyDomainId: string,
+): Promise<KeyEnvelope[]> {
+  const { data, response } = await client.GET(
+    "/api/v1/key-domains/{keyDomainId}/recovery-envelopes",
+    { params: { path: { keyDomainId } } },
+  );
+  return expect("listRecoveryEnvelopes", response, data, 200);
+}
+
+export async function grantRecoveryEnvelopes(
+  client: Client,
+  token: string,
+  keyDomainId: string,
+  generation: number,
+  signerDeviceId: string,
+  envelopes: EnvelopeInput[],
+): Promise<KeyDomain> {
+  const { data, response } = await client.POST(
+    "/api/v1/key-domains/{keyDomainId}/recovery-grants",
+    {
+      params: { path: { keyDomainId } },
+      body: { generation, signerDeviceId, envelopes },
+      headers: csrf(token),
+    },
+  );
+  return expect("grantRecoveryEnvelopes", response, data, 200);
+}
+
+export async function listRecoveryAudit(
+  client: Client,
+): Promise<RecoveryAuditEntry[]> {
+  const { data, response } = await client.GET("/api/v1/recovery/audit");
+  return expect("listRecoveryAudit", response, data, 200);
+}

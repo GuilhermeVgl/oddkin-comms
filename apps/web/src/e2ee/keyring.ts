@@ -10,6 +10,9 @@ import {
   createKeyDomain,
   getDeviceRecord,
   grantKeyEnvelopes,
+  grantRecoveryEnvelopes,
+  listRecoveryEnvelopes,
+  listRecoveryGaps,
   listAuthorizedDevices,
   listKeyDomains,
   listKeyRecipients,
@@ -19,11 +22,12 @@ import {
   type DirectoryDevice,
   type EnvelopeInput,
   type KeyDomain,
+  type RecoveryGap,
 } from "@oddkin/api-client";
 import type { Vault } from "./vault";
 
 type Client = ReturnType<typeof createApiClient>;
-export type DomainKind = "work" | "chat";
+export type DomainKind = "work" | "chat" | "dm" | "sprint";
 
 /** A device the server listed whose certificate chain does not reach the pinned root. */
 export class UntrustedDeviceError extends Error {
@@ -98,17 +102,30 @@ export class Keyring {
     return this.keys.get(domainId)?.get(generation);
   }
 
-  /** Opens every envelope addressed to this device that is not yet cached. */
+  /** Opens every envelope addressed to this device (or its recovery identity) that is not yet cached. */
   async loadKeys(domain: KeyDomain): Promise<void> {
     const known = this.keys.get(domain.id) ?? new Map<number, Uint8Array>();
     this.keys.set(domain.id, known);
-    const envelopes = await listMyKeyEnvelopes(this.deps.client, domain.id);
+    await this.openEnvelopes(
+      domain,
+      await listMyKeyEnvelopes(this.deps.client, domain.id),
+      known,
+    );
+  }
+
+  private async openEnvelopes(
+    domain: KeyDomain,
+    envelopes: Awaited<ReturnType<typeof listMyKeyEnvelopes>>,
+    known: Map<number, Uint8Array>,
+  ): Promise<void> {
+    const recovery = this.deps.vault.recoveryKeys();
     for (const envelope of envelopes) {
-      if (
-        envelope.recipientDeviceId !== this.deps.deviceId ||
-        known.has(envelope.generation)
-      )
-        continue;
+      if (known.has(envelope.generation)) continue;
+      const own = envelope.recipientDeviceId === this.deps.deviceId;
+      const asRecovery =
+        recovery !== undefined &&
+        envelope.recipientDeviceId === recovery.deviceId;
+      if (!own && !asRecovery) continue;
       const signer = await this.trusted(envelope.signerDeviceId);
       if (signer === undefined) continue;
       try {
@@ -121,8 +138,11 @@ export class Keyring {
             },
             domainId: domain.id,
             generation: envelope.generation,
-            recipientDeviceId: this.deps.deviceId,
-            recipient: this.deps.vault.deviceKeys(),
+            recipientDeviceId: envelope.recipientDeviceId,
+            recipient:
+              own || recovery === undefined
+                ? this.deps.vault.deviceKeys()
+                : recovery,
             signerPublicKey: fromBase64Url(signer.signPublicKey),
           }),
         );
@@ -131,6 +151,62 @@ export class Keyring {
         // An envelope that does not open or verify is ignored, never trusted.
       }
     }
+  }
+
+  /**
+   * Restores access using the recovery identity: for every authorized device
+   * that lacks a generation, re-seals it with the key the recovery identity
+   * holds and posts it to the audited recovery endpoint.
+   */
+  async recoverGaps(): Promise<{ granted: number; failed: number }> {
+    const gaps = await listRecoveryGaps(this.deps.client);
+    const byTarget = new Map<string, RecoveryGap[]>();
+    for (const gap of gaps) {
+      const key = `${gap.domainId}:${gap.generation}`;
+      byTarget.set(key, [...(byTarget.get(key) ?? []), gap]);
+    }
+    let granted = 0;
+    let failed = 0;
+    const opened = new Map<string, Map<number, Uint8Array>>();
+    for (const group of byTarget.values()) {
+      const first = group[0];
+      if (first === undefined) continue;
+      try {
+        let known = opened.get(first.domainId);
+        if (known === undefined) {
+          known = new Map();
+          opened.set(first.domainId, known);
+          const placeholder = { id: first.domainId } as KeyDomain;
+          await this.openEnvelopes(
+            placeholder,
+            await listRecoveryEnvelopes(this.deps.client, first.domainId),
+            known,
+          );
+        }
+        const key = known.get(first.generation);
+        if (key === undefined)
+          throw new Error(
+            "the recovery identity holds no key for this generation",
+          );
+        await grantRecoveryEnvelopes(
+          this.deps.client,
+          this.deps.csrf(),
+          first.domainId,
+          first.generation,
+          this.deps.deviceId,
+          await this.seal(
+            group.map((gap) => gap.device),
+            key,
+            first.domainId,
+            first.generation,
+          ),
+        );
+        granted += group.length;
+      } catch {
+        failed += group.length;
+      }
+    }
+    return { granted, failed };
   }
 
   private async seal(

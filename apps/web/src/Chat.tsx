@@ -5,7 +5,6 @@ import {
   listConversations,
   listMessages,
   readCookie,
-  sendMessage,
   setReadCursor,
   toggleReaction,
   type Conversation,
@@ -18,6 +17,7 @@ import { CallBar } from "./Calls";
 import { useEvents } from "./events";
 import { useOptionalE2EE } from "./e2ee/E2EE";
 import {
+  decryptChannel,
   decryptMessages,
   editChannelMessage,
   EncryptionUnavailableError,
@@ -84,7 +84,12 @@ export function ProjectChat({
   useEffect(() => {
     let active = true;
     listConversations(client, projectId)
-      .then((list) => active && setChannels(list))
+      .then(async (list) => {
+        const named = await Promise.all(
+          list.map((entry) => decryptChannel(projectCrypto, entry)),
+        );
+        if (active) setChannels(named);
+      })
       .catch((cause: unknown) => {
         if (!active) return;
         setStatus(statusOf(cause) === 403 ? "forbidden" : "error");
@@ -93,13 +98,14 @@ export function ProjectChat({
     return () => {
       active = false;
     };
-  }, [client, projectId, reload]);
+  }, [client, projectId, reload, projectCrypto]);
 
   useEvents((event) => {
     if (
       event === "resync" ||
       event.eventType === "message.created" ||
-      (event.eventType === "key-domain.changed" &&
+      ((event.eventType === "key-domain.changed" ||
+        event.eventType === "project.changed") &&
         event.contextId === projectId)
     ) {
       setReload((value) => value + 1);
@@ -142,15 +148,18 @@ export function ConversationView({
   me,
   moderator,
   members = [],
-  crypto: projectCrypto,
+  crypto: projectCrypto = null,
+  kind = "chat",
 }: {
   client: Client;
   conversationId: string;
   me: string;
   moderator: boolean;
   members?: ProjectMember[];
-  /** Present for project channels (null while locked); absent for DMs, which are not encrypted yet. */
+  /** Keys of this conversation (null while locked or not yet encrypted). */
   crypto?: ProjectCrypto | null;
+  /** "dm" for direct conversations, "chat" for project channels. */
+  kind?: "chat" | "dm";
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -191,10 +200,7 @@ export function ConversationView({
       let after = Math.max(0, lastSeq.current - PAGE);
       for (let page = 0; page < 5; page += 1) {
         const fetched = await listMessages(client, conversationId, after);
-        const fresh =
-          projectCrypto === undefined
-            ? fetched
-            : await decryptMessages(projectCrypto, fetched);
+        const fresh = await decryptMessages(projectCrypto, fetched, kind);
         merge(fresh);
         if (fresh.length < PAGE) break;
         after = fresh[fresh.length - 1]?.seq ?? after;
@@ -203,7 +209,7 @@ export function ConversationView({
     } catch {
       // The last known messages stay on screen; the next event or poll retries.
     }
-  }, [client, conversationId, merge, markRead, projectCrypto]);
+  }, [client, conversationId, merge, markRead, projectCrypto, kind]);
 
   useEffect(() => {
     lastSeq.current = 0;
@@ -244,9 +250,16 @@ export function ConversationView({
       const { id, body } = editing;
       const original = messages.find((message) => message.id === id);
       await act((csrf) =>
-        projectCrypto === undefined || original === undefined
+        original === undefined
           ? editMessage(client, csrf, id, body)
-          : editChannelMessage(client, csrf, projectCrypto, original, body),
+          : editChannelMessage(
+              client,
+              csrf,
+              projectCrypto,
+              original,
+              body,
+              kind,
+            ),
       );
       setEditing(null);
       return;
@@ -262,22 +275,14 @@ export function ConversationView({
         ...(replyTo === null ? {} : { replyToId: replyTo.id }),
         ...(mentionIds.length === 0 ? {} : { mentionIds }),
       };
-      if (projectCrypto === undefined) {
-        await sendMessage(
-          client,
-          csrf,
-          conversationId,
-          draft,
-          mutationId,
-          options,
-        );
-      } else {
-        await sendChannelMessage(client, csrf, projectCrypto, conversationId, {
-          body: draft,
-          mutationId,
-          ...options,
-        });
-      }
+      await sendChannelMessage(
+        client,
+        csrf,
+        projectCrypto,
+        conversationId,
+        { body: draft, mutationId, ...options },
+        kind,
+      );
       setDraft("");
       setReplyTo(null);
       setPending(null);

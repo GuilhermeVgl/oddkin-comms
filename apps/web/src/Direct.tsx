@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  getConversationKeyDomain,
   listDirectContacts,
   listDirectConversations,
   listNotifications,
@@ -14,12 +15,16 @@ import {
 } from "@oddkin/api-client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ConversationView } from "./Chat";
+import { useOptionalE2EE } from "./e2ee/E2EE";
+import { migrateOwnMessages } from "./e2ee/content";
+import type { ProjectCrypto } from "./e2ee/projectCrypto";
 import { useEvents } from "./events";
 
 const NOTIFICATION_LABEL: Record<string, string> = {
   mention: "Você foi mencionado",
   assignment: "Uma atividade foi atribuída a você",
   call_invite: "Você foi chamado para uma conversa por voz e vídeo",
+  recovery_access: "A administração restaurou seu acesso ao histórico cifrado",
   direct_message: "Nova mensagem direta",
 };
 
@@ -29,6 +34,12 @@ export function DirectArea({ account }: { account: CurrentAccount }) {
   const [conversations, setConversations] = useState<DirectConversation[]>([]);
   const [active, setActive] = useState<DirectConversation | null>(null);
   const [message, setMessage] = useState("");
+  const e2ee = useOptionalE2EE();
+  const unlocked = e2ee?.phase === "unlocked";
+  const [dmCrypto, setDmCrypto] = useState<ProjectCrypto | null>(null);
+  const [keyedOnServer, setKeyedOnServer] = useState(false);
+  const [dmStatus, setDmStatus] = useState("");
+  const [dmRefresh, setDmRefresh] = useState(0);
 
   const reload = useCallback(async () => {
     try {
@@ -51,7 +62,59 @@ export function DirectArea({ account }: { account: CurrentAccount }) {
     if (event === "resync" || event.eventType === "message.created") {
       void reload();
     }
+    if (event === "resync" || event.eventType === "key-domain.changed") {
+      setDmRefresh((value) => value + 1);
+    }
   });
+
+  const activeId = active?.id;
+  useEffect(() => {
+    let alive = true;
+    setDmCrypto(null);
+    if (activeId === undefined) {
+      setKeyedOnServer(false);
+      return undefined;
+    }
+    getConversationKeyDomain(client, activeId)
+      .then(
+        (domain) =>
+          alive && setKeyedOnServer((domain?.currentGeneration ?? 0) > 0),
+      )
+      .catch(() => alive && setKeyedOnServer(false));
+    if (unlocked && e2ee !== null) {
+      e2ee
+        .openConversation(activeId, { maintain: true })
+        .then((opened) => alive && setDmCrypto(opened))
+        .catch(() => alive && setDmCrypto(null));
+    }
+    return () => {
+      alive = false;
+    };
+  }, [client, activeId, unlocked, e2ee, dmRefresh]);
+
+  async function enableDm() {
+    if (dmCrypto === null || active === null) return;
+    const csrf = readCookie(document.cookie, "oddkin_csrf");
+    if (csrf === null) return;
+    setDmStatus("Ativando…");
+    try {
+      await dmCrypto.enable(() => csrf);
+      const result = await migrateOwnMessages(
+        client,
+        csrf,
+        dmCrypto,
+        active.id,
+        account.email,
+        "dm",
+      );
+      setDmStatus(
+        `Conversa cifrada. ${result.migrated} mensagens suas antigas foram cifradas.`,
+      );
+      setDmRefresh((value) => value + 1);
+    } catch {
+      setDmStatus("Não foi possível ativar. Tente de novo.");
+    }
+  }
 
   async function open(contact: DirectContact) {
     const csrf = readCookie(document.cookie, "oddkin_csrf");
@@ -103,9 +166,35 @@ export function DirectArea({ account }: { account: CurrentAccount }) {
       {active !== null ? (
         <>
           <h3>{active.peerEmail}</h3>
+          <p className="project-encryption">
+            {keyedOnServer ? (
+              unlocked ? (
+                "Esta conversa é cifrada de ponta a ponta."
+              ) : (
+                "Esta conversa é cifrada. Desbloqueie a criptografia para ler e escrever."
+              )
+            ) : unlocked ? (
+              <>
+                As mensagens desta conversa ainda ficam em texto claro no
+                servidor.{" "}
+                <button
+                  className="text-button"
+                  onClick={() => void enableDm()}
+                  type="button"
+                >
+                  Ativar criptografia nesta conversa
+                </button>
+              </>
+            ) : (
+              "Esta conversa ainda está em texto claro. Desbloqueie a criptografia para ativá-la."
+            )}{" "}
+            {dmStatus}
+          </p>
           <ConversationView
             client={client}
             conversationId={active.id}
+            crypto={dmCrypto}
+            kind="dm"
             key={active.id}
             me={account.email}
             moderator={false}

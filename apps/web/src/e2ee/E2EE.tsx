@@ -3,6 +3,8 @@ import {
   authorizeDevice,
   getTrustRoot,
   listDevices,
+  listRecoveryAudit,
+  listRecoveryGaps,
   listPendingDevices,
   readCookie,
   registerDevice,
@@ -11,6 +13,8 @@ import {
   type CurrentAccount,
   type Device,
   type PendingDevice,
+  type RecoveryAuditEntry,
+  type RecoveryGap,
 } from "@oddkin/api-client";
 import {
   createCrypto,
@@ -32,7 +36,7 @@ import React, {
 } from "react";
 import { useEvents } from "../events";
 import { Keyring } from "./keyring";
-import { ProjectCrypto } from "./projectCrypto";
+import { ContentCrypto, type Scope } from "./projectCrypto";
 import { browserStore, type KeyValueStore } from "./storage";
 import { Vault, type VaultRecord } from "./vault";
 
@@ -75,10 +79,26 @@ export type E2EEApi = {
   revoke(deviceId: string): Promise<void>;
   backup(): string | null;
   resetThisBrowser(): Promise<void>;
+  openScope(
+    scope: Scope,
+    options?: { maintain?: boolean },
+  ): Promise<ContentCrypto | null>;
   openProject(
     projectId: string,
     options?: { maintain?: boolean },
-  ): Promise<ProjectCrypto | null>;
+  ): Promise<ContentCrypto | null>;
+  openConversation(
+    conversationId: string,
+    options?: { maintain?: boolean },
+  ): Promise<ContentCrypto | null>;
+  openOrganization(options?: {
+    maintain?: boolean;
+  }): Promise<ContentCrypto | null>;
+  hasRecoveryIdentity: boolean;
+  /** Administrative recovery; only the recovery administrator, only while unlocked. */
+  recoveryGaps(): Promise<RecoveryGap[]>;
+  restoreAccess(): Promise<{ granted: number; failed: number }>;
+  recoveryAudit(): Promise<RecoveryAuditEntry[]>;
 };
 
 const E2EEContext = createContext<E2EEApi | null>(null);
@@ -124,7 +144,7 @@ export function E2EEProvider({
   const runtime = useRef<Runtime | null>(null);
   const record = useRef<VaultRecord | null>(null);
   const keyring = useRef<Keyring | null>(null);
-  const projects = useRef(new Map<string, ProjectCrypto>());
+  const projects = useRef(new Map<string, ContentCrypto>());
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState("");
   const [persistent, setPersistent] = useState(true);
@@ -135,6 +155,7 @@ export function E2EEProvider({
   const [devices, setDevices] = useState<Device[]>([]);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [canApproveWithRoot, setCanApproveWithRoot] = useState(false);
+  const [hasRecovery, setHasRecovery] = useState(false);
 
   const runtimeOf = useCallback(async (): Promise<Runtime> => {
     runtime.current ??= await createRuntime();
@@ -214,6 +235,7 @@ export function E2EEProvider({
         return;
       }
       setCanApproveWithRoot(stored.root !== undefined && vault.unlocked);
+      setHasRecovery(stored.recovery !== undefined && vault.unlocked);
       setPhase(vault.unlocked ? "unlocked" : "locked");
       if (vault.unlocked) await loadApprovals();
     } catch {
@@ -448,15 +470,21 @@ export function E2EEProvider({
         await refresh();
       },
 
-      async openProject(projectId, options) {
+      async openScope(scope, options) {
         const { crypto, vault } = await runtimeOf();
         const current = record.current;
         const ring = keyring.current;
         if (current === null || ring === null || !vault.unlocked) return null;
-        let project = projects.current.get(projectId);
-        if (project === undefined) {
-          project = new ProjectCrypto(
-            projectId,
+        const cacheKey =
+          scope.type === "project"
+            ? `p:${scope.projectId}`
+            : scope.type === "conversation"
+              ? `c:${scope.conversationId}`
+              : "org";
+        let opened = projects.current.get(cacheKey);
+        if (opened === undefined) {
+          opened = new ContentCrypto(
+            scope,
             client,
             crypto,
             vault,
@@ -464,11 +492,38 @@ export function E2EEProvider({
             account.id,
             current.deviceId,
           );
-          projects.current.set(projectId, project);
+          projects.current.set(cacheKey, opened);
         }
-        await project.refresh(options?.maintain ?? false);
-        return project;
+        await opened.refresh(options?.maintain ?? false);
+        return opened;
       },
+
+      openProject(projectId, options) {
+        return this.openScope({ type: "project", projectId }, options);
+      },
+
+      openConversation(conversationId, options) {
+        return this.openScope(
+          { type: "conversation", conversationId },
+          options,
+        );
+      },
+
+      openOrganization(options) {
+        return this.openScope({ type: "organization" }, options);
+      },
+
+      hasRecoveryIdentity: hasRecovery,
+
+      recoveryGaps: () => listRecoveryGaps(client),
+
+      async restoreAccess() {
+        const ring = keyring.current;
+        if (ring === null) throw new Error("locked");
+        return ring.recoverGaps();
+      },
+
+      recoveryAudit: () => listRecoveryAudit(client),
     }),
     [
       phase,
@@ -479,6 +534,7 @@ export function E2EEProvider({
       devices,
       approvals,
       canApproveWithRoot,
+      hasRecovery,
       account,
       client,
       runtimeOf,

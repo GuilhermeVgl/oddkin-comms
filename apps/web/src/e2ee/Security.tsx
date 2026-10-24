@@ -1,5 +1,9 @@
-import type { CurrentAccount } from "@oddkin/api-client";
-import React, { useState } from "react";
+import type {
+  CurrentAccount,
+  RecoveryAuditEntry,
+  RecoveryGap,
+} from "@oddkin/api-client";
+import React, { useEffect, useState } from "react";
 import { useE2EE } from "./E2EE";
 
 const MIN_PASSPHRASE = 12;
@@ -13,6 +17,103 @@ function download(name: string, content: string) {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+const KIND_LABEL: Record<string, string> = {
+  work: "atividades",
+  chat: "conversa do projeto",
+  dm: "mensagem direta",
+  sprint: "sprints",
+};
+
+/** Restoring access with the recovery identity. Every use is audited and the person is told. */
+function RecoveryPanel() {
+  const e2ee = useE2EE();
+  const [gaps, setGaps] = useState<RecoveryGap[]>([]);
+  const [audit, setAudit] = useState<RecoveryAuditEntry[]>([]);
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    e2ee
+      .recoveryGaps()
+      .then((list) => alive && setGaps(list))
+      .catch(() => alive && setGaps([]));
+    e2ee
+      .recoveryAudit()
+      .then((list) => alive && setAudit(list))
+      .catch(() => alive && setAudit([]));
+    return () => {
+      alive = false;
+    };
+  }, [e2ee, version]);
+
+  const people = [...new Set(gaps.map((gap) => gap.device.email))];
+  return (
+    <div>
+      <h3>Recuperação administrativa</h3>
+      {gaps.length === 0 ? (
+        <p>Nenhum dispositivo está esperando chaves.</p>
+      ) : (
+        <>
+          <p>
+            Dispositivos sem acesso ao histórico: {people.join(", ")}. Restaurar
+            usa a identidade de recuperação, fica registrado e a pessoa é
+            avisada.
+          </p>
+          <ul>
+            {gaps.map((gap) => (
+              <li
+                key={`${gap.domainId}:${gap.generation}:${gap.device.deviceId}`}
+              >
+                {gap.device.email} · {KIND_LABEL[gap.kind] ?? gap.kind} ·
+                geração {gap.generation}
+              </li>
+            ))}
+          </ul>
+          <button
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              e2ee
+                .restoreAccess()
+                .then((result) =>
+                  setStatus(
+                    `Restaurado: ${result.granted}. Falhas: ${result.failed}.`,
+                  ),
+                )
+                .catch(() => setStatus("Não foi possível restaurar agora."))
+                .finally(() => {
+                  setBusy(false);
+                  setVersion((value) => value + 1);
+                });
+            }}
+            type="button"
+          >
+            Restaurar acesso
+          </button>
+        </>
+      )}
+      <p aria-live="polite">{status}</p>
+      {audit.length > 0 ? (
+        <>
+          <h4>Registro de usos</h4>
+          <ul>
+            {audit.slice(0, 10).map((entry) => (
+              <li key={entry.id}>
+                {new Date(entry.createdAt).toLocaleString("pt-BR")} ·{" "}
+                {entry.approverEmail} → {entry.recipientEmail} ·{" "}
+                {KIND_LABEL[entry.domainKind] ?? entry.domainKind} g
+                {entry.generation}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 /** Device keys, unlocking and approvals. The passphrase never leaves this browser. */
@@ -221,6 +322,7 @@ export function SecurityPanel({ account }: { account: CurrentAccount }) {
               </ul>
             </div>
           ) : null}
+          {e2ee.hasRecoveryIdentity ? <RecoveryPanel /> : null}
           <h3>Seus dispositivos</h3>
           <ul>
             {e2ee.devices.map((device) => (

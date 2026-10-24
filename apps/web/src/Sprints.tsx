@@ -2,7 +2,7 @@ import {
   ApiStatusError,
   closeSprint,
   createApiClient,
-  createSprint,
+  getSprintKeyDomain,
   getSprintClosePreview,
   listSprints,
   listSprintWorkItems,
@@ -14,6 +14,14 @@ import {
   type WorkItem,
 } from "@oddkin/api-client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useOptionalE2EE } from "./e2ee/E2EE";
+import {
+  createSprintContent,
+  decryptSprints,
+  encryptSprint,
+} from "./e2ee/content";
+import type { ProjectCrypto } from "./e2ee/projectCrypto";
+import { useEvents } from "./events";
 
 const STATE_LABEL: Record<string, string> = {
   planned: "Planejada",
@@ -36,10 +44,21 @@ export function SprintsArea({ account }: { account: CurrentAccount }) {
   const [endsOn, setEndsOn] = useState("");
   const [message, setMessage] = useState("");
   const [closing, setClosing] = useState<Sprint | null>(null);
+  const e2ee = useOptionalE2EE();
+  const unlocked = e2ee?.phase === "unlocked";
+  const [sprintCrypto, setSprintCrypto] = useState<ProjectCrypto | null>(null);
+  const [keyed, setKeyed] = useState(false);
 
   const reload = useCallback(async () => {
     try {
-      const list = await listSprints(client);
+      const domain = await getSprintKeyDomain(client).catch(() => null);
+      setKeyed((domain?.currentGeneration ?? 0) > 0);
+      const opened =
+        unlocked && e2ee !== null
+          ? await e2ee.openOrganization({ maintain: true }).catch(() => null)
+          : null;
+      setSprintCrypto(opened);
+      const list = await decryptSprints(opened, await listSprints(client));
       setSprints(list);
       const entries = await Promise.all(
         list
@@ -57,11 +76,32 @@ export function SprintsArea({ account }: { account: CurrentAccount }) {
       setSprints([]);
       setMessage("Não foi possível carregar as sprints.");
     }
-  }, [client]);
+  }, [client, unlocked, e2ee]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEvents((event) => {
+    if (
+      event === "resync" ||
+      event.eventType === "sprint.changed" ||
+      event.eventType === "key-domain.changed"
+    ) {
+      void reload();
+    }
+  });
+
+  async function enableSprintEncryption() {
+    if (sprintCrypto === null || sprints === null) return;
+    await act(async () => {
+      await sprintCrypto.enable(csrfToken);
+      for (const sprint of sprints) {
+        if (!sprint.encrypted)
+          await encryptSprint(client, csrfToken(), sprintCrypto, sprint);
+      }
+    });
+  }
 
   async function act(action: () => Promise<unknown>) {
     try {
@@ -123,13 +163,30 @@ export function SprintsArea({ account }: { account: CurrentAccount }) {
           </li>
         ))}
       </ul>
+      {account.isAdmin && unlocked && !keyed ? (
+        <p className="project-encryption">
+          Nomes e objetivos das sprints ainda ficam em texto claro.{" "}
+          <button
+            className="text-button"
+            onClick={() => void enableSprintEncryption()}
+            type="button"
+          >
+            Cifrar nomes de sprints
+          </button>
+        </p>
+      ) : null}
+      {keyed && !unlocked ? (
+        <p className="form-message">
+          Desbloqueie a criptografia para ver os nomes das sprints.
+        </p>
+      ) : null}
       {account.isAdmin ? (
         <form
           className="inline-form"
           onSubmit={(event) => {
             event.preventDefault();
             void act(async () => {
-              await createSprint(client, csrfToken(), {
+              await createSprintContent(client, csrfToken(), sprintCrypto, {
                 name,
                 startsOn,
                 endsOn,

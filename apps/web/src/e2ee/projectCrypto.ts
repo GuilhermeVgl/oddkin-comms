@@ -5,6 +5,10 @@ import {
   type Crypto,
 } from "@oddkin/crypto";
 import {
+  createConversationKeyDomain,
+  createSprintKeyDomain,
+  getConversationKeyDomain,
+  getSprintKeyDomain,
   listKeyDomains,
   type KeyDomain,
   type createApiClient,
@@ -19,6 +23,9 @@ const decoder = new TextDecoder();
 
 /** Bindings between a ciphertext and the record it belongs to (mirrors the server). */
 export const resources = {
+  project: (id: string, field: "name" | "desc") => `pn:${id}:${field}`,
+  channel: (id: string) => `cn:${id}`,
+  sprint: (id: string, field: "name" | "goal") => `sp:${id}:${field}`,
   workItem: (id: string, field: "title" | "desc") => `wi:${id}:${field}`,
   epic: (id: string, field: "title" | "desc") => `ep:${id}:${field}`,
   comment: (id: string) => `wc:${id}`,
@@ -39,12 +46,18 @@ export type DecryptResult =
   | { ok: true; text: string }
   | { ok: false; reason: "locked" | "no_key" | "untrusted" | "invalid" };
 
-/** Encrypts and decrypts the content of one project; the two key domains are work and chat. */
-export class ProjectCrypto {
+/** What a set of key domains belongs to: a project (work, chat), one DM, or the organization (sprints). */
+export type Scope =
+  | { type: "project"; projectId: string }
+  | { type: "conversation"; conversationId: string }
+  | { type: "organization" };
+
+/** Encrypts and decrypts content of one scope; each kind of content has its own key domain. */
+export class ContentCrypto {
   private domains = new Map<DomainKind, KeyDomain>();
 
   constructor(
-    readonly projectId: string,
+    readonly scope: Scope,
     private readonly client: Client,
     private readonly crypto: Crypto,
     private readonly vault: Vault,
@@ -53,20 +66,38 @@ export class ProjectCrypto {
     private readonly deviceId: string,
   ) {}
 
+  private async fetchDomains(): Promise<KeyDomain[]> {
+    switch (this.scope.type) {
+      case "project":
+        return listKeyDomains(this.client, this.scope.projectId);
+      case "conversation": {
+        const domain = await getConversationKeyDomain(
+          this.client,
+          this.scope.conversationId,
+        );
+        return domain === null ? [] : [domain];
+      }
+      case "organization": {
+        const domain = await getSprintKeyDomain(this.client).catch(() => null);
+        return domain === null ? [] : [domain];
+      }
+    }
+  }
+
   /**
    * Re-reads the domains and loads the keys. With `maintain`, also acts as a
    * steward for domains that already have a generation: rotation after a
    * revocation, history for devices that joined later. It never turns
-   * encryption on by itself; that is an explicit, project-wide decision.
+   * encryption on by itself; that is an explicit decision.
    */
   async refresh(maintain: boolean): Promise<void> {
-    let domains = await listKeyDomains(this.client, this.projectId);
+    let domains = await this.fetchDomains();
     if (maintain) {
       for (const domain of domains) {
         if (domain.currentGeneration === 0) continue;
         try {
           if ((await this.keyring.maintain(domain)) !== "nothing") {
-            domains = await listKeyDomains(this.client, this.projectId);
+            domains = await this.fetchDomains();
           }
         } catch {
           // Another steward may have acted first; the next event refreshes again.
@@ -80,11 +111,36 @@ export class ProjectCrypto {
   }
 
   /**
-   * Turns encryption on for the project: creates the domains and publishes
-   * generation 1. From then on the server refuses plaintext for this project.
+   * Turns encryption on for the scope: creates the domains and publishes
+   * generation 1. From then on the server refuses plaintext for it.
    */
-  async enable(): Promise<void> {
-    for (const domain of await this.keyring.ensureDomains(this.projectId)) {
+  async enable(csrf: () => string): Promise<void> {
+    let created: KeyDomain[];
+    switch (this.scope.type) {
+      case "project":
+        created = await this.keyring.ensureDomains(this.scope.projectId);
+        break;
+      case "conversation":
+        created = [
+          (await getConversationKeyDomain(
+            this.client,
+            this.scope.conversationId,
+          )) ??
+            (await createConversationKeyDomain(
+              this.client,
+              csrf(),
+              this.scope.conversationId,
+            )),
+        ];
+        break;
+      case "organization":
+        created = [
+          (await getSprintKeyDomain(this.client).catch(() => null)) ??
+            (await createSprintKeyDomain(this.client, csrf())),
+        ];
+        break;
+    }
+    for (const domain of created) {
       if (domain.currentGeneration === 0) await this.keyring.maintain(domain);
     }
     await this.refresh(false);
@@ -171,3 +227,6 @@ export class ProjectCrypto {
     }
   }
 }
+
+/** Kept for the project screens, which are the most common scope. */
+export { ContentCrypto as ProjectCrypto };
