@@ -51,12 +51,47 @@ function KinMark({ small = false }: { small?: boolean }) {
       viewBox="0 0 88 88"
     >
       <path
-        d="M14 26h12V14h36v12h12v36H62v12H26V62H14V26Z"
+        d="M14 76V31C14 17 25 8 39 8h10v18H39c-4 0-7 3-7 7v43H14Zm42 0V33c0-4-3-7-7-7H39V8h10c14 0 25 9 25 23v45H56Z"
         fill="currentColor"
       />
-      <path d="M30 37h8v8h-8zm20 0h8v8h-8zM36 54h16v6H36z" fill="#f8f4e9" />
-      <path d="M26 8h12v12H26zm24 0h12v12H50z" fill="#d76d4a" />
+      <path
+        d="M32 76V42c0-9 7-16 16-16s16 7 16 16v34H48V44c0-1-1-2-2-2s-2 1-2 2v32H32Z"
+        fill="currentColor"
+      />
     </svg>
+  );
+}
+
+function Celebration({
+  title,
+  onDismiss,
+}: {
+  title: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="completion-celebration" role="status">
+      <div className="completion-celebration__panel">
+        <div
+          aria-hidden="true"
+          className="explorer-pair explorer-pair--celebrate"
+        >
+          <span className="pixel-explorer pixel-explorer--bot" />
+          <span className="pixel-explorer pixel-explorer--scout" />
+        </div>
+        <div>
+          <strong>{title}</strong>
+          <p>Pequenos passos contam.</p>
+        </div>
+        <button
+          aria-label="Fechar celebração"
+          onClick={onDismiss}
+          type="button"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -325,6 +360,7 @@ function Workspace({
   const [inviteKind, setInviteKind] = useState<MembershipKind>("internal");
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState("");
+  const [celebration, setCelebration] = useState<string | null>(null);
 
   async function handleLogout() {
     const csrfToken = readCookie(document.cookie, "oddkin_csrf");
@@ -374,12 +410,18 @@ function Workspace({
           <span>ODDKIN</span>
         </div>
         <nav aria-label="Navegação principal">
-          <a aria-current="page" href="#inicio">
-            Início
+          <a href="#inicio">Visão geral</a>
+          <a aria-current="page" href="#atividades">
+            Atividades
           </a>
+          <a href="#sprints">Sprints</a>
+          <a href="#conversas">Conversas</a>
+          <a href="#seguranca">Segurança</a>
         </nav>
         <NotificationsPanel />
-        <SecurityPanel account={account} />
+        <div id="seguranca">
+          <SecurityPanel account={account} />
+        </div>
         <CallInvitations client={client} />
         <div className="account-block">
           <span>Sessão ativa</span>
@@ -399,13 +441,26 @@ function Workspace({
       </aside>
 
       <section className="workspace-content" id="inicio">
-        <header>
-          <p className="eyebrow">Seu espaço ODDKIN</p>
-          <h1>O espaço está pronto.</h1>
+        <header className="workspace-header">
+          <div>
+            <h1>Atividades</h1>
+            <p>Pequenos passos. Grandes entregas.</p>
+          </div>
+          <div
+            aria-hidden="true"
+            className="explorer-pair explorer-pair--header"
+          >
+            <span className="pixel-explorer pixel-explorer--bot" />
+            <span className="pixel-explorer pixel-explorer--scout" />
+          </div>
         </header>
-        <ProjectsArea account={account} />
-        <SprintsArea account={account} />
-        <DirectArea account={account} />
+        <ProjectsArea account={account} onCelebrate={setCelebration} />
+        <div id="sprints">
+          <SprintsArea account={account} />
+        </div>
+        <div id="conversas">
+          <DirectArea account={account} />
+        </div>
         {account.isAdmin ? (
           <section className="invite-panel" aria-labelledby="invite-title">
             <div>
@@ -447,6 +502,12 @@ function Workspace({
           </section>
         ) : null}
       </section>
+      {celebration !== null ? (
+        <Celebration
+          onDismiss={() => setCelebration(null)}
+          title={celebration}
+        />
+      ) : null}
     </main>
   );
 }

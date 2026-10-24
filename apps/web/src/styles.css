@@ -977,3 +977,500 @@ select {
   margin: 8px 0;
   font-size: 0.9rem;
 }
+
+/* ODDKIN workspace: the concrete visual system from the supplied mockup. */
+:root {
+  --ink: #202321;
+  --moss: #63745a;
+  --lime: #dfff70;
+  --paper: #f1f0e8;
+  --white: #ffffff;
+  --line: #dcdbd1;
+  --muted: #69706c;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color: var(--ink);
+  background: var(--paper);
+  accent-color: var(--moss);
+}
+
+::selection {
+  color: var(--ink);
+  background: var(--lime);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline-color: var(--lime);
+  outline-offset: 3px;
+}
+
+.workspace-shell {
+  grid-template-columns: 264px minmax(0, 1fr);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.workspace-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  padding: 28px 18px 22px;
+  color: var(--white);
+  background: var(--ink);
+}
+
+.brand-lockup {
+  gap: 10px;
+  letter-spacing: -0.035em;
+}
+.brand-lockup--sidebar {
+  margin: 0 0 42px;
+  font-size: 1.38rem;
+  font-style: italic;
+}
+.kin-mark--small {
+  width: 32px;
+}
+
+.workspace-sidebar nav {
+  gap: 4px;
+}
+.workspace-sidebar nav a {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  background: transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.workspace-sidebar nav a[aria-current="page"] {
+  color: var(--lime);
+  background: rgba(223, 255, 112, 0.15);
+  box-shadow: inset 2px 0 0 var(--lime);
+}
+.workspace-sidebar .notifications,
+.workspace-sidebar .security {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.workspace-sidebar .badge {
+  color: var(--ink);
+  background: var(--lime);
+}
+.account-block {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.text-button {
+  color: var(--moss);
+  transition:
+    color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.text-button:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+.workspace-sidebar .text-button {
+  color: var(--lime);
+}
+
+.workspace-content {
+  width: min(100%, 1500px);
+  margin: 0 auto;
+  padding: 44px clamp(28px, 4vw, 68px) 80px;
+}
+.workspace-header {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 0 4px 26px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-content h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.workspace-header > div > p:last-child {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.explorer-pair {
+  display: flex;
+  align-items: end;
+}
+.explorer-pair--header {
+  width: 180px;
+  height: 112px;
+  justify-content: center;
+  gap: 1px;
+}
+.pixel-explorer {
+  display: block;
+  width: 92px;
+  height: 112px;
+  background-image: url("../../../assets/exec-d0cfae3c-8f08-456b-aef9-4acc322839c1.png");
+  background-repeat: no-repeat;
+  background-size: 276px 184px;
+  image-rendering: pixelated;
+}
+.pixel-explorer--bot {
+  background-position: 0 0;
+}
+.pixel-explorer--scout {
+  background-position: -92px 0;
+}
+
+.projects {
+  margin-top: 24px;
+}
+.projects__bar {
+  gap: 12px 18px;
+}
+.projects__bar h2,
+.epics h3,
+.chat h2,
+.sprints h2,
+.direct h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.08rem;
+  letter-spacing: -0.02em;
+}
+.project-tabs {
+  gap: 6px;
+}
+.project-tab {
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--white);
+  font-size: 0.83rem;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.project-tab[aria-selected="true"] {
+  border-color: var(--moss);
+  color: var(--white);
+  background: var(--moss);
+}
+.inline-form {
+  align-items: center;
+  gap: 8px;
+}
+.inline-form input,
+.detail input,
+.detail textarea,
+.detail select,
+.invite-panel input,
+.invite-panel select {
+  border-color: var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--white);
+  box-shadow: none;
+}
+.inline-form button,
+.detail form > button,
+.invite-panel button {
+  border-radius: 8px;
+  color: var(--white);
+  background: var(--ink);
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+.project-view {
+  margin-top: 22px;
+}
+.project-encryption {
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #426047;
+  background: #e7efe2;
+}
+.empty-note--explorers {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 560px;
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--moss) 35%, var(--line));
+  border-radius: 12px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 70%, var(--white));
+}
+.empty-note--explorers .explorer-pair {
+  flex: 0 0 auto;
+}
+.empty-note--explorers p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+.board {
+  gap: 14px;
+  padding: 8px 2px 18px;
+}
+.board-column {
+  min-height: 360px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #e9e8e1;
+}
+.board-column h3 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 14px;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+.board-column h3 span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink);
+  background: rgba(32, 35, 33, 0.08);
+  font-size: 0.74rem;
+}
+.card {
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--white);
+  box-shadow: 0 8px 18px rgba(32, 35, 33, 0.07);
+  transition:
+    transform 150ms var(--ease-out),
+    box-shadow 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 22px rgba(32, 35, 33, 0.11);
+  }
+}
+.card__title {
+  color: var(--ink);
+  font-size: 0.98rem;
+  letter-spacing: -0.015em;
+}
+.card__meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.card select {
+  border-color: transparent;
+  border-radius: 6px;
+  color: var(--moss);
+  background: #f5f5f0;
+  font-size: 0.76rem;
+}
+.epics {
+  padding: 14px 0 8px;
+}
+.epics li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.epics li span {
+  margin: 0;
+  color: var(--muted);
+}
+
+.detail,
+.messages,
+.sprint-list li,
+.invite-panel {
+  border-color: var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 12px 26px rgba(32, 35, 33, 0.05);
+}
+.detail {
+  padding: 24px;
+}
+.messages {
+  max-height: 380px;
+}
+.chat,
+.direct,
+.sprints {
+  margin-top: 52px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.attachments progress {
+  accent-color: var(--lime);
+}
+
+.completion-celebration {
+  position: fixed;
+  inset: auto 24px 24px auto;
+  z-index: 40;
+  animation: celebration-enter 220ms var(--ease-out) both;
+}
+.completion-celebration__panel {
+  display: flex;
+  min-width: min(480px, calc(100vw - 48px));
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 6px;
+  border-radius: 14px;
+  color: var(--white);
+  background: var(--ink);
+  box-shadow: 0 18px 42px rgba(32, 35, 33, 0.28);
+}
+.explorer-pair--celebrate {
+  width: 140px;
+  height: 92px;
+  gap: 0;
+  overflow: hidden;
+}
+.explorer-pair--celebrate .pixel-explorer {
+  width: 70px;
+  height: 88px;
+  background-size: 210px 140px;
+}
+.explorer-pair--celebrate .pixel-explorer--scout {
+  background-position: -70px 0;
+}
+.completion-celebration strong {
+  color: var(--lime);
+}
+.completion-celebration p {
+  margin: 3px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.82rem;
+}
+.completion-celebration button {
+  margin-left: auto;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 7px;
+  color: var(--white);
+  background: transparent;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+@keyframes celebration-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inline-form button:hover,
+  .detail form > button:hover,
+  .invite-panel button:hover {
+    background: var(--moss);
+    transform: translateY(-1px);
+  }
+
+  .workspace-sidebar nav a:hover {
+    color: var(--white);
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(2px);
+  }
+
+  .project-tab:hover {
+    border-color: var(--moss);
+    color: var(--ink);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace-sidebar {
+    position: static;
+    height: auto;
+    padding: 14px 18px;
+  }
+  .workspace-sidebar nav,
+  .workspace-sidebar .notifications,
+  .workspace-sidebar #seguranca,
+  .workspace-sidebar .call-invitations {
+    display: none;
+  }
+  .workspace-content {
+    padding: 28px 18px 64px;
+  }
+  .workspace-header {
+    min-height: 108px;
+    margin-bottom: 12px;
+    padding-bottom: 16px;
+  }
+  .workspace-header h1 {
+    font-size: 2rem;
+  }
+  .explorer-pair--header {
+    width: 116px;
+    height: 84px;
+  }
+  .explorer-pair--header .pixel-explorer {
+    width: 58px;
+    height: 76px;
+    background-size: 174px 116px;
+  }
+  .explorer-pair--header .pixel-explorer--scout {
+    background-position: -58px 0;
+  }
+  .projects__bar {
+    align-items: flex-start;
+  }
+  .completion-celebration {
+    inset: auto 12px 12px;
+  }
+  .completion-celebration__panel {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-sidebar nav a,
+  .project-tab,
+  .card,
+  .inline-form button,
+  .detail form > button,
+  .invite-panel button {
+    transition-property: color, background-color, border-color, box-shadow;
+  }
+  .completion-celebration {
+    animation: fade-in 160ms ease both;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

@@ -107,7 +107,13 @@ function describe(error: unknown): string {
   return "Não foi possível concluir a ação.";
 }
 
-export function ProjectsArea({ account }: { account: CurrentAccount }) {
+export function ProjectsArea({
+  account,
+  onCelebrate,
+}: {
+  account: CurrentAccount;
+  onCelebrate: (title: string) => void;
+}) {
   const client = useMemo(() => createApiClient(""), []);
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -186,7 +192,11 @@ export function ProjectsArea({ account }: { account: CurrentAccount }) {
   const current = projects?.find((p) => p.id === selected) ?? null;
 
   return (
-    <section className="projects" aria-labelledby="projects-title">
+    <section
+      className="projects"
+      id="atividades"
+      aria-labelledby="projects-title"
+    >
       <div className="projects__bar">
         <h2 id="projects-title">Projetos</h2>
         <div className="project-tabs" role="tablist" aria-label="Projetos">
@@ -225,17 +235,27 @@ export function ProjectsArea({ account }: { account: CurrentAccount }) {
       </p>
       {projects === null ? <p>Carregando projetos…</p> : null}
       {projects !== null && projects.length === 0 ? (
-        <p className="empty-note">
-          {account.isAdmin
-            ? "Crie o primeiro projeto para começar."
-            : "Você ainda não participa de nenhum projeto."}
-        </p>
+        <div className="empty-note empty-note--explorers">
+          <div aria-hidden="true" className="explorer-pair">
+            <span className="pixel-explorer pixel-explorer--bot" />
+            <span className="pixel-explorer pixel-explorer--scout" />
+          </div>
+          <div>
+            <strong>O mapa está livre.</strong>
+            <p>
+              {account.isAdmin
+                ? "Crie o primeiro projeto para começar."
+                : "Você ainda não participa de nenhum projeto."}
+            </p>
+          </div>
+        </div>
       ) : null}
       {current !== null ? (
         <ProjectView
           client={client}
           key={current.id}
           me={account.email}
+          onCelebrate={onCelebrate}
           project={current}
         />
       ) : null}
@@ -247,10 +267,12 @@ function ProjectView({
   client,
   project,
   me,
+  onCelebrate,
 }: {
   client: Client;
   project: Project;
   me: string;
+  onCelebrate: (title: string) => void;
 }) {
   const [columns, setColumns] = useState<BoardColumn[]>([]);
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -606,15 +628,22 @@ function ProjectView({
                     </label>
                     <select
                       id={`move-${card.id}`}
-                      onChange={(event) =>
-                        void run(() =>
-                          updateWorkItem(client, csrfToken(), card.id, {
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        const justFinished =
+                          columns.find((column) => column.id === next)
+                            ?.category === "done" &&
+                          columns.find((column) => column.id === card.columnId)
+                            ?.category !== "done";
+                        void run(async () => {
+                          await updateWorkItem(client, csrfToken(), card.id, {
                             version: card.version,
-                            columnId: event.target.value,
+                            columnId: next,
                             completeSubtasks: true,
-                          }),
-                        )
-                      }
+                          });
+                          if (justFinished) onCelebrate("Atividade concluída!");
+                        });
+                      }}
                       value={card.columnId}
                     >
                       {columns.map((option) => (
@@ -904,7 +933,11 @@ function ItemDetail({
 
       <Attachments
         client={client}
-        context={{ contextType: "work_item", contextId: item.id, projectId: item.projectId }}
+        context={{
+          contextType: "work_item",
+          contextId: item.id,
+          projectId: item.projectId,
+        }}
       />
 
       <h3>Comentários</h3>
