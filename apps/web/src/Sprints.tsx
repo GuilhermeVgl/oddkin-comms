@@ -35,7 +35,13 @@ function csrfToken(): string {
   return token;
 }
 
-export function SprintsArea({ account }: { account: CurrentAccount }) {
+export function SprintsArea({
+  account,
+  onCelebrate,
+}: {
+  account: CurrentAccount;
+  onCelebrate?: (title: string) => void;
+}) {
   const client = useMemo(() => createApiClient(""), []);
   const [sprints, setSprints] = useState<Sprint[] | null>(null);
   const [items, setItems] = useState<Record<string, WorkItem[]>>({});
@@ -233,7 +239,12 @@ export function SprintsArea({ account }: { account: CurrentAccount }) {
       {closing !== null ? (
         <CloseDialog
           client={client}
-          onDone={() => {
+          onClosed={() => {
+            setClosing(null);
+            void reload();
+            onCelebrate?.("Sprint encerrada!");
+          }}
+          onClose={() => {
             setClosing(null);
             void reload();
           }}
@@ -249,12 +260,14 @@ function CloseDialog({
   client,
   sprint,
   planned,
-  onDone,
+  onClosed,
+  onClose,
 }: {
   client: ReturnType<typeof createApiClient>;
   sprint: Sprint;
   planned: Sprint[];
-  onDone: () => void;
+  onClosed: () => void;
+  onClose: () => void;
 }) {
   const [preview, setPreview] = useState<SprintClosePreview | null>(null);
   const [choices, setChoices] = useState<Record<string, "next" | "backlog">>(
@@ -355,7 +368,7 @@ function CloseDialog({
               })),
               needsNext ? destination : undefined,
             )
-              .then(onDone)
+              .then(onClosed)
               .catch(() =>
                 setError(
                   "Alguém alterou uma pendência. Reabra o resumo e revise.",
@@ -366,7 +379,7 @@ function CloseDialog({
         >
           Confirmar encerramento
         </button>
-        <button className="text-button" onClick={onDone} type="button">
+        <button className="text-button" onClick={onClose} type="button">
           Cancelar
         </button>
       </div>

@@ -551,7 +551,7 @@ function Workspace({
         ) : null}
         {activeSection === "sprints" ? (
           <div className="workspace-view">
-            <SprintsArea account={account} />
+            <SprintsArea account={account} onCelebrate={setCelebration} />
           </div>
         ) : null}
         {activeSection === "messages" ? (
