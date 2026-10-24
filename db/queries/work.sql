@@ -718,3 +718,11 @@ RETURNING *;
 
 -- name: GetEpic :one
 SELECT * FROM epic WHERE id = $1;
+
+-- name: GetWorkItemComment :one
+SELECT * FROM work_item_comment WHERE id = $1 FOR UPDATE;
+
+-- name: SetCommentContent :execrows
+UPDATE work_item_comment
+SET encrypted = true, body = '', body_enc = $2, content_signer_device_id = $3
+WHERE id = $1 AND NOT encrypted;

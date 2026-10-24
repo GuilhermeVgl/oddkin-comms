@@ -1035,3 +1035,72 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 	}
 	writeJSON(w, http.StatusCreated, response)
 }
+
+// EncryptComment migrates the author's own legacy plaintext comment: the
+// plaintext is erased in the same statement that stores the envelope.
+func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.EncryptCommentRequest
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	comment, err := q.GetWorkItemComment(ctx, pgUUID(uuidFrom(commentId)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	item, err := q.GetWorkItem(ctx, comment.WorkItemID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
+	if !ok {
+		return
+	}
+	if comment.AuthorID != session.AccountID || !access.access.Can(work.WorkRead) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if comment.Encrypted || access.archived {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	if err == nil && fail == nil {
+		fail = writer.verify(session.AccountID, commentResource(comment.ID), 1, payload.BodyEnc)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	bodyEnc, _ := unb64(payload.BodyEnc, 0)
+	if _, err = q.SetCommentContent(ctx, sqlc.SetCommentContentParams{ID: comment.ID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID}); err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

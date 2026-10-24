@@ -145,6 +145,10 @@ func TestEncryptedContentRulesAndMigration(t *testing.T) {
 	if code := member.do(http.MethodPost, base+"/work-items", `{"kind":"task","title":"Legado","description":"texto em claro"}`, &legacyItem); code != http.StatusCreated {
 		t.Fatalf("legacy item: %d", code)
 	}
+	var legacyComment struct{ Id string }
+	if code := member.do(http.MethodPost, "/api/v1/work-items/"+legacyItem.Id+"/comments", `{"body":"comentário antigo"}`, &legacyComment); code != http.StatusCreated {
+		t.Fatalf("legacy comment: %d", code)
+	}
 	var legacyMessage struct{ Id string }
 	if code := member.do(http.MethodPost, messagesPath, `{"body":"mensagem antiga","clientMutationId":"00000000-0000-4000-8000-0000000004a1"}`, &legacyMessage); code != http.StatusCreated {
 		t.Fatalf("legacy message: %d", code)
@@ -285,6 +289,22 @@ func TestEncryptedContentRulesAndMigration(t *testing.T) {
 	var leftover int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM work_item WHERE id = $1 AND (title <> '' OR description <> '') `, legacyItem.Id).Scan(&leftover); err != nil || leftover != 0 {
 		t.Fatalf("migration must erase the plaintext: %d %v", leftover, err)
+	}
+
+	// A legacy comment can only be encrypted by its author, and its plaintext disappears.
+	migrated := fmt.Sprintf(`{"bodyEnc":%q,"signerDeviceId":%q}`, own(memberEmail, memberDevice, workDomain, "wc:"+legacyComment.Id, 1), memberDevice.id)
+	if code := admin.do(http.MethodPatch, "/api/v1/comments/"+legacyComment.Id, migrated, nil); code != http.StatusForbidden {
+		t.Fatalf("someone else encrypting a comment: %d", code)
+	}
+	if code := member.do(http.MethodPatch, "/api/v1/comments/"+legacyComment.Id, migrated, nil); code != http.StatusNoContent {
+		t.Fatalf("migrate legacy comment: %d", code)
+	}
+	if code := member.do(http.MethodPatch, "/api/v1/comments/"+legacyComment.Id, migrated, nil); code != http.StatusConflict {
+		t.Fatalf("migrating twice: %d", code)
+	}
+	var commentPlaintext int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM work_item_comment WHERE id = $1 AND body <> ''`, legacyComment.Id).Scan(&commentPlaintext); err != nil || commentPlaintext != 0 {
+		t.Fatalf("legacy comment plaintext must be gone: %d %v", commentPlaintext, err)
 	}
 
 	// Comments, epics and messages.

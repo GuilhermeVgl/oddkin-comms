@@ -1741,6 +1741,26 @@ func (q *Queries) GetWorkItem(ctx context.Context, id pgtype.UUID) (WorkItem, er
 	return i, err
 }
 
+const getWorkItemComment = `-- name: GetWorkItemComment :one
+SELECT id, work_item_id, author_id, body, created_at, encrypted, body_enc, content_signer_device_id FROM work_item_comment WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetWorkItemComment(ctx context.Context, id pgtype.UUID) (WorkItemComment, error) {
+	row := q.db.QueryRow(ctx, getWorkItemComment, id)
+	var i WorkItemComment
+	err := row.Scan(
+		&i.ID,
+		&i.WorkItemID,
+		&i.AuthorID,
+		&i.Body,
+		&i.CreatedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
 const getWorkItemForUpdate = `-- name: GetWorkItemForUpdate :one
 SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 FROM work_item
@@ -3901,6 +3921,26 @@ type SetCallInvitationStateParams struct {
 
 func (q *Queries) SetCallInvitationState(ctx context.Context, arg SetCallInvitationStateParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setCallInvitationState, arg.CallID, arg.AccountID, arg.State)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setCommentContent = `-- name: SetCommentContent :execrows
+UPDATE work_item_comment
+SET encrypted = true, body = '', body_enc = $2, content_signer_device_id = $3
+WHERE id = $1 AND NOT encrypted
+`
+
+type SetCommentContentParams struct {
+	ID                    pgtype.UUID
+	BodyEnc               []byte
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) SetCommentContent(ctx context.Context, arg SetCommentContentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCommentContent, arg.ID, arg.BodyEnc, arg.ContentSignerDeviceID)
 	if err != nil {
 		return 0, err
 	}

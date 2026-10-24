@@ -1818,6 +1818,40 @@ paths:
           description: Not an authorized reader
         "404":
           description: Unknown or inaccessible key domain
+  /api/v1/comments/{commentId}:
+    parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: encryptComment
+      summary: Replace your own legacy plaintext comment with its encrypted form (migration)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EncryptCommentRequest"
+      responses:
+        "204":
+          description: Comment encrypted; the plaintext is erased
+        "400":
+          description: Invalid envelope
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or not the author
+        "404":
+          description: Unknown or inaccessible comment
+        "409":
+          description: Already encrypted, or the key domain is not writable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -2612,9 +2646,19 @@ components:
         kind: { type: string, enum: [work, chat] }
     KeyDomain:
       type: object
-      required: [id, projectId, kind, currentGeneration, state, writable]
+      required:
+        [
+          id,
+          organizationId,
+          projectId,
+          kind,
+          currentGeneration,
+          state,
+          writable,
+        ]
       additionalProperties: false
       properties:
+        organizationId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         kind: { type: string, enum: [work, chat] }
@@ -2698,3 +2742,10 @@ components:
               recipientDeviceId: { type: string, format: uuid }
               sealed: { $ref: "#/components/schemas/Base64Url" }
               signature: { $ref: "#/components/schemas/Base64Url" }
+    EncryptCommentRequest:
+      type: object
+      required: [bodyEnc, signerDeviceId]
+      additionalProperties: false
+      properties:
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }

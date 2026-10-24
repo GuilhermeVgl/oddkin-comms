@@ -964,6 +964,13 @@ type EditMessageRequest struct {
 	SignerDeviceId  *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
+// EncryptCommentRequest defines model for EncryptCommentRequest.
+type EncryptCommentRequest struct {
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc        EncryptedBlob      `json:"bodyEnc"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+}
+
 // EncryptedBlob Unpadded base64url of a content envelope (header, ciphertext and signature)
 type EncryptedBlob = string
 
@@ -1037,6 +1044,7 @@ type KeyDomain struct {
 	CurrentGeneration int                `json:"currentGeneration"`
 	Id                openapi_types.UUID `json:"id"`
 	Kind              KeyDomainKind      `json:"kind"`
+	OrganizationId    openapi_types.UUID `json:"organizationId"`
 	ProjectId         openapi_types.UUID `json:"projectId"`
 	State             KeyDomainState     `json:"state"`
 
@@ -1404,6 +1412,9 @@ type StartCallJSONRequestBody = StartCallRequest
 // JoinCallJSONRequestBody defines body for JoinCall for application/json ContentType.
 type JoinCallJSONRequestBody = JoinCallRequest
 
+// EncryptCommentJSONRequestBody defines body for EncryptComment for application/json ContentType.
+type EncryptCommentJSONRequestBody = EncryptCommentRequest
+
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
@@ -1532,6 +1543,9 @@ type ServerInterface interface {
 	// StartScreenShare Take the single screen-share slot and receive a token allowing that source
 	// (POST /api/v1/calls/{callId}/screen-share)
 	StartScreenShare(w http.ResponseWriter, r *http.Request, callId CallId)
+	// EncryptComment Replace your own legacy plaintext comment with its encrypted form (migration)
+	// (PATCH /api/v1/comments/{commentId})
+	EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID)
 	// ListConversationAttachments Ready attachments of a channel or DM
 	// (GET /api/v1/conversations/{conversationId}/attachments)
 	ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
@@ -2109,6 +2123,32 @@ func (siw *ServerInterfaceWrapper) StartScreenShare(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartScreenShare(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EncryptComment operation middleware
+func (siw *ServerInterfaceWrapper) EncryptComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "commentId" -------------
+	var commentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "commentId", r.PathValue("commentId"), &commentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "commentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EncryptComment(w, r, commentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3740,6 +3780,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/devices/{deviceId}", wrapper.GetDevice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recipients", wrapper.ListKeyRecipients)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/authorized-devices", wrapper.ListAuthorizedDevices)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/comments/{commentId}", wrapper.EncryptComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 

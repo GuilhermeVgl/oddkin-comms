@@ -158,7 +158,7 @@ func refreshAccountDomains(ctx context.Context, q *sqlc.Queries, device sqlc.Dev
 
 func toKeyDomain(domain sqlc.KeyDomain) gen.KeyDomain {
 	return gen.KeyDomain{
-		Id: fromPG(domain.ID), ProjectId: fromPG(domain.ProjectID), Kind: gen.KeyDomainKind(domain.Kind),
+		Id: fromPG(domain.ID), OrganizationId: fromPG(domain.OrganizationID), ProjectId: fromPG(domain.ProjectID), Kind: gen.KeyDomainKind(domain.Kind),
 		CurrentGeneration: int(domain.CurrentGeneration), State: gen.KeyDomainState(domain.State),
 		Writable: domain.State != "rotation_required" && domain.CurrentGeneration > 0,
 	}

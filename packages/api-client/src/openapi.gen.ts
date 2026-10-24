@@ -1176,6 +1176,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/comments/{commentId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        commentId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Replace your own legacy plaintext comment with its encrypted form (migration) */
+    patch: operations["encryptComment"];
+    trace?: never;
+  };
   "/api/v1/health/live": {
     parameters: {
       query?: never;
@@ -1766,6 +1785,8 @@ export interface components {
     };
     KeyDomain: {
       /** Format: uuid */
+      organizationId: string;
+      /** Format: uuid */
       id: string;
       /** Format: uuid */
       projectId: string;
@@ -1825,6 +1846,11 @@ export interface components {
         sealed: components["schemas"]["Base64Url"];
         signature: components["schemas"]["Base64Url"];
       }[];
+    };
+    EncryptCommentRequest: {
+      bodyEnc: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId: string;
     };
   };
   responses: never;
@@ -5398,6 +5424,67 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  encryptComment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        commentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EncryptCommentRequest"];
+      };
+    };
+    responses: {
+      /** @description Comment encrypted; the plaintext is erased */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid envelope */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or not the author */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible comment */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Already encrypted, or the key domain is not writable */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
