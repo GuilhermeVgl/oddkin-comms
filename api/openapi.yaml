@@ -180,6 +180,34 @@ paths:
           description: No active session
         "404":
           description: Unknown or inaccessible project
+    patch:
+      operationId: updateProject
+      summary: Encrypt the project name and description (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "204":
+          description: Updated; the plaintext is erased
+        "400":
+          description: Invalid envelope
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible resource
+        "409":
+          description: Revision, generation or domain state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/projects/{projectId}/members:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -1852,6 +1880,148 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/conversations/{conversationId}/key-domain:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getConversationKeyDomain
+      summary: Key domain of a direct conversation, if one exists
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Key domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "404":
+          description: No such domain or conversation
+    post:
+      operationId: createConversationKeyDomain
+      summary: Create the key domain of a DM (either participant)
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Key domain waiting for its first generation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected, or not a DM
+        "404":
+          description: Unknown or inaccessible conversation
+        "409":
+          description: Domain already exists
+  /api/v1/e2ee/sprint-domain:
+    get:
+      operationId: getSprintKeyDomain
+      summary: Key domain shared by internal members for sprint names and goals
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Key domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "404":
+          description: Not created yet, or the account is not internal
+    post:
+      operationId: createSprintKeyDomain
+      summary: Create the sprint key domain (organization administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Key domain waiting for its first generation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "409":
+          description: Domain already exists
+  /api/v1/conversations/{conversationId}:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateConversation
+      summary: Encrypt the name of a channel (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationRequest"
+      responses:
+        "204":
+          description: Updated; the plaintext is erased
+        "400":
+          description: Invalid envelope
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible resource
+        "409":
+          description: Revision, generation or domain state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/sprints/{sprintId}:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    patch:
+      operationId: updateSprint
+      summary: Encrypt the name and goal of a sprint (organization administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSprintRequest"
+      responses:
+        "204":
+          description: Updated; the plaintext is erased
+        "400":
+          description: Invalid envelope
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible resource
+        "409":
+          description: Revision, generation or domain state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -1996,9 +2166,26 @@ components:
           type: boolean
     Project:
       type: object
-      required: [id, name, description, color, icon, version, isManager]
+      required:
+        [
+          id,
+          name,
+          description,
+          color,
+          icon,
+          version,
+          isManager,
+          encrypted,
+          contentRevision,
+        ]
       additionalProperties: false
       properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        contentAuthorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
@@ -2187,9 +2374,14 @@ components:
         body: { type: string, minLength: 1, maxLength: 10000 }
     Conversation:
       type: object
-      required: [id, name, unread]
+      required: [id, name, unread, encrypted, contentRevision]
       additionalProperties: false
       properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        contentAuthorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         name: { type: string }
         unread: { type: integer, format: int64 }
@@ -2301,9 +2493,26 @@ components:
         done: { type: boolean }
     Sprint:
       type: object
-      required: [id, name, goal, startsOn, endsOn, state, version]
+      required:
+        [
+          id,
+          name,
+          goal,
+          startsOn,
+          endsOn,
+          state,
+          version,
+          encrypted,
+          contentRevision,
+        ]
       additionalProperties: false
       properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        goalEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        contentAuthorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         name: { type: string }
         goal: { type: string }
@@ -2313,9 +2522,13 @@ components:
         version: { type: integer }
     CreateSprintRequest:
       type: object
-      required: [name, startsOn, endsOn]
+      required: [startsOn, endsOn]
       additionalProperties: false
       properties:
+        id: { type: string, format: uuid }
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        goalEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 120 }
         goal: { type: string, maxLength: 2000 }
         startsOn: { type: string, format: date }
@@ -2646,22 +2859,14 @@ components:
         kind: { type: string, enum: [work, chat] }
     KeyDomain:
       type: object
-      required:
-        [
-          id,
-          organizationId,
-          projectId,
-          kind,
-          currentGeneration,
-          state,
-          writable,
-        ]
+      required: [id, organizationId, kind, currentGeneration, state, writable]
       additionalProperties: false
       properties:
         organizationId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
-        kind: { type: string, enum: [work, chat] }
+        conversationId: { type: string, format: uuid }
+        kind: { type: string, enum: [work, chat, dm, sprint] }
         currentGeneration: { type: integer }
         state: { type: string, enum: [ok, pending_keys, rotation_required] }
         writable:
@@ -2749,3 +2954,29 @@ components:
       properties:
         bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         signerDeviceId: { type: string, format: uuid }
+    UpdateProjectRequest:
+      type: object
+      required: [nameEnc, descriptionEnc, signerDeviceId, contentRevision]
+      additionalProperties: false
+      properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision: { type: integer }
+    UpdateConversationRequest:
+      type: object
+      required: [nameEnc, signerDeviceId, contentRevision]
+      additionalProperties: false
+      properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision: { type: integer }
+    UpdateSprintRequest:
+      type: object
+      required: [nameEnc, goalEnc, signerDeviceId, contentRevision]
+      additionalProperties: false
+      properties:
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        goalEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision: { type: integer }

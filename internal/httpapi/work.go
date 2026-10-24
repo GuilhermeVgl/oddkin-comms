@@ -126,8 +126,41 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
-func toProject(id pgtype.UUID, name, description, color, icon string, version int32, manager bool) gen.Project {
-	return gen.Project{Id: fromPG(id), Name: name, Description: description, Color: color, Icon: icon, Version: int(version), IsManager: manager}
+// projectFields is the common shape of a project row, whichever query produced it.
+type projectFields struct {
+	ID                                     pgtype.UUID
+	Name, Description, Color, Icon         string
+	Version, ContentRevision               int32
+	Manager, Encrypted                     bool
+	NameEnc, DescriptionEnc                []byte
+	ContentAuthorID, ContentSignerDeviceID pgtype.UUID
+}
+
+func toProject(f projectFields) gen.Project {
+	project := gen.Project{
+		Id: fromPG(f.ID), Name: f.Name, Description: f.Description, Color: f.Color, Icon: f.Icon, Version: int(f.Version),
+		IsManager: f.Manager, Encrypted: f.Encrypted, ContentRevision: int(f.ContentRevision),
+	}
+	if f.Encrypted {
+		project.NameEnc, project.DescriptionEnc = blob(f.NameEnc), blob(f.DescriptionEnc)
+		if f.ContentAuthorID.Valid {
+			author := fromPG(f.ContentAuthorID)
+			project.ContentAuthorId = &author
+		}
+		if f.ContentSignerDeviceID.Valid {
+			signer := fromPG(f.ContentSignerDeviceID)
+			project.SignerDeviceId = &signer
+		}
+	}
+	return project
+}
+
+func fieldsOf(p sqlc.Project, manager bool) projectFields {
+	return projectFields{
+		ID: p.ID, Name: p.Name, Description: p.Description, Color: p.Color, Icon: p.Icon, Version: p.Version, Manager: manager,
+		Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
+		ContentAuthorID: p.ContentAuthorID, ContentSignerDeviceID: p.ContentSignerDeviceID,
+	}
 }
 
 func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +177,11 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	projects := make([]gen.Project, 0, len(rows))
 	for _, row := range rows {
-		projects = append(projects, toProject(row.ID, row.Name, row.Description, row.Color, row.Icon, row.Version, row.IsManager))
+		projects = append(projects, toProject(projectFields{
+			ID: row.ID, Name: row.Name, Description: row.Description, Color: row.Color, Icon: row.Icon, Version: row.Version, Manager: row.IsManager,
+			Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
+			ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+		}))
 	}
 	writeJSON(w, http.StatusOK, projects)
 }
@@ -216,7 +253,7 @@ func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toProject(project.ID, project.Name, project.Description, project.Color, project.Icon, project.Version, true))
+	writeJSON(w, http.StatusCreated, toProject(fieldsOf(project, true)))
 }
 
 func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
@@ -236,7 +273,7 @@ func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, proje
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusOK, toProject(project.ID, project.Name, project.Description, project.Color, project.Icon, project.Version, access.access.Manager))
+	writeJSON(w, http.StatusOK, toProject(fieldsOf(project, access.access.Manager)))
 }
 
 func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
@@ -1096,6 +1133,82 @@ func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, c
 	}
 	bodyEnc, _ := unb64(payload.BodyEnc, 0)
 	if _, err = q.SetCommentContent(ctx, sqlc.SetCommentContentParams{ID: comment.ID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID}); err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateProject replaces a project's plaintext name and description with their
+// encrypted form (managers only). There is no plaintext rename: once the
+// project has a key, it never has one again.
+func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.UpdateProjectRequest
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	project, err := q.GetProjectForUpdate(ctx, pgUUID(projectId))
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	access, ok := loadAccess(ctx, w, q, project.ID, session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Manager {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	revision := int32(payload.ContentRevision)
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, project.ID, "work", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	if err == nil && fail == nil && revision != project.ContentRevision+1 {
+		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+	}
+	if err == nil && fail == nil {
+		if fail = writer.verify(session.AccountID, projectResource(project.ID, "name"), revision, payload.NameEnc); fail == nil {
+			fail = writer.verify(session.AccountID, projectResource(project.ID, "desc"), revision, payload.DescriptionEnc)
+		}
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	nameEnc, _ := unb64(payload.NameEnc, 0)
+	descriptionEnc, _ := unb64(payload.DescriptionEnc, 0)
+	changed, err := q.SetProjectContent(ctx, sqlc.SetProjectContentParams{
+		ID: project.ID, NameEnc: nameEnc, DescriptionEnc: descriptionEnc, ContentRevision: revision,
+		ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+	})
+	if err == nil && changed == 0 {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {

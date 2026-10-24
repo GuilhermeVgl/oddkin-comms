@@ -45,7 +45,19 @@ func (h *healthHandler) ListConversations(w http.ResponseWriter, r *http.Request
 	}
 	channels := make([]gen.Conversation, 0, len(rows))
 	for _, row := range rows {
-		channels = append(channels, gen.Conversation{Id: fromPG(row.ID), Name: row.Name, Unread: row.Unread})
+		channel := gen.Conversation{Id: fromPG(row.ID), Name: row.Name, Unread: row.Unread, Encrypted: row.Encrypted, ContentRevision: int(row.ContentRevision)}
+		if row.Encrypted {
+			channel.NameEnc = blob(row.NameEnc)
+			if row.ContentAuthorID.Valid {
+				author := fromPG(row.ContentAuthorID)
+				channel.ContentAuthorId = &author
+			}
+			if row.ContentSignerDeviceID.Valid {
+				signer := fromPG(row.ContentSignerDeviceID)
+				channel.SignerDeviceId = &signer
+			}
+		}
+		channels = append(channels, channel)
 	}
 	writeJSON(w, http.StatusOK, channels)
 }
@@ -148,11 +160,19 @@ func buildMessage(m messageView, reactions []gen.ReactionSummary) gen.Message {
 }
 
 // channelDomainFailure applies the encryption rules of a channel message write.
-// DMs have no key domain yet, so they stay plaintext (ADR 0016).
+// A DM follows its own key domain once one has a generation (ADR 0017).
 func channelDomainFailure(ctx context.Context, q *sqlc.Queries, conversation sqlc.Conversation, encrypted bool, account pgtype.UUID, signerID *pgtype.UUID) (*encContext, *encFailure, error) {
 	if conversation.Kind == "dm" {
+		domain, err := q.GetKeyDomainByConversation(ctx, conversation.ID)
+		found := err == nil
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, err
+		}
 		if encrypted {
-			return nil, &encFailure{http.StatusConflict, gen.ApiErrorCodeDomainUnavailable}, nil
+			return prepareEncryptedWith(ctx, q, account, domain, found, signerID)
+		}
+		if found && domain.CurrentGeneration > 0 {
+			return nil, &encFailure{http.StatusConflict, gen.ApiErrorCodeEncryptionRequired}, nil
 		}
 		return nil, nil, nil
 	}
@@ -665,4 +685,74 @@ func announceMessage(ctx context.Context, q *sqlc.Queries, conversation sqlc.Con
 		}
 	}
 	return nil
+}
+
+// UpdateConversation encrypts a channel's name (project managers only).
+func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.UpdateConversationRequest
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	conversation, err := q.GetConversationForUpdate(ctx, pgUUID(uuidFrom(conversationId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && conversation.Kind != "channel") {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	access, ok := loadAccess(ctx, w, q, conversation.ProjectID, session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Manager {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	revision := int32(payload.ContentRevision)
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	if err == nil && fail == nil && revision != conversation.ContentRevision+1 {
+		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+	}
+	if err == nil && fail == nil {
+		fail = writer.verify(session.AccountID, channelResource(conversation.ID), revision, payload.NameEnc)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	nameEnc, _ := unb64(payload.NameEnc, 0)
+	changed, err := q.SetConversationContent(ctx, sqlc.SetConversationContentParams{
+		ID: conversation.ID, NameEnc: nameEnc, ContentRevision: revision, ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+	})
+	if err == nil && changed == 0 {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

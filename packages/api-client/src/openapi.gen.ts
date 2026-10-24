@@ -140,7 +140,8 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
+    /** Encrypt the project name and description (project managers) */
+    patch: operations["updateProject"];
     trace?: never;
   };
   "/api/v1/projects/{projectId}/members": {
@@ -1195,6 +1196,82 @@ export interface paths {
     patch: operations["encryptComment"];
     trace?: never;
   };
+  "/api/v1/conversations/{conversationId}/key-domain": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    /** Key domain of a direct conversation, if one exists */
+    get: operations["getConversationKeyDomain"];
+    put?: never;
+    /** Create the key domain of a DM (either participant) */
+    post: operations["createConversationKeyDomain"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/e2ee/sprint-domain": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Key domain shared by internal members for sprint names and goals */
+    get: operations["getSprintKeyDomain"];
+    put?: never;
+    /** Create the sprint key domain (organization administrators) */
+    post: operations["createSprintKeyDomain"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/conversations/{conversationId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Encrypt the name of a channel (project managers) */
+    patch: operations["updateConversation"];
+    trace?: never;
+  };
+  "/api/v1/sprints/{sprintId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sprintId: components["parameters"]["SprintId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Encrypt the name and goal of a sprint (organization administrators) */
+    patch: operations["updateSprint"];
+    trace?: never;
+  };
   "/api/v1/health/live": {
     parameters: {
       query?: never;
@@ -1272,6 +1349,14 @@ export interface components {
       isAdmin: boolean;
     };
     Project: {
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      contentAuthorId?: string;
       /** Format: uuid */
       id: string;
       name: string;
@@ -1447,6 +1532,13 @@ export interface components {
       body?: string;
     };
     Conversation: {
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      contentAuthorId?: string;
       /** Format: uuid */
       id: string;
       name: string;
@@ -1534,6 +1626,14 @@ export interface components {
       done?: boolean;
     };
     Sprint: {
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      goalEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      contentAuthorId?: string;
       /** Format: uuid */
       id: string;
       name: string;
@@ -1547,7 +1647,13 @@ export interface components {
       version: number;
     };
     CreateSprintRequest: {
-      name: string;
+      /** Format: uuid */
+      id?: string;
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      goalEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      name?: string;
       goal?: string;
       /** Format: date */
       startsOn: string;
@@ -1789,9 +1895,11 @@ export interface components {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
-      projectId: string;
+      projectId?: string;
+      /** Format: uuid */
+      conversationId?: string;
       /** @enum {string} */
-      kind: "work" | "chat";
+      kind: "work" | "chat" | "dm" | "sprint";
       currentGeneration: number;
       /** @enum {string} */
       state: "ok" | "pending_keys" | "rotation_required";
@@ -1851,6 +1959,26 @@ export interface components {
       bodyEnc: components["schemas"]["EncryptedBlob"];
       /** Format: uuid */
       signerDeviceId: string;
+    };
+    UpdateProjectRequest: {
+      nameEnc: components["schemas"]["EncryptedBlob"];
+      descriptionEnc: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId: string;
+      contentRevision: number;
+    };
+    UpdateConversationRequest: {
+      nameEnc: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId: string;
+      contentRevision: number;
+    };
+    UpdateSprintRequest: {
+      nameEnc: components["schemas"]["EncryptedBlob"];
+      goalEnc: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId: string;
+      contentRevision: number;
     };
   };
   responses: never;
@@ -2239,6 +2367,67 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  updateProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateProjectRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated; the plaintext is erased */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid envelope */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible resource */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Revision, generation or domain state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -5478,6 +5667,289 @@ export interface operations {
         content?: never;
       };
       /** @description Already encrypted, or the key domain is not writable */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+    };
+  };
+  getConversationKeyDomain: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key domain */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such domain or conversation */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createConversationKeyDomain: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key domain waiting for its first generation */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected, or not a DM */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible conversation */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Domain already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSprintKeyDomain: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key domain */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not created yet, or the account is not internal */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createSprintKeyDomain: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key domain waiting for its first generation */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Domain already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateConversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateConversationRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated; the plaintext is erased */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid envelope */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible resource */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Revision, generation or domain state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+    };
+  };
+  updateSprint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sprintId: components["parameters"]["SprintId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateSprintRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated; the plaintext is erased */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid envelope */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible resource */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Revision, generation or domain state conflict */
       409: {
         headers: {
           [name: string]: unknown;

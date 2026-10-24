@@ -458,14 +458,20 @@ func (e InvitationMembershipKind) Valid() bool {
 
 // Defines values for KeyDomainKind.
 const (
-	KeyDomainKindChat KeyDomainKind = "chat"
-	KeyDomainKindWork KeyDomainKind = "work"
+	KeyDomainKindChat   KeyDomainKind = "chat"
+	KeyDomainKindDm     KeyDomainKind = "dm"
+	KeyDomainKindSprint KeyDomainKind = "sprint"
+	KeyDomainKindWork   KeyDomainKind = "work"
 )
 
 // Valid indicates whether the value is a known member of the KeyDomainKind enum.
 func (e KeyDomainKind) Valid() bool {
 	switch e {
 	case KeyDomainKindChat:
+		return true
+	case KeyDomainKindDm:
+		return true
+	case KeyDomainKindSprint:
 		return true
 	case KeyDomainKindWork:
 		return true
@@ -781,9 +787,16 @@ type CompleteUploadRequest struct {
 
 // Conversation defines model for Conversation.
 type Conversation struct {
-	Id     openapi_types.UUID `json:"id"`
-	Name   string             `json:"name"`
-	Unread int64              `json:"unread"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentRevision int                 `json:"contentRevision"`
+	Encrypted       bool                `json:"encrypted"`
+	Id              openapi_types.UUID  `json:"id"`
+	Name            string              `json:"name"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Unread         int64               `json:"unread"`
 }
 
 // CreateCommentRequest defines model for CreateCommentRequest.
@@ -836,10 +849,18 @@ type CreateProjectRequest struct {
 
 // CreateSprintRequest defines model for CreateSprintRequest.
 type CreateSprintRequest struct {
-	EndsOn   openapi_types.Date `json:"endsOn"`
-	Goal     *string            `json:"goal,omitempty"`
-	Name     string             `json:"name"`
-	StartsOn openapi_types.Date `json:"startsOn"`
+	EndsOn openapi_types.Date `json:"endsOn"`
+	Goal   *string            `json:"goal,omitempty"`
+
+	// GoalEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	GoalEnc *EncryptedBlob      `json:"goalEnc,omitempty"`
+	Id      *openapi_types.UUID `json:"id,omitempty"`
+	Name    *string             `json:"name,omitempty"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	StartsOn       openapi_types.Date  `json:"startsOn"`
 }
 
 // CreateUploadRequest defines model for CreateUploadRequest.
@@ -1041,12 +1062,13 @@ type JoinCallRequest struct {
 
 // KeyDomain defines model for KeyDomain.
 type KeyDomain struct {
-	CurrentGeneration int                `json:"currentGeneration"`
-	Id                openapi_types.UUID `json:"id"`
-	Kind              KeyDomainKind      `json:"kind"`
-	OrganizationId    openapi_types.UUID `json:"organizationId"`
-	ProjectId         openapi_types.UUID `json:"projectId"`
-	State             KeyDomainState     `json:"state"`
+	ConversationId    *openapi_types.UUID `json:"conversationId,omitempty"`
+	CurrentGeneration int                 `json:"currentGeneration"`
+	Id                openapi_types.UUID  `json:"id"`
+	Kind              KeyDomainKind       `json:"kind"`
+	OrganizationId    openapi_types.UUID  `json:"organizationId"`
+	ProjectId         *openapi_types.UUID `json:"projectId,omitempty"`
+	State             KeyDomainState      `json:"state"`
 
 	// Writable False while a revocation requires a new generation
 	Writable bool `json:"writable"`
@@ -1138,13 +1160,23 @@ type PresignedUrl struct {
 
 // Project defines model for Project.
 type Project struct {
-	Color       string             `json:"color"`
-	Description string             `json:"description"`
-	Icon        string             `json:"icon"`
-	Id          openapi_types.UUID `json:"id"`
-	IsManager   bool               `json:"isManager"`
-	Name        string             `json:"name"`
-	Version     int                `json:"version"`
+	Color           string              `json:"color"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentRevision int                 `json:"contentRevision"`
+	Description     string              `json:"description"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob     `json:"descriptionEnc,omitempty"`
+	Encrypted      bool               `json:"encrypted"`
+	Icon           string             `json:"icon"`
+	Id             openapi_types.UUID `json:"id"`
+	IsManager      bool               `json:"isManager"`
+	Name           string             `json:"name"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Version        int                 `json:"version"`
 }
 
 // ProjectMember defines model for ProjectMember.
@@ -1219,13 +1251,23 @@ type SetTrustRootRequest struct {
 
 // Sprint defines model for Sprint.
 type Sprint struct {
-	EndsOn   openapi_types.Date `json:"endsOn"`
-	Goal     string             `json:"goal"`
-	Id       openapi_types.UUID `json:"id"`
-	Name     string             `json:"name"`
-	StartsOn openapi_types.Date `json:"startsOn"`
-	State    SprintState        `json:"state"`
-	Version  int                `json:"version"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentRevision int                 `json:"contentRevision"`
+	Encrypted       bool                `json:"encrypted"`
+	EndsOn          openapi_types.Date  `json:"endsOn"`
+	Goal            string              `json:"goal"`
+
+	// GoalEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	GoalEnc *EncryptedBlob     `json:"goalEnc,omitempty"`
+	Id      openapi_types.UUID `json:"id"`
+	Name    string             `json:"name"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	StartsOn       openapi_types.Date  `json:"startsOn"`
+	State          SprintState         `json:"state"`
+	Version        int                 `json:"version"`
 }
 
 // SprintState defines model for Sprint.State.
@@ -1258,6 +1300,15 @@ type TrustRoot struct {
 	SignPublicKey Base64Url `json:"signPublicKey"`
 }
 
+// UpdateConversationRequest defines model for UpdateConversationRequest.
+type UpdateConversationRequest struct {
+	ContentRevision int `json:"contentRevision"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        EncryptedBlob      `json:"nameEnc"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+}
+
 // UpdateEpicRequest defines model for UpdateEpicRequest.
 type UpdateEpicRequest struct {
 	ContentRevision *int    `json:"contentRevision,omitempty"`
@@ -1278,6 +1329,30 @@ type UpdateEpicRequest struct {
 type UpdateExternalPolicyRequest struct {
 	Permissions []ExternalPermission `json:"permissions"`
 	Version     int                  `json:"version"`
+}
+
+// UpdateProjectRequest defines model for UpdateProjectRequest.
+type UpdateProjectRequest struct {
+	ContentRevision int `json:"contentRevision"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc EncryptedBlob `json:"descriptionEnc"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        EncryptedBlob      `json:"nameEnc"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+}
+
+// UpdateSprintRequest defines model for UpdateSprintRequest.
+type UpdateSprintRequest struct {
+	ContentRevision int `json:"contentRevision"`
+
+	// GoalEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	GoalEnc EncryptedBlob `json:"goalEnc"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        EncryptedBlob      `json:"nameEnc"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
 }
 
 // UpdateWorkItemRequest defines model for UpdateWorkItemRequest.
@@ -1415,6 +1490,9 @@ type JoinCallJSONRequestBody = JoinCallRequest
 // EncryptCommentJSONRequestBody defines body for EncryptComment for application/json ContentType.
 type EncryptCommentJSONRequestBody = EncryptCommentRequest
 
+// UpdateConversationJSONRequestBody defines body for UpdateConversation for application/json ContentType.
+type UpdateConversationJSONRequestBody = UpdateConversationRequest
+
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
@@ -1457,6 +1535,9 @@ type ToggleReactionJSONRequestBody = ToggleReactionRequest
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
+// UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
+type UpdateProjectJSONRequestBody = UpdateProjectRequest
+
 // CreateEpicJSONRequestBody defines body for CreateEpic for application/json ContentType.
 type CreateEpicJSONRequestBody = CreateEpicRequest
 
@@ -1474,6 +1555,9 @@ type CreateWorkItemJSONRequestBody = CreateWorkItemRequest
 
 // CreateSprintJSONRequestBody defines body for CreateSprint for application/json ContentType.
 type CreateSprintJSONRequestBody = CreateSprintRequest
+
+// UpdateSprintJSONRequestBody defines body for UpdateSprint for application/json ContentType.
+type UpdateSprintJSONRequestBody = UpdateSprintRequest
 
 // CloseSprintJSONRequestBody defines body for CloseSprint for application/json ContentType.
 type CloseSprintJSONRequestBody = CloseSprintRequest
@@ -1546,9 +1630,18 @@ type ServerInterface interface {
 	// EncryptComment Replace your own legacy plaintext comment with its encrypted form (migration)
 	// (PATCH /api/v1/comments/{commentId})
 	EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID)
+	// UpdateConversation Encrypt the name of a channel (project managers)
+	// (PATCH /api/v1/conversations/{conversationId})
+	UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// ListConversationAttachments Ready attachments of a channel or DM
 	// (GET /api/v1/conversations/{conversationId}/attachments)
 	ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// GetConversationKeyDomain Key domain of a direct conversation, if one exists
+	// (GET /api/v1/conversations/{conversationId}/key-domain)
+	GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// CreateConversationKeyDomain Create the key domain of a DM (either participant)
+	// (POST /api/v1/conversations/{conversationId}/key-domain)
+	CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// ListMessages List messages after a sequence number, oldest first
 	// (GET /api/v1/conversations/{conversationId}/messages)
 	ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params ListMessagesParams)
@@ -1585,6 +1678,12 @@ type ServerInterface interface {
 	// OpenDirectConversation Open (or return) the single direct conversation with another person
 	// (POST /api/v1/direct-conversations)
 	OpenDirectConversation(w http.ResponseWriter, r *http.Request)
+	// GetSprintKeyDomain Key domain shared by internal members for sprint names and goals
+	// (GET /api/v1/e2ee/sprint-domain)
+	GetSprintKeyDomain(w http.ResponseWriter, r *http.Request)
+	// CreateSprintKeyDomain Create the sprint key domain (organization administrators)
+	// (POST /api/v1/e2ee/sprint-domain)
+	CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request)
 	// GetTrustRoot Public key of the organization trust root (verify its fingerprint out of band)
 	// (GET /api/v1/e2ee/trust-root)
 	GetTrustRoot(w http.ResponseWriter, r *http.Request)
@@ -1651,6 +1750,9 @@ type ServerInterface interface {
 	// GetProject Return one project the account belongs to
 	// (GET /api/v1/projects/{projectId})
 	GetProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// UpdateProject Encrypt the project name and description (project managers)
+	// (PATCH /api/v1/projects/{projectId})
+	UpdateProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListBoardColumns List board columns
 	// (GET /api/v1/projects/{projectId}/columns)
 	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -1696,6 +1798,9 @@ type ServerInterface interface {
 	// CreateSprint Plan a sprint (organization administrators)
 	// (POST /api/v1/sprints)
 	CreateSprint(w http.ResponseWriter, r *http.Request)
+	// UpdateSprint Encrypt the name and goal of a sprint (organization administrators)
+	// (PATCH /api/v1/sprints/{sprintId})
+	UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId SprintId)
 	// CloseSprint Close an active sprint with a decision for every pending task
 	// (POST /api/v1/sprints/{sprintId}/close)
 	CloseSprint(w http.ResponseWriter, r *http.Request, sprintId SprintId)
@@ -2158,6 +2263,32 @@ func (siw *ServerInterfaceWrapper) EncryptComment(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateConversation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateConversation(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListConversationAttachments operation middleware
 func (siw *ServerInterfaceWrapper) ListConversationAttachments(w http.ResponseWriter, r *http.Request) {
 
@@ -2175,6 +2306,58 @@ func (siw *ServerInterfaceWrapper) ListConversationAttachments(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListConversationAttachments(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationKeyDomain operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationKeyDomain(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateConversationKeyDomain operation middleware
+func (siw *ServerInterfaceWrapper) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateConversationKeyDomain(w, r, conversationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2444,6 +2627,34 @@ func (siw *ServerInterfaceWrapper) OpenDirectConversation(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenDirectConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSprintKeyDomain operation middleware
+func (siw *ServerInterfaceWrapper) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSprintKeyDomain(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSprintKeyDomain operation middleware
+func (siw *ServerInterfaceWrapper) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSprintKeyDomain(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2893,6 +3104,32 @@ func (siw *ServerInterfaceWrapper) GetProject(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateProject operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProject(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListBoardColumns operation middleware
 func (siw *ServerInterfaceWrapper) ListBoardColumns(w http.ResponseWriter, r *http.Request) {
 
@@ -3250,6 +3487,32 @@ func (siw *ServerInterfaceWrapper) CreateSprint(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateSprint(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSprint operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSprint(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSprint(w, r, sprintId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3711,6 +3974,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.ListProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.GetProject)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.UpdateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.ListProjectMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.AddProjectMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.GetExternalPolicy)
@@ -3781,6 +4045,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recipients", wrapper.ListKeyRecipients)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/authorized-devices", wrapper.ListAuthorizedDevices)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/comments/{commentId}", wrapper.EncryptComment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/key-domain", wrapper.GetConversationKeyDomain)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/key-domain", wrapper.CreateConversationKeyDomain)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/e2ee/sprint-domain", wrapper.GetSprintKeyDomain)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/e2ee/sprint-domain", wrapper.CreateSprintKeyDomain)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/conversations/{conversationId}", wrapper.UpdateConversation)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/sprints/{sprintId}", wrapper.UpdateSprint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 

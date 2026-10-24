@@ -89,14 +89,19 @@ type CallInvitation struct {
 }
 
 type Conversation struct {
-	ID        pgtype.UUID
-	ProjectID pgtype.UUID
-	Name      string
-	LastSeq   int64
-	CreatedAt pgtype.Timestamptz
-	Kind      string
-	DmLow     pgtype.UUID
-	DmHigh    pgtype.UUID
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	Name                  string
+	LastSeq               int64
+	CreatedAt             pgtype.Timestamptz
+	Kind                  string
+	DmLow                 pgtype.UUID
+	DmHigh                pgtype.UUID
+	Encrypted             bool
+	NameEnc               []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type ConversationReadCursor struct {
@@ -162,6 +167,7 @@ type KeyDomain struct {
 	CurrentGeneration int32
 	State             string
 	CreatedAt         pgtype.Timestamptz
+	ConversationID    pgtype.UUID
 }
 
 type KeyEnvelope struct {
@@ -257,16 +263,22 @@ type OrganizationTrust struct {
 }
 
 type Project struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	Name           string
-	Description    string
-	Color          string
-	Icon           string
-	Archived       bool
-	Version        int32
-	CreatedBy      pgtype.UUID
-	CreatedAt      pgtype.Timestamptz
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	Name                  string
+	Description           string
+	Color                 string
+	Icon                  string
+	Archived              bool
+	Version               int32
+	CreatedBy             pgtype.UUID
+	CreatedAt             pgtype.Timestamptz
+	Encrypted             bool
+	NameEnc               []byte
+	DescriptionEnc        []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type ProjectMember struct {
@@ -276,18 +288,36 @@ type ProjectMember struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type RecoveryAudit struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	ApproverAccountID  pgtype.UUID
+	ApproverDeviceID   pgtype.UUID
+	DomainID           pgtype.UUID
+	Generation         int32
+	RecipientDeviceID  pgtype.UUID
+	RecipientAccountID pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+}
+
 type Sprint struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	Name           string
-	Goal           string
-	StartsOn       pgtype.Date
-	EndsOn         pgtype.Date
-	State          string
-	ClosedAt       pgtype.Timestamptz
-	Version        int32
-	CreatedBy      pgtype.UUID
-	CreatedAt      pgtype.Timestamptz
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	Name                  string
+	Goal                  string
+	StartsOn              pgtype.Date
+	EndsOn                pgtype.Date
+	State                 string
+	ClosedAt              pgtype.Timestamptz
+	Version               int32
+	CreatedBy             pgtype.UUID
+	CreatedAt             pgtype.Timestamptz
+	Encrypted             bool
+	NameEnc               []byte
+	GoalEnc               []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type SprintItemHistory struct {

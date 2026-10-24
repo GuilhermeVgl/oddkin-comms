@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // The server stores and verifies public material only. It never receives a
@@ -55,11 +56,62 @@ func readPermission(kind string) string {
 	return work.WorkRead
 }
 
+// domainReaders lists the accounts that may read a domain: project members with
+// the matching permission, the two people of a DM, or every internal member for
+// the sprint domain.
+func domainReaders(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) ([]pgtype.UUID, error) {
+	switch domain.Kind {
+	case "dm":
+		conversation, err := q.GetConversation(ctx, domain.ConversationID)
+		if err != nil {
+			return nil, err
+		}
+		return []pgtype.UUID{conversation.DmLow, conversation.DmHigh}, nil
+	case "sprint":
+		return q.ListInternalAccounts(ctx, domain.OrganizationID)
+	default:
+		return projectRecipients(ctx, q, domain.ProjectID, readPermission(domain.Kind))
+	}
+}
+
+// requireReader answers 404 or 403 unless the account may read the domain.
+func requireReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, domain sqlc.KeyDomain, account pgtype.UUID) bool {
+	switch domain.Kind {
+	case "dm":
+		conversation, err := q.GetConversation(ctx, domain.ConversationID)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return false
+		}
+		if account != conversation.DmLow && account != conversation.DmHigh {
+			w.WriteHeader(http.StatusNotFound)
+			return false
+		}
+		return true
+	case "sprint":
+		membership, err := q.GetOrganizationMembershipForAccount(ctx, account)
+		if err != nil || membership.OrganizationID != domain.OrganizationID || membership.MembershipKind != "internal" {
+			w.WriteHeader(http.StatusNotFound)
+			return false
+		}
+		return true
+	}
+	access, ok := loadAccess(ctx, w, q, domain.ProjectID, account)
+	if !ok {
+		return false
+	}
+	if !access.access.Can(readPermission(domain.Kind)) {
+		w.WriteHeader(http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
 // authorizedDevices returns the exact set of devices that must hold a
 // domain's current key: active devices of every reader plus the recovery
 // identity. Revoked, pending and non-reader devices are never members.
 func authorizedDevices(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) ([]pgtype.UUID, error) {
-	readers, err := projectRecipients(ctx, q, domain.ProjectID, readPermission(domain.Kind))
+	readers, err := domainReaders(ctx, q, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -115,11 +167,21 @@ func refreshDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) 
 }
 
 func announceDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) error {
-	members, err := projectRecipients(ctx, q, domain.ProjectID, "")
+	var (
+		members []pgtype.UUID
+		err     error
+	)
+	if domain.Kind == "work" || domain.Kind == "chat" {
+		members, err = projectRecipients(ctx, q, domain.ProjectID, "")
+	} else {
+		members, err = domainReaders(ctx, q, domain)
+	}
 	if err != nil {
 		return err
 	}
-	return emitEvent(ctx, q, members, eventSpec{Type: "key-domain.changed", ResourceID: domain.ID, ProjectID: domain.ProjectID})
+	return emitEvent(ctx, q, members, eventSpec{
+		Type: "key-domain.changed", ResourceID: domain.ID, ProjectID: domain.ProjectID, ConversationID: domain.ConversationID,
+	})
 }
 
 func refreshProjectDomains(ctx context.Context, q *sqlc.Queries, projectID pgtype.UUID) error {
@@ -157,11 +219,20 @@ func refreshAccountDomains(ctx context.Context, q *sqlc.Queries, device sqlc.Dev
 }
 
 func toKeyDomain(domain sqlc.KeyDomain) gen.KeyDomain {
-	return gen.KeyDomain{
-		Id: fromPG(domain.ID), OrganizationId: fromPG(domain.OrganizationID), ProjectId: fromPG(domain.ProjectID), Kind: gen.KeyDomainKind(domain.Kind),
+	response := gen.KeyDomain{
+		Id: fromPG(domain.ID), OrganizationId: fromPG(domain.OrganizationID), Kind: gen.KeyDomainKind(domain.Kind),
 		CurrentGeneration: int(domain.CurrentGeneration), State: gen.KeyDomainState(domain.State),
 		Writable: domain.State != "rotation_required" && domain.CurrentGeneration > 0,
 	}
+	if domain.ProjectID.Valid {
+		project := fromPG(domain.ProjectID)
+		response.ProjectId = &project
+	}
+	if domain.ConversationID.Valid {
+		conversation := fromPG(domain.ConversationID)
+		response.ConversationId = &conversation
+	}
+	return response
 }
 
 func (h *healthHandler) organizationOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID) (pgtype.UUID, bool) {
@@ -637,12 +708,7 @@ func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	access, ok := loadAccess(ctx, w, q, domain.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Can(readPermission(domain.Kind)) {
-		w.WriteHeader(http.StatusForbidden)
+	if !requireReader(ctx, w, q, domain, session.AccountID) {
 		return
 	}
 	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
@@ -732,12 +798,7 @@ func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	access, ok := loadAccess(ctx, w, q, domain.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Can(readPermission(domain.Kind)) {
-		w.WriteHeader(http.StatusForbidden)
+	if !requireReader(ctx, w, q, domain, session.AccountID) {
 		return
 	}
 	devices, err := q.ListDevicesForAccount(ctx, session.AccountID)
@@ -821,15 +882,7 @@ func (h *healthHandler) domainForReader(ctx context.Context, w http.ResponseWrit
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return domain, false
 	}
-	access, ok := loadAccess(ctx, w, q, domain.ProjectID, account)
-	if !ok {
-		return domain, false
-	}
-	if !access.access.Can(readPermission(domain.Kind)) {
-		w.WriteHeader(http.StatusForbidden)
-		return domain, false
-	}
-	return domain, true
+	return domain, requireReader(ctx, w, q, domain, account)
 }
 
 func (h *healthHandler) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
@@ -868,7 +921,7 @@ func (h *healthHandler) ListAuthorizedDevices(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	readers, err := projectRecipients(ctx, q, domain.ProjectID, readPermission(domain.Kind))
+	readers, err := domainReaders(ctx, q, domain)
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -986,4 +1039,151 @@ func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
+}
+
+// GetConversationKeyDomain returns the DM's key domain to either participant.
+func (h *healthHandler) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	conversation, err := q.GetConversation(ctx, pgUUID(uuidFrom(conversationId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (conversation.Kind != "dm" || (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh))) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	domain, err := q.GetKeyDomainByConversation(ctx, conversation.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toKeyDomain(domain))
+}
+
+func (h *healthHandler) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	conversation, err := q.GetConversation(ctx, pgUUID(uuidFrom(conversationId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh)) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if conversation.Kind != "dm" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+	if !ok {
+		return
+	}
+	domain, err := q.CreateDMKeyDomain(ctx, sqlc.CreateDMKeyDomainParams{OrganizationID: organizationID, ConversationID: conversation.ID})
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
+		err = announceDomain(ctx, q, domain)
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
+}
+
+func (h *healthHandler) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	if session.MembershipKind != "internal" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+	if !ok {
+		return
+	}
+	domain, err := q.GetSprintKeyDomain(ctx, organizationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toKeyDomain(domain))
+}
+
+func (h *healthHandler) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+	if !ok {
+		return
+	}
+	domain, err := q.CreateSprintKeyDomain(ctx, organizationID)
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
+		err = announceDomain(ctx, q, domain)
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
 }

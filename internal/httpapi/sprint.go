@@ -14,11 +14,33 @@ import (
 )
 
 func toSprint(sprint sqlc.Sprint) gen.Sprint {
-	return gen.Sprint{
+	response := gen.Sprint{
 		Id: fromPG(sprint.ID), Name: sprint.Name, Goal: sprint.Goal,
 		StartsOn: openapi_types.Date{Time: sprint.StartsOn.Time}, EndsOn: openapi_types.Date{Time: sprint.EndsOn.Time},
 		State: gen.SprintState(sprint.State), Version: int(sprint.Version),
+		Encrypted: sprint.Encrypted, ContentRevision: int(sprint.ContentRevision),
 	}
+	if sprint.Encrypted {
+		response.NameEnc, response.GoalEnc = blob(sprint.NameEnc), blob(sprint.GoalEnc)
+		if sprint.ContentAuthorID.Valid {
+			author := fromPG(sprint.ContentAuthorID)
+			response.ContentAuthorId = &author
+		}
+		if sprint.ContentSignerDeviceID.Valid {
+			signer := fromPG(sprint.ContentSignerDeviceID)
+			response.SignerDeviceId = &signer
+		}
+	}
+	return response
+}
+
+// sprintDomain returns the organization's sprint key domain, if any.
+func sprintDomain(ctx context.Context, q *sqlc.Queries, organizationID pgtype.UUID) (sqlc.KeyDomain, bool, error) {
+	domain, err := q.GetSprintKeyDomain(ctx, organizationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain, false, nil
+	}
+	return domain, err == nil, err
 }
 
 func (h *healthHandler) ListSprints(w http.ResponseWriter, r *http.Request) {
@@ -50,18 +72,17 @@ func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload gen.CreateSprintRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
 		return
 	}
-	if payload.StartsOn.After(payload.EndsOn.Time) {
+	encrypted := payload.NameEnc != nil || payload.GoalEnc != nil
+	if payload.StartsOn.After(payload.EndsOn.Time) ||
+		encrypted && (payload.NameEnc == nil || payload.GoalEnc == nil || payload.Id == nil || payload.SignerDeviceId == nil || payload.Name != nil || payload.Goal != nil) ||
+		!encrypted && payload.Name == nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	goal := ""
-	if payload.Goal != nil {
-		goal = *payload.Goal
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
@@ -69,11 +90,53 @@ func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	sprint, err := q.CreateSprint(ctx, sqlc.CreateSprintParams{
-		OrganizationID: membership.OrganizationID, Name: payload.Name, Goal: goal,
-		StartsOn: pgtype.Date{Time: payload.StartsOn.Time, Valid: true}, EndsOn: pgtype.Date{Time: payload.EndsOn.Time, Valid: true},
-		CreatedBy: session.AccountID,
-	})
+	domain, found, err := sprintDomain(ctx, q, membership.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	starts := pgtype.Date{Time: payload.StartsOn.Time, Valid: true}
+	ends := pgtype.Date{Time: payload.EndsOn.Time, Valid: true}
+	var sprint sqlc.Sprint
+	if encrypted {
+		id := pgUUID(uuidFrom(*payload.Id))
+		writer, fail, prepErr := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		if prepErr == nil && fail == nil {
+			if fail = writer.verify(session.AccountID, sprintResource(id, "name"), 1, *payload.NameEnc); fail == nil {
+				fail = writer.verify(session.AccountID, sprintResource(id, "goal"), 1, *payload.GoalEnc)
+			}
+		}
+		if prepErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		nameEnc, _ := unb64(*payload.NameEnc, 0)
+		goalEnc, _ := unb64(*payload.GoalEnc, 0)
+		sprint, err = q.CreateEncryptedSprint(ctx, sqlc.CreateEncryptedSprintParams{
+			ID: id, OrganizationID: membership.OrganizationID, StartsOn: starts, EndsOn: ends, CreatedBy: session.AccountID,
+			NameEnc: nameEnc, GoalEnc: goalEnc, ContentSignerDeviceID: writer.signer.ID,
+		})
+	} else {
+		if found && domain.CurrentGeneration > 0 {
+			(&encFailure{http.StatusConflict, gen.ApiErrorCodeEncryptionRequired}).write(w)
+			return
+		}
+		goal := ""
+		if payload.Goal != nil {
+			goal = *payload.Goal
+		}
+		sprint, err = q.CreateSprint(ctx, sqlc.CreateSprintParams{
+			OrganizationID: membership.OrganizationID, Name: *payload.Name, Goal: goal, StartsOn: starts, EndsOn: ends, CreatedBy: session.AccountID,
+		})
+	}
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -83,6 +146,81 @@ func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toSprint(sprint))
+}
+
+// UpdateSprint encrypts the name and goal of a sprint (administrators).
+func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var payload gen.UpdateSprintRequest
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	visible, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
+	if !ok {
+		return
+	}
+	sprint, err := q.GetSprintForUpdate(ctx, visible.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	domain, found, err := sprintDomain(ctx, q, sprint.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	revision := int32(payload.ContentRevision)
+	writer, fail, err := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	if err == nil && fail == nil && revision != sprint.ContentRevision+1 {
+		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+	}
+	if err == nil && fail == nil {
+		if fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "name"), revision, payload.NameEnc); fail == nil {
+			fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "goal"), revision, payload.GoalEnc)
+		}
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	nameEnc, _ := unb64(payload.NameEnc, 0)
+	goalEnc, _ := unb64(payload.GoalEnc, 0)
+	changed, err := q.SetSprintContent(ctx, sqlc.SetSprintContentParams{
+		ID: sprint.ID, NameEnc: nameEnc, GoalEnc: goalEnc, ContentRevision: revision,
+		ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+	})
+	if err == nil && changed == 0 {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // visibleSprint answers 404 for sprints the account cannot see, matching the

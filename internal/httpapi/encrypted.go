@@ -62,12 +62,17 @@ func requirePlaintextAllowed(ctx context.Context, q *sqlc.Queries, projectID pgt
 
 // prepareEncrypted validates the domain and the signing device for an encrypted write.
 func prepareEncrypted(ctx context.Context, q *sqlc.Queries, account, projectID pgtype.UUID, kind string, signerID *pgtype.UUID) (*encContext, *encFailure, error) {
-	if signerID == nil || !signerID.Valid {
-		return nil, &encFailure{http.StatusBadRequest, gen.ApiErrorCodeBadEnvelope}, nil
-	}
 	domain, found, err := domainState(ctx, q, projectID, kind)
 	if err != nil {
 		return nil, nil, err
+	}
+	return prepareEncryptedWith(ctx, q, account, domain, found, signerID)
+}
+
+// prepareEncryptedWith is prepareEncrypted for an already looked-up domain.
+func prepareEncryptedWith(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, domain sqlc.KeyDomain, found bool, signerID *pgtype.UUID) (*encContext, *encFailure, error) {
+	if signerID == nil || !signerID.Valid {
+		return nil, &encFailure{http.StatusBadRequest, gen.ApiErrorCodeBadEnvelope}, nil
 	}
 	if !found || domain.CurrentGeneration == 0 {
 		return nil, &encFailure{http.StatusConflict, gen.ApiErrorCodeDomainUnavailable}, nil
@@ -125,3 +130,8 @@ func workItemResource(id pgtype.UUID, field string) string {
 func epicResource(id pgtype.UUID, field string) string { return "ep:" + uuidString(id) + ":" + field }
 func commentResource(id pgtype.UUID) string            { return "wc:" + uuidString(id) }
 func messageResource(mutationID pgtype.UUID) string    { return "msg:" + uuidString(mutationID) }
+func projectResource(id pgtype.UUID, field string) string {
+	return "pn:" + uuidString(id) + ":" + field
+}
+func channelResource(id pgtype.UUID) string              { return "cn:" + uuidString(id) }
+func sprintResource(id pgtype.UUID, field string) string { return "sp:" + uuidString(id) + ":" + field }

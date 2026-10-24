@@ -1,7 +1,7 @@
 -- name: CreateProject :one
 INSERT INTO project (organization_id, name, description, color, icon, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, organization_id, name, description, color, icon, archived, version, created_at;
+RETURNING *;
 
 -- name: AddProjectMember :exec
 INSERT INTO project_member (project_id, account_id, is_manager)
@@ -37,16 +37,14 @@ LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
 WHERE p.id = $1;
 
 -- name: ListProjectsForAccount :many
-SELECT p.id, p.name, p.description, p.color, p.icon, p.archived, p.version, pm.is_manager
+SELECT p.*, pm.is_manager
 FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
 WHERE pm.account_id = $1 AND NOT p.archived
 ORDER BY p.created_at, p.id;
 
 -- name: GetProject :one
-SELECT id, name, description, color, icon, archived, version
-FROM project
-WHERE id = $1;
+SELECT * FROM project WHERE id = $1;
 
 -- name: ListProjectMembers :many
 SELECT pm.account_id, a.email_normalized, om.membership_kind, pm.is_manager
@@ -639,10 +637,18 @@ SELECT * FROM key_domain WHERE id = $1 FOR UPDATE;
 SELECT * FROM key_domain WHERE project_id = $1 ORDER BY kind;
 
 -- name: ListKeyDomainsForAccount :many
-SELECT kd.*
+SELECT kd.id, kd.organization_id, kd.project_id, kd.kind, kd.current_generation, kd.state, kd.created_at, kd.conversation_id
 FROM key_domain AS kd JOIN project_member AS pm ON pm.project_id = kd.project_id
 WHERE pm.account_id = $1
-ORDER BY kd.created_at, kd.id;
+UNION
+SELECT kd.id, kd.organization_id, kd.project_id, kd.kind, kd.current_generation, kd.state, kd.created_at, kd.conversation_id
+FROM key_domain AS kd JOIN conversation AS c ON c.id = kd.conversation_id
+WHERE c.dm_low = $1 OR c.dm_high = $1
+UNION
+SELECT kd.id, kd.organization_id, kd.project_id, kd.kind, kd.current_generation, kd.state, kd.created_at, kd.conversation_id
+FROM key_domain AS kd JOIN organization_membership AS om ON om.organization_id = kd.organization_id
+WHERE kd.kind = 'sprint' AND om.account_id = $1 AND om.membership_kind = 'internal'
+ORDER BY created_at, id;
 
 -- name: SetKeyDomainState :exec
 UPDATE key_domain SET state = $2 WHERE id = $1;
@@ -726,3 +732,50 @@ SELECT * FROM work_item_comment WHERE id = $1 FOR UPDATE;
 UPDATE work_item_comment
 SET encrypted = true, body = '', body_enc = $2, content_signer_device_id = $3
 WHERE id = $1 AND NOT encrypted;
+
+-- name: GetKeyDomainByConversation :one
+SELECT * FROM key_domain WHERE conversation_id = $1 AND kind = 'dm';
+
+-- name: CreateDMKeyDomain :one
+INSERT INTO key_domain (organization_id, conversation_id, kind) VALUES ($1, $2, 'dm') RETURNING *;
+
+-- name: GetSprintKeyDomain :one
+SELECT * FROM key_domain WHERE organization_id = $1 AND kind = 'sprint';
+
+-- name: CreateSprintKeyDomain :one
+INSERT INTO key_domain (organization_id, kind) VALUES ($1, 'sprint') RETURNING *;
+
+-- name: ListInternalAccounts :many
+SELECT om.account_id
+FROM organization_membership AS om JOIN account AS a ON a.id = om.account_id AND a.active
+WHERE om.organization_id = $1 AND om.membership_kind = 'internal'
+ORDER BY om.account_id;
+
+-- name: SetProjectContent :execrows
+UPDATE project
+SET encrypted = true, name = '', description = '', name_enc = $2, description_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6, version = version + 1
+WHERE id = $1 AND content_revision = $4 - 1;
+
+-- name: GetProjectForUpdate :one
+SELECT * FROM project WHERE id = $1 FOR UPDATE;
+
+-- name: GetConversationForUpdate :one
+SELECT * FROM conversation WHERE id = $1 FOR UPDATE;
+
+-- name: SetConversationContent :execrows
+UPDATE conversation
+SET encrypted = true, name = '', name_enc = $2, content_revision = $3, content_author_id = $4, content_signer_device_id = $5
+WHERE id = $1 AND kind = 'channel' AND content_revision = $3 - 1;
+
+-- name: CreateEncryptedSprint :one
+INSERT INTO sprint (id, organization_id, name, goal, starts_on, ends_on, created_by, encrypted, name_enc, goal_enc,
+                    content_revision, content_author_id, content_signer_device_id)
+VALUES ($1, $2, '', '', $3, $4, $5, true, $6, $7, 1, $5, $8)
+RETURNING *;
+
+-- name: SetSprintContent :execrows
+UPDATE sprint
+SET encrypted = true, name = '', goal = '', name_enc = $2, goal_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6, version = version + 1
+WHERE id = $1 AND content_revision = $4 - 1;
