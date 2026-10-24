@@ -19,6 +19,8 @@ import { createRoot } from "react-dom/client";
 import { ProjectsArea } from "./Projects";
 import { CallInvitations } from "./Calls";
 import { DirectArea, NotificationsPanel } from "./Direct";
+import { E2EEProvider, useOptionalE2EE } from "./e2ee/E2EE";
+import { SecurityPanel } from "./e2ee/Security";
 import { EventsProvider } from "./events";
 import { SprintsArea } from "./Sprints";
 import "./styles.css";
@@ -316,6 +318,7 @@ function Workspace({
   onLogout: () => void;
 }) {
   const client = useMemo(() => createApiClient(""), []);
+  const e2ee = useOptionalE2EE();
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -332,6 +335,8 @@ function Workspace({
 
     setLeaving(true);
     setError("");
+    // Keys are dropped from memory before the session ends.
+    e2ee?.lock();
     try {
       await logout(client, csrfToken);
       onLogout();
@@ -374,6 +379,7 @@ function Workspace({
           </a>
         </nav>
         <NotificationsPanel />
+        <SecurityPanel account={account} />
         <CallInvitations client={client} />
         <div className="account-block">
           <span>Sessão ativa</span>
@@ -518,10 +524,12 @@ function App() {
     }
     return (
       <EventsProvider>
-        <Workspace
-          account={session.account}
-          onLogout={() => setSession({ status: "anonymous" })}
-        />
+        <E2EEProvider account={session.account}>
+          <Workspace
+            account={session.account}
+            onLogout={() => setSession({ status: "anonymous" })}
+          />
+        </E2EEProvider>
       </EventsProvider>
     );
   }

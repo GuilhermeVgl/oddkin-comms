@@ -47,15 +47,16 @@ export function Attachments({
   const [message, setMessage] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
+  const { contextType, contextId } = context;
   const reload = useCallback(async () => {
     try {
-      setItems(await listAttachments(client, context));
+      setItems(await listAttachments(client, { contextType, contextId }));
       setAllowed(true);
     } catch (error) {
       setAllowed(!(error instanceof ApiStatusError && error.status === 403));
       setItems([]);
     }
-  }, [client, context]);
+  }, [client, contextType, contextId]);
 
   useEffect(() => {
     void reload();

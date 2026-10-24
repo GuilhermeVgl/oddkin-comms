@@ -1,4 +1,4 @@
-import type sodiumNamespace from "libsodium-wrappers";
+import type sodiumNamespace from "libsodium-wrappers-sumo";
 import {
   concat,
   fromBase64Url,
@@ -10,6 +10,12 @@ import {
 } from "./encoding";
 
 export { fromBase64Url, toBase64Url } from "./encoding";
+export {
+  createKeystore,
+  PassphraseError,
+  type WrappedSecret,
+} from "./keystore";
+export { createChainVerifier, type DirectoryRecord } from "./chain";
 
 type Sodium = typeof sodiumNamespace;
 
@@ -339,3 +345,8 @@ export async function createCrypto(
 }
 
 export type Crypto = Awaited<ReturnType<typeof createCrypto>>;
+
+/** Loads libsodium lazily so the code only ships when encryption is used. */
+export async function loadSodium(): Promise<Sodium> {
+  return (await import("libsodium-wrappers-sumo")).default;
+}

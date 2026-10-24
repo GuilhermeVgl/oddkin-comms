@@ -16,6 +16,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Attachments } from "./Attachments";
 import { CallBar } from "./Calls";
 import { useEvents } from "./events";
+import { useOptionalE2EE } from "./e2ee/E2EE";
+import {
+  decryptMessages,
+  editChannelMessage,
+  EncryptionUnavailableError,
+  sendChannelMessage,
+} from "./e2ee/content";
+import type { ProjectCrypto } from "./e2ee/projectCrypto";
 
 type Client = ReturnType<typeof createApiClient>;
 
@@ -52,6 +60,26 @@ export function ProjectChat({
   const [channels, setChannels] = useState<Conversation[] | null>(null);
   const [status, setStatus] = useState<"ok" | "forbidden" | "error">("ok");
   const [reload, setReload] = useState(0);
+  const e2ee = useOptionalE2EE();
+  const unlocked = e2ee?.phase === "unlocked";
+  const [projectCrypto, setProjectCrypto] = useState<ProjectCrypto | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!unlocked || e2ee === null) {
+      setProjectCrypto(null);
+      return undefined;
+    }
+    e2ee
+      .openProject(projectId, { maintain: true })
+      .then((opened) => active && setProjectCrypto(opened))
+      .catch(() => active && setProjectCrypto(null));
+    return () => {
+      active = false;
+    };
+  }, [e2ee, unlocked, projectId, reload]);
 
   useEffect(() => {
     let active = true;
@@ -68,7 +96,12 @@ export function ProjectChat({
   }, [client, projectId, reload]);
 
   useEvents((event) => {
-    if (event === "resync" || event.eventType === "message.created") {
+    if (
+      event === "resync" ||
+      event.eventType === "message.created" ||
+      (event.eventType === "key-domain.changed" &&
+        event.contextId === projectId)
+    ) {
       setReload((value) => value + 1);
     }
   });
@@ -93,6 +126,7 @@ export function ProjectChat({
         <ConversationView
           client={client}
           conversationId={channel.id}
+          crypto={projectCrypto}
           me={me}
           members={members}
           moderator={moderator}
@@ -108,12 +142,15 @@ export function ConversationView({
   me,
   moderator,
   members = [],
+  crypto: projectCrypto,
 }: {
   client: Client;
   conversationId: string;
   me: string;
   moderator: boolean;
   members?: ProjectMember[];
+  /** Present for project channels (null while locked); absent for DMs, which are not encrypted yet. */
+  crypto?: ProjectCrypto | null;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -153,7 +190,11 @@ export function ConversationView({
     try {
       let after = Math.max(0, lastSeq.current - PAGE);
       for (let page = 0; page < 5; page += 1) {
-        const fresh = await listMessages(client, conversationId, after);
+        const fetched = await listMessages(client, conversationId, after);
+        const fresh =
+          projectCrypto === undefined
+            ? fetched
+            : await decryptMessages(projectCrypto, fetched);
         merge(fresh);
         if (fresh.length < PAGE) break;
         after = fresh[fresh.length - 1]?.seq ?? after;
@@ -162,7 +203,7 @@ export function ConversationView({
     } catch {
       // The last known messages stay on screen; the next event or poll retries.
     }
-  }, [client, conversationId, merge, markRead]);
+  }, [client, conversationId, merge, markRead, projectCrypto]);
 
   useEffect(() => {
     lastSeq.current = 0;
@@ -187,9 +228,11 @@ export function ConversationView({
       setError("");
     } catch (cause) {
       setError(
-        statusOf(cause) === 403
-          ? "Você não tem permissão para isso."
-          : "Não foi possível concluir. Tente novamente.",
+        cause instanceof EncryptionUnavailableError || statusOf(cause) === 409
+          ? "Este projeto é cifrado. Desbloqueie a criptografia deste navegador."
+          : statusOf(cause) === 403
+            ? "Você não tem permissão para isso."
+            : "Não foi possível concluir. Tente novamente.",
       );
     }
     await refresh();
@@ -199,7 +242,12 @@ export function ConversationView({
     event.preventDefault();
     if (editing !== null) {
       const { id, body } = editing;
-      await act((csrf) => editMessage(client, csrf, id, body));
+      const original = messages.find((message) => message.id === id);
+      await act((csrf) =>
+        projectCrypto === undefined || original === undefined
+          ? editMessage(client, csrf, id, body)
+          : editChannelMessage(client, csrf, projectCrypto, original, body),
+      );
       setEditing(null);
       return;
     }
@@ -210,10 +258,26 @@ export function ConversationView({
       .filter((member) => draft.includes(`@${member.email}`))
       .map((member) => member.accountId);
     await act(async (csrf) => {
-      await sendMessage(client, csrf, conversationId, draft, mutationId, {
+      const options = {
         ...(replyTo === null ? {} : { replyToId: replyTo.id }),
         ...(mentionIds.length === 0 ? {} : { mentionIds }),
-      });
+      };
+      if (projectCrypto === undefined) {
+        await sendMessage(
+          client,
+          csrf,
+          conversationId,
+          draft,
+          mutationId,
+          options,
+        );
+      } else {
+        await sendChannelMessage(client, csrf, projectCrypto, conversationId, {
+          body: draft,
+          mutationId,
+          ...options,
+        });
+      }
       setDraft("");
       setReplyTo(null);
       setPending(null);

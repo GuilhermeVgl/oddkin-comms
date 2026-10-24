@@ -12,6 +12,7 @@
     "@fontsource/bodoni-moda": "5.3.0",
     "@fontsource/dm-sans": "5.3.0",
     "@oddkin/api-client": "workspace:*",
+    "@oddkin/crypto": "workspace:*",
     "livekit-client": "2.23.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"

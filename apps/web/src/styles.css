@@ -941,3 +941,39 @@ select {
 .tile--speaking {
   border-color: #d76d4a;
 }
+
+.security {
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(248, 244, 233, 0.08);
+  color: #f8f4e9;
+  font-size: 0.85rem;
+}
+
+.security h2 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.security input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid #9fae9f;
+  border-radius: 6px;
+}
+
+.security code {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.security .text-button {
+  color: #f8f4e9;
+}
+
+.project-encryption {
+  margin: 8px 0;
+  font-size: 0.9rem;
+}

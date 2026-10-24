@@ -126,3 +126,4 @@ export async function acceptInvitation(
   }
 }
 export * from "./work";
+export * from "./e2ee";

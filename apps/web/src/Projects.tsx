@@ -1,19 +1,19 @@
 import {
   ApiStatusError,
+  EncryptionError,
   addMember,
   createApiClient,
-  createComment,
-  createEpic,
   createProject,
   listEpics,
   listSprints,
   type Sprint,
   updateEpic,
   type Epic,
-  createWorkItem,
   getExternalPolicy,
   listBoardColumns,
   listComments,
+  listConversations,
+  listKeyDomains,
   listMembers,
   listProjects,
   listWorkItems,
@@ -32,6 +32,21 @@ import {
 import { Attachments } from "./Attachments";
 import { ProjectChat } from "./Chat";
 import { useEvents } from "./events";
+import { useOptionalE2EE } from "./e2ee/E2EE";
+import {
+  createCommentContent,
+  createEpicContent,
+  createItem,
+  decryptComments,
+  decryptEpics,
+  decryptItems,
+  EncryptionUnavailableError,
+  migrateProject,
+  saveItem,
+  type ContentStatus,
+  type MigrationReport,
+} from "./e2ee/content";
+import type { ProjectCrypto } from "./e2ee/projectCrypto";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type Client = ReturnType<typeof createApiClient>;
@@ -68,6 +83,17 @@ function csrfToken(): string {
 }
 
 function describe(error: unknown): string {
+  if (error instanceof EncryptionUnavailableError) {
+    return "Este projeto é cifrado. Desbloqueie a criptografia deste navegador para escrever.";
+  }
+  if (error instanceof EncryptionError) {
+    if (error.code === "rotation_required")
+      return "A chave do projeto está sendo renovada. Tente de novo em instantes.";
+    if (error.code === "stale_generation")
+      return "A chave do projeto mudou. Recarregamos; tente de novo.";
+    if (error.code === "encryption_required")
+      return "Este projeto exige conteúdo cifrado. Desbloqueie a criptografia.";
+  }
   if (error instanceof ApiStatusError) {
     if (error.status === 409)
       return "Outra alteração chegou primeiro ou há subtarefas abertas. Recarregamos os dados.";
@@ -196,17 +222,43 @@ function ProjectView({
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const e2ee = useOptionalE2EE();
+  const unlocked = e2ee?.phase === "unlocked";
+  const [pc, setPc] = useState<ProjectCrypto | null>(null);
+  const [contentStatus, setContentStatus] = useState(
+    new Map<string, ContentStatus>(),
+  );
+  const [migration, setMigration] = useState<string>("");
+  // Known from the server even while this browser is locked.
+  const [keyedOnServer, setKeyedOnServer] = useState(false);
 
   const reload = useCallback(async () => {
     try {
+      let crypto: ProjectCrypto | null = null;
+      if (unlocked && e2ee !== null) {
+        crypto = await e2ee
+          .openProject(project.id, { maintain: true })
+          .catch(() => null);
+      }
+      setPc(crypto);
+      setKeyedOnServer(
+        (await listKeyDomains(client, project.id).catch(() => [])).some(
+          (domain) => domain.kind === "work" && domain.currentGeneration > 0,
+        ),
+      );
       const [cols, work, epicList] = await Promise.all([
         listBoardColumns(client, project.id),
         listWorkItems(client, project.id),
         listEpics(client, project.id),
       ]);
+      const decodedItems = await decryptItems(crypto, work);
+      const decodedEpics = await decryptEpics(crypto, epicList);
       setColumns(cols);
-      setItems(work);
-      setEpics(epicList);
+      setItems(decodedItems.items);
+      setEpics(decodedEpics.epics);
+      setContentStatus(
+        new Map([...decodedItems.status, ...decodedEpics.status]),
+      );
       setState("ready");
     } catch (error) {
       setState(
@@ -215,7 +267,7 @@ function ProjectView({
           : "error",
       );
     }
-  }, [client, project.id]);
+  }, [client, project.id, unlocked, e2ee]);
 
   useEffect(() => {
     void reload();
@@ -232,7 +284,8 @@ function ProjectView({
       event === "resync" ||
       (event.contextId === project.id &&
         (event.eventType === "work-item.changed" ||
-          event.eventType === "policy.changed"))
+          event.eventType === "policy.changed" ||
+          event.eventType === "key-domain.changed"))
     ) {
       void reload();
     }
@@ -272,14 +325,102 @@ function ProjectView({
       </p>
     );
 
+  async function enableEncryption() {
+    if (pc === null) return;
+    setMigration("Ativando…");
+    try {
+      await pc.enable();
+      await reload();
+      setMigration("");
+    } catch (error) {
+      setMigration("");
+      setMessage(describe(error));
+    }
+  }
+
+  async function encryptLegacy() {
+    if (pc === null || e2ee === null) return;
+    setMigration("Cifrando conteúdo antigo…");
+    try {
+      const channels = await listConversations(client, project.id).catch(
+        () => [],
+      );
+      const report: MigrationReport = await migrateProject(
+        client,
+        csrfToken(),
+        pc,
+        { items, epics, channelId: channels[0]?.id },
+        { email: me },
+        (done, total) =>
+          setMigration(`Cifrando conteúdo antigo… ${done}/${total}`),
+      );
+      setMigration(
+        `Concluído: ${report.items} atividades, ${report.epics} épicos, ${report.comments} comentários, ${report.messages} mensagens${report.failed > 0 ? `; ${report.failed} falharam` : ""}.`,
+      );
+      await reload();
+    } catch (error) {
+      setMigration("");
+      setMessage(describe(error));
+    }
+  }
+
+  const legacyCount =
+    items.filter((item) => !item.encrypted).length +
+    epics.filter((epic) => !epic.encrypted).length;
+  const encryptedProject = pc?.isEncrypted("work") ?? keyedOnServer;
+
   return (
     <div className="project-view">
+      <section
+        aria-label="Criptografia do projeto"
+        className="project-encryption"
+      >
+        {encryptedProject ? (
+          <p>
+            Conteúdo deste projeto cifrado de ponta a ponta (atividades, épicos,
+            comentários e mensagens de canal).
+            {legacyCount > 0
+              ? ` Ainda há ${legacyCount} itens antigos em texto claro. `
+              : " "}
+            {legacyCount > 0 && unlocked ? (
+              <button
+                className="text-button"
+                onClick={() => void encryptLegacy()}
+                type="button"
+              >
+                Cifrar conteúdo antigo
+              </button>
+            ) : null}
+          </p>
+        ) : (
+          <p>
+            Este projeto ainda guarda o conteúdo em texto claro no servidor.{" "}
+            {unlocked ? (
+              <button
+                className="text-button"
+                onClick={() => void enableEncryption()}
+                type="button"
+              >
+                Ativar criptografia neste projeto
+              </button>
+            ) : (
+              "Desbloqueie a criptografia para ativá-la."
+            )}
+          </p>
+        )}
+        {encryptedProject && !unlocked ? (
+          <p className="form-message">
+            Desbloqueie a criptografia para ler e escrever.
+          </p>
+        ) : null}
+        <p aria-live="polite">{migration}</p>
+      </section>
       <form
         className="inline-form"
         onSubmit={(event) => {
           event.preventDefault();
           void run(async () => {
-            await createWorkItem(client, csrfToken(), project.id, {
+            await createItem(client, csrfToken(), pc, project.id, {
               kind: "task",
               title,
             });
@@ -347,7 +488,13 @@ function ProjectView({
           onSubmit={(event) => {
             event.preventDefault();
             void run(async () => {
-              await createEpic(client, csrfToken(), project.id, epicTitle);
+              await createEpicContent(
+                client,
+                csrfToken(),
+                pc,
+                project.id,
+                epicTitle,
+              );
               setEpicTitle("");
             });
           }}
@@ -441,6 +588,8 @@ function ProjectView({
           columns={columns}
           epics={epics}
           item={open}
+          pc={pc}
+          status={contentStatus.get(open.id) ?? "plain"}
           onClose={() => setOpenId(null)}
           onRun={run}
           subtasks={subtasksOf(open.id)}
@@ -467,6 +616,8 @@ function ItemDetail({
   columns,
   epics,
   item,
+  pc,
+  status,
   subtasks,
   onClose,
   onRun,
@@ -474,6 +625,8 @@ function ItemDetail({
   client: Client;
   columns: BoardColumn[];
   epics: Epic[];
+  pc: ProjectCrypto | null;
+  status: ContentStatus;
   item: WorkItem;
   subtasks: WorkItem[];
   onClose: () => void;
@@ -483,17 +636,21 @@ function ItemDetail({
   const [description, setDescription] = useState(item.description);
   const [priority, setPriority] = useState<string>(item.priority);
   const [subtaskTitle, setSubtaskTitle] = useState("");
-  const [comments, setComments] = useState<WorkItemComment[] | null>(null);
+  const [comments, setComments] = useState<
+    (WorkItemComment & { status: ContentStatus })[] | null
+  >(null);
   const [comment, setComment] = useState("");
   const [sprints, setSprints] = useState<Sprint[]>([]);
 
   const loadComments = useCallback(async () => {
     try {
-      setComments(await listComments(client, item.id));
+      setComments(
+        await decryptComments(pc, await listComments(client, item.id)),
+      );
     } catch {
       setComments([]);
     }
-  }, [client, item.id]);
+  }, [client, item.id, pc]);
 
   useEffect(() => {
     listSprints(client)
@@ -515,26 +672,34 @@ function ItemDetail({
 
   const doneColumn = columns.find((c) => c.category === "done");
   const todoColumn = columns.find((c) => c.category === "todo");
+  const editable = status === "plain" || status === "ok";
 
   return (
     <aside aria-label={`Detalhes de ${item.title}`} className="detail">
+      {!editable ? (
+        <p className="form-message">
+          Este conteúdo está cifrado e não pôde ser lido neste navegador; a
+          edição está desativada.
+        </p>
+      ) : null}
       <button className="text-button" onClick={onClose} type="button">
         Fechar
       </button>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const body: UpdateWorkItem = {
-            version: item.version,
-            title,
-            description,
-            priority: priority as NonNullable<UpdateWorkItem["priority"]>,
-          };
-          void onRun(() => updateWorkItem(client, csrfToken(), item.id, body));
+          void onRun(() =>
+            saveItem(client, csrfToken(), pc, item, {
+              title,
+              description,
+              priority: priority as NonNullable<UpdateWorkItem["priority"]>,
+            }),
+          );
         }}
       >
         <label htmlFor="detail-title">Título</label>
         <input
+          disabled={!editable}
           id="detail-title"
           maxLength={200}
           onChange={(event) => setTitle(event.target.value)}
@@ -543,6 +708,7 @@ function ItemDetail({
         />
         <label htmlFor="detail-description">Descrição</label>
         <textarea
+          disabled={!editable}
           id="detail-description"
           maxLength={50000}
           onChange={(event) => setDescription(event.target.value)}
@@ -655,7 +821,7 @@ function ItemDetail({
         onSubmit={(event) => {
           event.preventDefault();
           void onRun(async () => {
-            await createWorkItem(client, csrfToken(), item.projectId, {
+            await createItem(client, csrfToken(), pc, item.projectId, {
               kind: "subtask",
               parentId: item.id,
               title: subtaskTitle,
@@ -701,7 +867,13 @@ function ItemDetail({
         onSubmit={(event) => {
           event.preventDefault();
           void onRun(async () => {
-            await createComment(client, csrfToken(), item.id, comment);
+            await createCommentContent(
+              client,
+              csrfToken(),
+              pc,
+              item.id,
+              comment,
+            );
             setComment("");
             await loadComments();
           });
