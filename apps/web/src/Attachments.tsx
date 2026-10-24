@@ -8,8 +8,11 @@ import {
   uploadFile,
   type Attachment,
   type UploadContext,
+  type UploadNameEncryption,
 } from "@oddkin/api-client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useOptionalE2EE } from "./e2ee/E2EE";
+import { resources, type ContentCrypto } from "./e2ee/projectCrypto";
 import { useEvents } from "./events";
 
 type Client = ReturnType<typeof createApiClient>;
@@ -42,21 +45,82 @@ export function Attachments({
   context: UploadContext;
 }) {
   const [items, setItems] = useState<Attachment[] | null>(null);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
   const [allowed, setAllowed] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const e2ee = useOptionalE2EE();
 
   const { contextType, contextId } = context;
+  const cryptoFor = useCallback(
+    async (maintain: boolean): Promise<ContentCrypto | null> => {
+      if (e2ee === null) return null;
+      if (contextType === "work_item") {
+        return context.projectId === undefined
+          ? null
+          : e2ee.openProject(context.projectId, { maintain });
+      }
+      return e2ee.openConversation(contextId, { maintain });
+    },
+    [context.projectId, contextId, contextType, e2ee],
+  );
+
+  const domainKind = useCallback(
+    (crypto: ContentCrypto) =>
+      contextType === "work_item"
+        ? "work"
+        : crypto.domain("dm") === undefined
+          ? "chat"
+          : "dm",
+    [contextType],
+  );
+
+  const displayNames = useCallback(
+    async (rows: Attachment[], crypto: ContentCrypto | null) => {
+      const next = new Map<string, string>();
+      for (const item of rows) {
+        if (!item.encrypted) {
+          next.set(item.id, item.name);
+          continue;
+        }
+        if (
+          crypto === null ||
+          item.nameEnc === undefined ||
+          item.contentAuthorId === undefined ||
+          item.signerDeviceId === undefined
+        ) {
+          next.set(item.id, "Nome cifrado (desbloqueie este navegador)");
+          continue;
+        }
+        const result = await crypto.decrypt(domainKind(crypto), {
+          resource: resources.attachment(item.id),
+          revision: 1,
+          authorId: item.contentAuthorId,
+          signerDeviceId: item.signerDeviceId,
+          envelope: item.nameEnc,
+        });
+        next.set(
+          item.id,
+          result.ok ? result.text : "Nome cifrado indisponível",
+        );
+      }
+      return next;
+    },
+    [domainKind],
+  );
+
   const reload = useCallback(async () => {
     try {
-      setItems(await listAttachments(client, { contextType, contextId }));
+      const rows = await listAttachments(client, { contextType, contextId });
+      setItems(rows);
+      setNames(await displayNames(rows, await cryptoFor(false)));
       setAllowed(true);
     } catch (error) {
       setAllowed(!(error instanceof ApiStatusError && error.status === 403));
       setItems([]);
     }
-  }, [client, contextType, contextId]);
+  }, [client, contextType, contextId, cryptoFor, displayNames]);
 
   useEffect(() => {
     void reload();
@@ -78,7 +142,20 @@ export function Attachments({
     setProgress(0);
     setMessage("");
     try {
-      await uploadFile(client, csrf, context, file, setProgress);
+      const crypto = await cryptoFor(true);
+      let encryption: UploadNameEncryption | undefined;
+      if (crypto !== null) {
+        const kind = domainKind(crypto);
+        if (crypto.isEncrypted(kind)) {
+          if (!crypto.canWrite(kind)) {
+            throw new Error("encryption unavailable");
+          }
+          const id = window.crypto.randomUUID();
+          const name = crypto.encrypt(kind, resources.attachment(id), 1, file.name);
+          encryption = { id, nameEnc: name.envelope, signerDeviceId: name.signerDeviceId };
+        }
+      }
+      await uploadFile(client, csrf, context, file, setProgress, undefined, encryption);
       await reload();
     } catch (error) {
       setMessage(describe(error));
@@ -92,7 +169,7 @@ export function Attachments({
       const url = await getDownloadUrl(client, item.id);
       const link = document.createElement("a");
       link.href = url;
-      link.download = item.name;
+      link.download = names.get(item.id) ?? "arquivo";
       link.rel = "noopener";
       link.click();
     } catch {
@@ -127,7 +204,7 @@ export function Attachments({
               onClick={() => void download(item)}
               type="button"
             >
-              {item.name}
+              {names.get(item.id) ?? item.name}
             </button>{" "}
             <span>
               {formatSize(item.size)} · {item.uploaderEmail}

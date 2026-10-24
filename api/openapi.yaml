@@ -2800,12 +2800,19 @@ components:
         seq: { type: integer, format: int64, minimum: 0 }
     CreateUploadRequest:
       type: object
-      required: [contextType, contextId, name, size]
+      required: [contextType, contextId, size]
       additionalProperties: false
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Client-chosen ID, required when nameEnc is present so the envelope can bind to the attachment
         contextType: { type: string, enum: [work_item, conversation] }
         contextId: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 255 }
+        nameEnc:
+          $ref: "#/components/schemas/EncryptedBlob"
+        signerDeviceId: { type: string, format: uuid }
         contentType: { type: string, maxLength: 255 }
         size: { type: integer, format: int64, minimum: 1 }
     Upload:
@@ -2840,11 +2847,16 @@ components:
               etag: { type: string, minLength: 1, maxLength: 256 }
     Attachment:
       type: object
-      required: [id, name, contentType, size, uploaderEmail, createdAt]
+      required: [id, name, contentType, size, uploaderEmail, createdAt, encrypted]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        encrypted: { type: boolean }
+        nameEnc:
+          $ref: "#/components/schemas/EncryptedBlob"
+        contentAuthorId: { type: string, format: uuid }
+        signerDeviceId: { type: string, format: uuid }
         contentType: { type: string }
         size: { type: integer, format: int64 }
         uploaderEmail: { type: string }

@@ -719,12 +719,18 @@ type ApiErrorCode string
 
 // Attachment defines model for Attachment.
 type Attachment struct {
-	ContentType   string             `json:"contentType"`
-	CreatedAt     time.Time          `json:"createdAt"`
-	Id            openapi_types.UUID `json:"id"`
-	Name          string             `json:"name"`
-	Size          int64              `json:"size"`
-	UploaderEmail string             `json:"uploaderEmail"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentType     string              `json:"contentType"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	Encrypted       bool                `json:"encrypted"`
+	Id              openapi_types.UUID  `json:"id"`
+	Name            string              `json:"name"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Size           int64               `json:"size"`
+	UploaderEmail  string              `json:"uploaderEmail"`
 }
 
 // AuthorizeDeviceRequest defines model for AuthorizeDeviceRequest.
@@ -923,8 +929,15 @@ type CreateUploadRequest struct {
 	ContentType *string                        `json:"contentType,omitempty"`
 	ContextId   openapi_types.UUID             `json:"contextId"`
 	ContextType CreateUploadRequestContextType `json:"contextType"`
-	Name        string                         `json:"name"`
-	Size        int64                          `json:"size"`
+
+	// Id Client-chosen ID, required when nameEnc is present so the envelope can bind to the attachment
+	Id   *openapi_types.UUID `json:"id,omitempty"`
+	Name *string             `json:"name,omitempty"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Size           int64               `json:"size"`
 }
 
 // CreateUploadRequestContextType defines model for CreateUploadRequest.ContextType.

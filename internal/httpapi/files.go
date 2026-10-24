@@ -12,6 +12,7 @@ import (
 	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -36,6 +37,31 @@ type fileContext struct {
 	canDownload    bool
 	manager        bool
 	archived       bool
+}
+
+// attachmentDomainFailure applies the content-encryption rule for the context
+// that owns an attachment. The attachment ID is chosen by the client before an
+// encrypted upload so its name envelope cannot be copied to another file.
+func attachmentDomainFailure(ctx context.Context, q *sqlc.Queries, target fileContext, encrypted bool, account, attachmentID pgtype.UUID, signerID *pgtype.UUID, nameEnc *string) (*encFailure, error) {
+	if target.workItemID.Valid {
+		if encrypted {
+			writer, failure, err := prepareEncrypted(ctx, q, account, target.projectID, "work", signerID)
+			if err != nil || failure != nil {
+				return failure, err
+			}
+			return writer.verify(account, attachmentResource(attachmentID), 1, *nameEnc), nil
+		}
+		return requirePlaintextAllowed(ctx, q, target.projectID, "work")
+	}
+	conversation, err := q.GetConversation(ctx, target.conversationID)
+	if err != nil {
+		return nil, err
+	}
+	writer, failure, err := channelDomainFailure(ctx, q, conversation, encrypted, account, signerID)
+	if err != nil || failure != nil || !encrypted {
+		return failure, err
+	}
+	return writer.verify(account, attachmentResource(attachmentID), 1, *nameEnc), nil
 }
 
 // resolveFileContext answers 404 for contexts the account cannot see. It never
@@ -152,6 +178,15 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		return
 	}
+	encryptedName := payload.NameEnc != nil
+	if encryptedName == (payload.Name != nil) || (encryptedName && (payload.Id == nil || payload.SignerDeviceId == nil)) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	attachmentID := pgUUID(uuid.New())
+	if payload.Id != nil {
+		attachmentID = pgUUID(uuidFrom(*payload.Id))
+	}
 	contentType := "application/octet-stream"
 	if payload.ContentType != nil && *payload.ContentType != "" {
 		contentType = *payload.ContentType
@@ -192,6 +227,24 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
+	var signerID *pgtype.UUID
+	if payload.SignerDeviceId != nil {
+		signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+	}
+	var nameEnvelope *string
+	if payload.NameEnc != nil {
+		value := string(*payload.NameEnc)
+		nameEnvelope = &value
+	}
+	failure, err := attachmentDomainFailure(ctx, q, target, encryptedName, session.AccountID, attachmentID, signerID, nameEnvelope)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if failure != nil {
+		failure.write(w)
+		return
+	}
 	if err = q.LockOrganization(ctx, target.organizationID); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -205,10 +258,25 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInsufficientStorage)
 		return
 	}
+	name := ""
+	if payload.Name != nil {
+		name = *payload.Name
+	}
+	var nameEnc []byte
+	if encryptedName {
+		nameEnc, _ = unb64(*nameEnvelope, 0)
+	}
 	attachment, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
-		OrganizationID: target.organizationID, ProjectID: target.projectID, WorkItemID: target.workItemID,
+		ID: attachmentID, OrganizationID: target.organizationID, ProjectID: target.projectID, WorkItemID: target.workItemID,
 		ConversationID: target.conversationID, UploaderID: session.AccountID, ObjectKey: key,
-		Name: payload.Name, ContentType: contentType, DeclaredSize: payload.Size, PartSize: uploadPartSize, PartCount: partCount,
+		Name: name, Encrypted: encryptedName, NameEnc: nameEnc, ContentAuthorID: session.AccountID,
+		ContentSignerDeviceID: func() pgtype.UUID {
+			if signerID != nil {
+				return *signerID
+			}
+			return pgtype.UUID{}
+		}(),
+		ContentType: contentType, DeclaredSize: payload.Size, PartSize: uploadPartSize, PartCount: partCount,
 	})
 	if isUniqueViolation(err) {
 		// The partial unique index allows one active upload per person.
@@ -284,10 +352,22 @@ func (h *healthHandler) PresignUploadPart(w http.ResponseWriter, r *http.Request
 }
 
 func toAttachment(row sqlc.Attachment, uploaderEmail string) gen.Attachment {
-	return gen.Attachment{
+	attachment := gen.Attachment{
 		Id: fromPG(row.ID), Name: row.Name, ContentType: row.ContentType, Size: row.StoredSize.Int64,
-		UploaderEmail: uploaderEmail, CreatedAt: row.CreatedAt.Time,
+		UploaderEmail: uploaderEmail, CreatedAt: row.CreatedAt.Time, Encrypted: row.Encrypted,
 	}
+	if row.Encrypted {
+		attachment.NameEnc = blob(row.NameEnc)
+		if row.ContentAuthorID.Valid {
+			author := fromPG(row.ContentAuthorID)
+			attachment.ContentAuthorId = &author
+		}
+		if row.ContentSignerDeviceID.Valid {
+			signer := fromPG(row.ContentSignerDeviceID)
+			attachment.SignerDeviceId = &signer
+		}
+	}
+	return attachment
 }
 
 func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
@@ -492,7 +572,10 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		for _, row := range rows {
-			attachments = append(attachments, toAttachment(sqlc.Attachment{ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt}, row.UploaderEmail))
+			attachments = append(attachments, toAttachment(sqlc.Attachment{
+				ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt,
+				Encrypted: row.Encrypted, NameEnc: row.NameEnc, ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+			}, row.UploaderEmail))
 		}
 	} else {
 		rows, err := q.ListConversationAttachments(ctx, conversationID)
@@ -501,7 +584,10 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		for _, row := range rows {
-			attachments = append(attachments, toAttachment(sqlc.Attachment{ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt}, row.UploaderEmail))
+			attachments = append(attachments, toAttachment(sqlc.Attachment{
+				ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt,
+				Encrypted: row.Encrypted, NameEnc: row.NameEnc, ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+			}, row.UploaderEmail))
 		}
 	}
 	writeJSON(w, http.StatusOK, attachments)

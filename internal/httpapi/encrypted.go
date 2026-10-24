@@ -135,3 +135,4 @@ func projectResource(id pgtype.UUID, field string) string {
 }
 func channelResource(id pgtype.UUID) string              { return "cn:" + uuidString(id) }
 func sprintResource(id pgtype.UUID, field string) string { return "sp:" + uuidString(id) + ":" + field }
+func attachmentResource(id pgtype.UUID) string           { return "at:" + uuidString(id) + ":name" }

@@ -904,7 +904,7 @@ function ItemDetail({
 
       <Attachments
         client={client}
-        context={{ contextType: "work_item", contextId: item.id }}
+        context={{ contextType: "work_item", contextId: item.id, projectId: item.projectId }}
       />
 
       <h3>Comentários</h3>

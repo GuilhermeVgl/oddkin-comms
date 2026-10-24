@@ -227,28 +227,34 @@ func (q *Queries) CountOpenEpicTasks(ctx context.Context, epicID pgtype.UUID) (i
 }
 
 const createAttachment = `-- name: CreateAttachment :one
-INSERT INTO attachment (organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
-                        name, content_type, declared_size, part_size, part_count)
-VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9, $10, $11)
-RETURNING id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at
+INSERT INTO attachment (id, organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
+                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id
 `
 
 type CreateAttachmentParams struct {
-	OrganizationID pgtype.UUID
-	ProjectID      pgtype.UUID
-	WorkItemID     pgtype.UUID
-	ConversationID pgtype.UUID
-	UploaderID     pgtype.UUID
-	ObjectKey      string
-	Name           string
-	ContentType    string
-	DeclaredSize   int64
-	PartSize       int32
-	PartCount      int32
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	ProjectID             pgtype.UUID
+	WorkItemID            pgtype.UUID
+	ConversationID        pgtype.UUID
+	UploaderID            pgtype.UUID
+	ObjectKey             string
+	Name                  string
+	Encrypted             bool
+	NameEnc               []byte
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+	ContentType           string
+	DeclaredSize          int64
+	PartSize              int32
+	PartCount             int32
 }
 
 func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (Attachment, error) {
 	row := q.db.QueryRow(ctx, createAttachment,
+		arg.ID,
 		arg.OrganizationID,
 		arg.ProjectID,
 		arg.WorkItemID,
@@ -256,6 +262,10 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		arg.UploaderID,
 		arg.ObjectKey,
 		arg.Name,
+		arg.Encrypted,
+		arg.NameEnc,
+		arg.ContentAuthorID,
+		arg.ContentSignerDeviceID,
 		arg.ContentType,
 		arg.DeclaredSize,
 		arg.PartSize,
@@ -281,6 +291,10 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		&i.ObjectRemoved,
 		&i.CreatedAt,
 		&i.ReadyAt,
+		&i.Encrypted,
+		&i.NameEnc,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -1322,7 +1336,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id pgtype.UUID) (GetAccoun
 }
 
 const getAttachment = `-- name: GetAttachment :one
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at FROM attachment WHERE id = $1
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id FROM attachment WHERE id = $1
 `
 
 func (q *Queries) GetAttachment(ctx context.Context, id pgtype.UUID) (Attachment, error) {
@@ -1347,12 +1361,16 @@ func (q *Queries) GetAttachment(ctx context.Context, id pgtype.UUID) (Attachment
 		&i.ObjectRemoved,
 		&i.CreatedAt,
 		&i.ReadyAt,
+		&i.Encrypted,
+		&i.NameEnc,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
 
 const getAttachmentForUpdate = `-- name: GetAttachmentForUpdate :one
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at FROM attachment WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id FROM attachment WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetAttachmentForUpdate(ctx context.Context, id pgtype.UUID) (Attachment, error) {
@@ -1377,6 +1395,10 @@ func (q *Queries) GetAttachmentForUpdate(ctx context.Context, id pgtype.UUID) (A
 		&i.ObjectRemoved,
 		&i.CreatedAt,
 		&i.ReadyAt,
+		&i.Encrypted,
+		&i.NameEnc,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -2609,7 +2631,7 @@ func (q *Queries) ListCallParticipants(ctx context.Context, callID pgtype.UUID) 
 }
 
 const listConversationAttachments = `-- name: ListConversationAttachments :many
-SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, COALESCE(u.email_normalized, '')::text AS uploader_email
+SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, COALESCE(u.email_normalized, '')::text AS uploader_email
 FROM attachment AS a
 LEFT JOIN account AS u ON u.id = a.uploader_id
 WHERE a.conversation_id = $1 AND a.state = 'ready'
@@ -2617,25 +2639,29 @@ ORDER BY a.created_at, a.id
 `
 
 type ListConversationAttachmentsRow struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	ProjectID      pgtype.UUID
-	WorkItemID     pgtype.UUID
-	ConversationID pgtype.UUID
-	UploaderID     pgtype.UUID
-	State          string
-	ObjectKey      string
-	UploadID       string
-	Name           string
-	ContentType    string
-	DeclaredSize   int64
-	PartSize       int32
-	PartCount      int32
-	StoredSize     pgtype.Int8
-	ObjectRemoved  bool
-	CreatedAt      pgtype.Timestamptz
-	ReadyAt        pgtype.Timestamptz
-	UploaderEmail  string
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	ProjectID             pgtype.UUID
+	WorkItemID            pgtype.UUID
+	ConversationID        pgtype.UUID
+	UploaderID            pgtype.UUID
+	State                 string
+	ObjectKey             string
+	UploadID              string
+	Name                  string
+	ContentType           string
+	DeclaredSize          int64
+	PartSize              int32
+	PartCount             int32
+	StoredSize            pgtype.Int8
+	ObjectRemoved         bool
+	CreatedAt             pgtype.Timestamptz
+	ReadyAt               pgtype.Timestamptz
+	Encrypted             bool
+	NameEnc               []byte
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+	UploaderEmail         string
 }
 
 func (q *Queries) ListConversationAttachments(ctx context.Context, conversationID pgtype.UUID) ([]ListConversationAttachmentsRow, error) {
@@ -2666,6 +2692,10 @@ func (q *Queries) ListConversationAttachments(ctx context.Context, conversationI
 			&i.ObjectRemoved,
 			&i.CreatedAt,
 			&i.ReadyAt,
+			&i.Encrypted,
+			&i.NameEnc,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 			&i.UploaderEmail,
 		); err != nil {
 			return nil, err
@@ -3337,7 +3367,7 @@ func (q *Queries) ListPendingDevices(ctx context.Context, organizationID pgtype.
 }
 
 const listPendingRelease = `-- name: ListPendingRelease :many
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at FROM attachment
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id FROM attachment
 WHERE state IN ('aborted', 'deleted') AND NOT object_removed
 ORDER BY created_at
 LIMIT 100
@@ -3371,6 +3401,10 @@ func (q *Queries) ListPendingRelease(ctx context.Context) ([]Attachment, error) 
 			&i.ObjectRemoved,
 			&i.CreatedAt,
 			&i.ReadyAt,
+			&i.Encrypted,
+			&i.NameEnc,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -3822,7 +3856,7 @@ func (q *Queries) ListUserEvents(ctx context.Context, arg ListUserEventsParams) 
 }
 
 const listWorkItemAttachments = `-- name: ListWorkItemAttachments :many
-SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, COALESCE(u.email_normalized, '')::text AS uploader_email
+SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, COALESCE(u.email_normalized, '')::text AS uploader_email
 FROM attachment AS a
 LEFT JOIN account AS u ON u.id = a.uploader_id
 WHERE a.work_item_id = $1 AND a.state = 'ready'
@@ -3830,25 +3864,29 @@ ORDER BY a.created_at, a.id
 `
 
 type ListWorkItemAttachmentsRow struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	ProjectID      pgtype.UUID
-	WorkItemID     pgtype.UUID
-	ConversationID pgtype.UUID
-	UploaderID     pgtype.UUID
-	State          string
-	ObjectKey      string
-	UploadID       string
-	Name           string
-	ContentType    string
-	DeclaredSize   int64
-	PartSize       int32
-	PartCount      int32
-	StoredSize     pgtype.Int8
-	ObjectRemoved  bool
-	CreatedAt      pgtype.Timestamptz
-	ReadyAt        pgtype.Timestamptz
-	UploaderEmail  string
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	ProjectID             pgtype.UUID
+	WorkItemID            pgtype.UUID
+	ConversationID        pgtype.UUID
+	UploaderID            pgtype.UUID
+	State                 string
+	ObjectKey             string
+	UploadID              string
+	Name                  string
+	ContentType           string
+	DeclaredSize          int64
+	PartSize              int32
+	PartCount             int32
+	StoredSize            pgtype.Int8
+	ObjectRemoved         bool
+	CreatedAt             pgtype.Timestamptz
+	ReadyAt               pgtype.Timestamptz
+	Encrypted             bool
+	NameEnc               []byte
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+	UploaderEmail         string
 }
 
 func (q *Queries) ListWorkItemAttachments(ctx context.Context, workItemID pgtype.UUID) ([]ListWorkItemAttachmentsRow, error) {
@@ -3879,6 +3917,10 @@ func (q *Queries) ListWorkItemAttachments(ctx context.Context, workItemID pgtype
 			&i.ObjectRemoved,
 			&i.CreatedAt,
 			&i.ReadyAt,
+			&i.Encrypted,
+			&i.NameEnc,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 			&i.UploaderEmail,
 		); err != nil {
 			return nil, err

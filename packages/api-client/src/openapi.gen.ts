@@ -1859,11 +1859,19 @@ export interface components {
       seq: number;
     };
     CreateUploadRequest: {
+      /**
+       * Format: uuid
+       * @description Client-chosen ID, required when nameEnc is present so the envelope can bind to the attachment
+       */
+      id?: string;
       /** @enum {string} */
       contextType: "work_item" | "conversation";
       /** Format: uuid */
       contextId: string;
-      name: string;
+      name?: string;
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
       contentType?: string;
       /** Format: int64 */
       size: number;
@@ -1888,6 +1896,12 @@ export interface components {
       /** Format: uuid */
       id: string;
       name: string;
+      encrypted: boolean;
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      contentAuthorId?: string;
+      /** Format: uuid */
+      signerDeviceId?: string;
       contentType: string;
       /** Format: int64 */
       size: number;

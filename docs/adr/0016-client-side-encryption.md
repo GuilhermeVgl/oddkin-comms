@@ -2,7 +2,7 @@
 
 ## Estado
 
-Implementada e verificada em um navegador real contra a API local e PostgreSQL. **Sem revisão criptográfica externa**: vale a ressalva do [ADR 0015](./0015-e2ee-key-directory.md). As chamadas ainda não usam E2EE de mídia.
+Implementada e verificada em um navegador real contra a API local e PostgreSQL. **Sem revisão criptográfica externa**: vale a ressalva do [ADR 0015](./0015-e2ee-key-directory.md). As chamadas usam E2EE de mídia no LiveKit.
 
 ## O que é cifrado
 
@@ -26,7 +26,7 @@ Títulos e descrições de atividades e subtarefas, títulos e descrições de �
 
 ## Limites conhecidos
 
-- Mensagens diretas ainda são texto claro e o servidor recusa envelope em DM (`domain_unavailable`). Nomes de projeto, descrição, nomes de canal, sprints, nomes de arquivos e anexos também seguem em claro.
+- DMs, nomes de projeto, canal e sprint também são cifrados. O nome de um anexo novo é cifrado e assinado no navegador, vinculado ao ID do anexo e ao domínio do contexto. O corpo binário, o MIME type e a chave individual por arquivo ainda não usam o formato de streaming E2EE definido na SPEC.
 - Os campos que o servidor precisa para funcionar (responsável, coluna, prioridade, prazo, relações, tamanhos) ficam visíveis ao backend, como na SPEC 10.2.
 - O libsodium roda na thread principal, não em um worker.
 - Apagar o texto em claro de uma linha migrada não apaga cópias já feitas em backups do banco anteriores à migração.

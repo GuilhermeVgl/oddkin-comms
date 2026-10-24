@@ -490,6 +490,14 @@ export type UploadSession = Schemas["Upload"];
 export type UploadContext = {
   contextType: "work_item" | "conversation";
   contextId: string;
+  /** Required for a work-item attachment whose name is encrypted. */
+  projectId?: string;
+};
+
+export type UploadNameEncryption = {
+  id: string;
+  nameEnc: string;
+  signerDeviceId: string;
 };
 
 export async function createUpload(
@@ -497,11 +505,18 @@ export async function createUpload(
   token: string,
   context: UploadContext,
   file: { name: string; type: string; size: number },
+  encryption?: UploadNameEncryption,
 ): Promise<UploadSession> {
   const { data, response } = await client.POST("/api/v1/uploads", {
     body: {
       ...context,
-      name: file.name,
+      ...(encryption === undefined
+        ? { name: file.name }
+        : {
+            id: encryption.id,
+            nameEnc: encryption.nameEnc,
+            signerDeviceId: encryption.signerDeviceId,
+          }),
       size: file.size,
       ...(file.type === "" ? {} : { contentType: file.type }),
     },
@@ -607,8 +622,9 @@ export async function uploadFile(
   file: File,
   onProgress: (fraction: number) => void,
   putPart: typeof fetch = fetch,
+  encryption?: UploadNameEncryption,
 ): Promise<Attachment> {
-  const session = await createUpload(client, token, context, file);
+  const session = await createUpload(client, token, context, file, encryption);
   const etags = new Array<string>(session.partCount);
   let next = 0;
   let finished = 0;

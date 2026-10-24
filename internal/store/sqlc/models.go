@@ -17,24 +17,28 @@ type Account struct {
 }
 
 type Attachment struct {
-	ID             pgtype.UUID
-	OrganizationID pgtype.UUID
-	ProjectID      pgtype.UUID
-	WorkItemID     pgtype.UUID
-	ConversationID pgtype.UUID
-	UploaderID     pgtype.UUID
-	State          string
-	ObjectKey      string
-	UploadID       string
-	Name           string
-	ContentType    string
-	DeclaredSize   int64
-	PartSize       int32
-	PartCount      int32
-	StoredSize     pgtype.Int8
-	ObjectRemoved  bool
-	CreatedAt      pgtype.Timestamptz
-	ReadyAt        pgtype.Timestamptz
+	ID                    pgtype.UUID
+	OrganizationID        pgtype.UUID
+	ProjectID             pgtype.UUID
+	WorkItemID            pgtype.UUID
+	ConversationID        pgtype.UUID
+	UploaderID            pgtype.UUID
+	State                 string
+	ObjectKey             string
+	UploadID              string
+	Name                  string
+	ContentType           string
+	DeclaredSize          int64
+	PartSize              int32
+	PartCount             int32
+	StoredSize            pgtype.Int8
+	ObjectRemoved         bool
+	CreatedAt             pgtype.Timestamptz
+	ReadyAt               pgtype.Timestamptz
+	Encrypted             bool
+	NameEnc               []byte
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type AuthSession struct {

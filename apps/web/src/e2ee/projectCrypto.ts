@@ -30,6 +30,7 @@ export const resources = {
   epic: (id: string, field: "title" | "desc") => `ep:${id}:${field}`,
   comment: (id: string) => `wc:${id}`,
   message: (mutationId: string) => `msg:${mutationId}`,
+  attachment: (id: string) => `at:${id}:name`,
 };
 
 export type EncryptedField = { envelope: string; signerDeviceId: string };

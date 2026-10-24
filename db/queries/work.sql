@@ -424,9 +424,9 @@ FROM attachment
 WHERE organization_id = $1 AND state IN ('uploading', 'ready');
 
 -- name: CreateAttachment :one
-INSERT INTO attachment (organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
-                        name, content_type, declared_size, part_size, part_count)
-VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9, $10, $11)
+INSERT INTO attachment (id, organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
+                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16)
 RETURNING *;
 
 -- name: SetAttachmentUploadID :exec
