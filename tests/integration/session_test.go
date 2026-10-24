@@ -39,9 +39,21 @@ func TestSessionExpiresByInactivityAndCanBeRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var organizationID pgtype.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('73000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
+		OrganizationID: organizationID, AccountID: account.ID, MembershipKind: "internal", IsAdmin: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
+		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
+			t.Error(err)
+		}
 		if _, err := pool.Exec(cleanupCtx, `DELETE FROM account WHERE id = $1`, account.ID); err != nil {
 			t.Error(err)
 		}
