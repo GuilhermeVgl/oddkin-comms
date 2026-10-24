@@ -302,7 +302,21 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 	}
 	// A project manager never promotes an external member to manager.
 	manager := payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
-	if err = q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager}); err != nil {
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	inTx := sqlc.New(tx)
+	err = inTx.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager})
+	if err == nil {
+		err = refreshProjectDomains(ctx, inTx, pgUUID(projectId))
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -382,6 +396,9 @@ func (h *healthHandler) UpdateExternalPolicy(w http.ResponseWriter, r *http.Requ
 		var members []pgtype.UUID
 		if members, err = projectRecipients(ctx, q, pgUUID(projectId), ""); err == nil {
 			err = emitEvent(ctx, q, members, eventSpec{Type: "policy.changed", ResourceID: pgUUID(projectId), Version: policy.Version, ProjectID: pgUUID(projectId)})
+		}
+		if err == nil {
+			err = refreshProjectDomains(ctx, q, pgUUID(projectId))
 		}
 	}
 	if err == nil {

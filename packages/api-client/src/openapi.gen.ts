@@ -950,6 +950,174 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/e2ee/trust-root": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Public key of the organization trust root (verify its fingerprint out of band) */
+    get: operations["getTrustRoot"];
+    /** Pin the trust root once (organization administrators) */
+    put: operations["setTrustRoot"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/devices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Your devices */
+    get: operations["listDevices"];
+    put?: never;
+    /** Register a device public key; it stays pending until authorized */
+    post: operations["registerDevice"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/devices/pending": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Devices waiting for trust-root approval (organization administrators) */
+    get: operations["listPendingDevices"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/devices/{deviceId}/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Activate a device with a signed certificate */
+    post: operations["authorizeDevice"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/devices/{deviceId}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revoke a device; affected key domains require rotation */
+    post: operations["revokeDevice"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/directory": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    /** Active device keys of the project members and of the recovery identity */
+    get: operations["getProjectDirectory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/key-domains": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    /** Key domains of a project */
+    get: operations["listKeyDomains"];
+    put?: never;
+    /** Create the work or chat key domain (it waits for its first generation) */
+    post: operations["createKeyDomain"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/generations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Publish the next key generation with one signed envelope per authorized device */
+    post: operations["publishKeyGeneration"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/envelopes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    /** Envelopes addressed to your active devices, every generation */
+    get: operations["listMyKeyEnvelopes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/health/live": {
     parameters: {
       query?: never;
@@ -1406,10 +1574,106 @@ export interface components {
         | "screen_share_taken"
         | "not_in_call";
     };
+    /** @description Unpadded base64url (RFC 4648 section 5) of binary data */
+    Base64Url: string;
+    TrustRoot: {
+      signPublicKey: components["schemas"]["Base64Url"];
+      /** Format: date-time */
+      setAt: string;
+    };
+    SetTrustRootRequest: {
+      signPublicKey: components["schemas"]["Base64Url"];
+    };
+    RegisterDeviceRequest: {
+      name: string;
+      /** @enum {string} */
+      kind?: "device" | "recovery";
+      signPublicKey: components["schemas"]["Base64Url"];
+      boxPublicKey: components["schemas"]["Base64Url"];
+    };
+    Device: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /** @enum {string} */
+      kind: "device" | "recovery";
+      /** @enum {string} */
+      state: "pending" | "active" | "revoked";
+      signPublicKey: components["schemas"]["Base64Url"];
+      boxPublicKey: components["schemas"]["Base64Url"];
+      certificate?: components["schemas"]["Base64Url"];
+    };
+    PendingDevice: {
+      device: components["schemas"]["Device"];
+      /** Format: uuid */
+      accountId: string;
+      email: string;
+    };
+    AuthorizeDeviceRequest: {
+      /**
+       * Format: uuid
+       * @description Active device of the same account that signed; omit when the trust root signed
+       */
+      authorizerDeviceId?: string;
+      certificate: components["schemas"]["Base64Url"];
+    };
+    DirectoryDevice: {
+      /** Format: uuid */
+      deviceId: string;
+      /** Format: uuid */
+      accountId: string;
+      email: string;
+      /** @enum {string} */
+      kind: "device" | "recovery";
+      signPublicKey: components["schemas"]["Base64Url"];
+      boxPublicKey: components["schemas"]["Base64Url"];
+      certificate: components["schemas"]["Base64Url"];
+      /** Format: uuid */
+      authorizerDeviceId?: string;
+    };
+    CreateKeyDomainRequest: {
+      /** @enum {string} */
+      kind: "work" | "chat";
+    };
+    KeyDomain: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      projectId: string;
+      /** @enum {string} */
+      kind: "work" | "chat";
+      currentGeneration: number;
+      /** @enum {string} */
+      state: "ok" | "pending_keys" | "rotation_required";
+      /** @description False while a revocation requires a new generation */
+      writable: boolean;
+    };
+    PublishGenerationRequest: {
+      generation: number;
+      /** Format: uuid */
+      signerDeviceId: string;
+      envelopes: {
+        /** Format: uuid */
+        recipientDeviceId: string;
+        sealed: components["schemas"]["Base64Url"];
+        signature: components["schemas"]["Base64Url"];
+      }[];
+    };
+    KeyEnvelope: {
+      generation: number;
+      /** Format: uuid */
+      recipientDeviceId: string;
+      /** Format: uuid */
+      signerDeviceId: string;
+      sealed: components["schemas"]["Base64Url"];
+      signature: components["schemas"]["Base64Url"];
+    };
   };
   responses: never;
   parameters: {
     ProjectId: string;
+    DeviceId: string;
+    KeyDomainId: string;
     CallId: string;
     UploadId: string;
     MessageId: string;
@@ -4244,6 +4508,537 @@ export interface operations {
       };
       /** @description Media server not configured */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getTrustRoot: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trust root */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TrustRoot"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not configured yet */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setTrustRoot: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetTrustRootRequest"];
+      };
+    };
+    responses: {
+      /** @description Trust root pinned */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TrustRoot"];
+        };
+      };
+      /** @description Invalid key */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Already configured */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listDevices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Devices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Device"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  registerDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterDeviceRequest"];
+      };
+    };
+    responses: {
+      /** @description Pending device */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Device"];
+        };
+      };
+      /** @description Invalid keys or name */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Key already registered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listPendingDevices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending devices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PendingDevice"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  authorizeDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AuthorizeDeviceRequest"];
+      };
+    };
+    responses: {
+      /** @description Device active */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Device"];
+        };
+      };
+      /** @description Certificate does not verify */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown device */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not pending, or trust root missing */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revokeDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown device */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectDirectory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Directory */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryDevice"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listKeyDomains: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key domains */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createKeyDomain: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateKeyDomainRequest"];
+      };
+    };
+    responses: {
+      /** @description Key domain */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Domain already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  publishKeyGeneration: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PublishGenerationRequest"];
+      };
+    };
+    responses: {
+      /** @description Generation published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description Envelope signature, recipient or size is invalid */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Generation is not the next one, or the recipient set changed */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listMyKeyEnvelopes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyEnvelope"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an authorized reader */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible key domain */
+      404: {
         headers: {
           [name: string]: unknown;
         };

@@ -1422,6 +1422,281 @@ paths:
           description: Missing or invalid signature
         "503":
           description: Media server not configured
+  /api/v1/e2ee/trust-root:
+    get:
+      operationId: getTrustRoot
+      summary: Public key of the organization trust root (verify its fingerprint out of band)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Trust root
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustRoot"
+        "401":
+          description: No active session
+        "404":
+          description: Not configured yet
+    put:
+      operationId: setTrustRoot
+      summary: Pin the trust root once (organization administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetTrustRootRequest"
+      responses:
+        "200":
+          description: Trust root pinned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustRoot"
+        "400":
+          description: Invalid key
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "409":
+          description: Already configured
+  /api/v1/devices:
+    get:
+      operationId: listDevices
+      summary: Your devices
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+        "401":
+          description: No active session
+    post:
+      operationId: registerDevice
+      summary: Register a device public key; it stays pending until authorized
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeviceRequest"
+      responses:
+        "201":
+          description: Pending device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid keys or name
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "409":
+          description: Key already registered
+  /api/v1/devices/pending:
+    get:
+      operationId: listPendingDevices
+      summary: Devices waiting for trust-root approval (organization administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Pending devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingDevice"
+        "401":
+          description: No active session
+        "403":
+          description: Role rejected
+  /api/v1/devices/{deviceId}/authorize:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    post:
+      operationId: authorizeDevice
+      summary: Activate a device with a signed certificate
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizeDeviceRequest"
+      responses:
+        "200":
+          description: Device active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Certificate does not verify
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown device
+        "409":
+          description: Not pending, or trust root missing
+  /api/v1/devices/{deviceId}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    post:
+      operationId: revokeDevice
+      summary: Revoke a device; affected key domains require rotation
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown device
+  /api/v1/projects/{projectId}/directory:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProjectDirectory
+      summary: Active device keys of the project members and of the recovery identity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Directory
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectoryDevice"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+  /api/v1/projects/{projectId}/key-domains:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listKeyDomains
+      summary: Key domains of a project
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Key domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: createKeyDomain
+      summary: Create the work or chat key domain (it waits for its first generation)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKeyDomainRequest"
+      responses:
+        "201":
+          description: Key domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Domain already exists
+  /api/v1/key-domains/{keyDomainId}/generations:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    post:
+      operationId: publishKeyGeneration
+      summary: Publish the next key generation with one signed envelope per authorized device
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishGenerationRequest"
+      responses:
+        "200":
+          description: Generation published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "400":
+          description: Envelope signature, recipient or size is invalid
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible key domain
+        "409":
+          description: Generation is not the next one, or the recipient set changed
+  /api/v1/key-domains/{keyDomainId}/envelopes:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    get:
+      operationId: listMyKeyEnvelopes
+      summary: Envelopes addressed to your active devices, every generation
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Envelopes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyEnvelope"
+        "401":
+          description: No active session
+        "403":
+          description: Not an authorized reader
+        "404":
+          description: Unknown or inaccessible key domain
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -1442,6 +1717,16 @@ components:
   parameters:
     ProjectId:
       name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    KeyDomainId:
+      name: keyDomainId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -1611,7 +1896,24 @@ components:
         version: { type: integer }
     ExternalPermission:
       type: string
-      enum: [work.read, work.create, work.edit, work.move, work.archive, work.comment, planning.edit, chat.read, chat.send, direct_messages.use, files.upload, files.download, calls.start, calls.join, calls.screen_share]
+      enum:
+        [
+          work.read,
+          work.create,
+          work.edit,
+          work.move,
+          work.archive,
+          work.comment,
+          planning.edit,
+          chat.read,
+          chat.send,
+          direct_messages.use,
+          files.upload,
+          files.download,
+          calls.start,
+          calls.join,
+          calls.screen_share,
+        ]
     BoardColumn:
       type: object
       required: [id, name, position, category]
@@ -1623,7 +1925,19 @@ components:
         category: { type: string, enum: [todo, in_progress, done] }
     WorkItem:
       type: object
-      required: [id, projectId, kind, title, description, priority, columnId, version, createdAt, updatedAt]
+      required:
+        [
+          id,
+          projectId,
+          kind,
+          title,
+          description,
+          priority,
+          columnId,
+          version,
+          createdAt,
+          updatedAt,
+        ]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -1852,7 +2166,11 @@ components:
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
-        kind: { type: string, enum: [mention, assignment, direct_message, call_invite] }
+        kind:
+          {
+            type: string,
+            enum: [mention, assignment, direct_message, call_invite],
+          }
         resourceId: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
@@ -1950,7 +2268,18 @@ components:
         state: { type: string, enum: [pending, accepted, declined, cancelled] }
     Call:
       type: object
-      required: [id, conversationId, state, startedBy, maxParticipants, participants, invitations, canEnd, invitedMe]
+      required:
+        [
+          id,
+          conversationId,
+          state,
+          startedBy,
+          maxParticipants,
+          participants,
+          invitations,
+          canEnd,
+          invitedMe,
+        ]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -1993,4 +2322,138 @@ components:
       properties:
         code:
           type: string
-          enum: [call_full, in_other_call, other_device, call_ended, screen_share_taken, not_in_call]
+          enum:
+            [
+              call_full,
+              in_other_call,
+              other_device,
+              call_ended,
+              screen_share_taken,
+              not_in_call,
+            ]
+    Base64Url:
+      type: string
+      description: Unpadded base64url (RFC 4648 section 5) of binary data
+      maxLength: 2048
+    TrustRoot:
+      type: object
+      required: [signPublicKey, setAt]
+      additionalProperties: false
+      properties:
+        signPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        setAt: { type: string, format: date-time }
+    SetTrustRootRequest:
+      type: object
+      required: [signPublicKey]
+      additionalProperties: false
+      properties:
+        signPublicKey: { $ref: "#/components/schemas/Base64Url" }
+    RegisterDeviceRequest:
+      type: object
+      required: [name, signPublicKey, boxPublicKey]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        kind: { type: string, enum: [device, recovery] }
+        signPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        boxPublicKey: { $ref: "#/components/schemas/Base64Url" }
+    Device:
+      type: object
+      required: [id, name, kind, state, signPublicKey, boxPublicKey]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, enum: [device, recovery] }
+        state: { type: string, enum: [pending, active, revoked] }
+        signPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        boxPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        certificate: { $ref: "#/components/schemas/Base64Url" }
+    PendingDevice:
+      type: object
+      required: [device, accountId, email]
+      additionalProperties: false
+      properties:
+        device: { $ref: "#/components/schemas/Device" }
+        accountId: { type: string, format: uuid }
+        email: { type: string }
+    AuthorizeDeviceRequest:
+      type: object
+      required: [certificate]
+      additionalProperties: false
+      properties:
+        authorizerDeviceId:
+          type: string
+          format: uuid
+          description: Active device of the same account that signed; omit when the trust root signed
+        certificate: { $ref: "#/components/schemas/Base64Url" }
+    DirectoryDevice:
+      type: object
+      required:
+        [
+          deviceId,
+          accountId,
+          email,
+          kind,
+          signPublicKey,
+          boxPublicKey,
+          certificate,
+        ]
+      additionalProperties: false
+      properties:
+        deviceId: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        email: { type: string }
+        kind: { type: string, enum: [device, recovery] }
+        signPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        boxPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        certificate: { $ref: "#/components/schemas/Base64Url" }
+        authorizerDeviceId: { type: string, format: uuid }
+    CreateKeyDomainRequest:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [work, chat] }
+    KeyDomain:
+      type: object
+      required: [id, projectId, kind, currentGeneration, state, writable]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        kind: { type: string, enum: [work, chat] }
+        currentGeneration: { type: integer }
+        state: { type: string, enum: [ok, pending_keys, rotation_required] }
+        writable:
+          type: boolean
+          description: False while a revocation requires a new generation
+    PublishGenerationRequest:
+      type: object
+      required: [generation, signerDeviceId, envelopes]
+      additionalProperties: false
+      properties:
+        generation: { type: integer, minimum: 1 }
+        signerDeviceId: { type: string, format: uuid }
+        envelopes:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [recipientDeviceId, sealed, signature]
+            additionalProperties: false
+            properties:
+              recipientDeviceId: { type: string, format: uuid }
+              sealed: { $ref: "#/components/schemas/Base64Url" }
+              signature: { $ref: "#/components/schemas/Base64Url" }
+    KeyEnvelope:
+      type: object
+      required:
+        [generation, recipientDeviceId, signerDeviceId, sealed, signature]
+      additionalProperties: false
+      properties:
+        generation: { type: integer }
+        recipientDeviceId: { type: string, format: uuid }
+        signerDeviceId: { type: string, format: uuid }
+        sealed: { $ref: "#/components/schemas/Base64Url" }
+        signature: { $ref: "#/components/schemas/Base64Url" }

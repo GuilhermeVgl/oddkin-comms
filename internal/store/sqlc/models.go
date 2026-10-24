@@ -105,6 +105,22 @@ type ConversationReadCursor struct {
 	LastSeq        int64
 }
 
+type Device struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	AccountID          pgtype.UUID
+	Kind               string
+	Name               string
+	SignPublicKey      []byte
+	BoxPublicKey       []byte
+	State              string
+	Certificate        []byte
+	AuthorizerDeviceID pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	AuthorizedAt       pgtype.Timestamptz
+	RevokedAt          pgtype.Timestamptz
+}
+
 type Epic struct {
 	ID          pgtype.UUID
 	ProjectID   pgtype.UUID
@@ -130,6 +146,33 @@ type InvitationDelivery struct {
 	ProviderID      pgtype.Text
 	SentAt          pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+}
+
+type KeyDomain struct {
+	ID                pgtype.UUID
+	OrganizationID    pgtype.UUID
+	ProjectID         pgtype.UUID
+	Kind              string
+	CurrentGeneration int32
+	State             string
+	CreatedAt         pgtype.Timestamptz
+}
+
+type KeyEnvelope struct {
+	DomainID          pgtype.UUID
+	Generation        int32
+	RecipientDeviceID pgtype.UUID
+	SignerDeviceID    pgtype.UUID
+	Sealed            []byte
+	Signature         []byte
+	CreatedAt         pgtype.Timestamptz
+}
+
+type KeyGeneration struct {
+	DomainID        pgtype.UUID
+	Generation      int32
+	CreatedByDevice pgtype.UUID
+	CreatedAt       pgtype.Timestamptz
 }
 
 type LivekitWebhookEvent struct {
@@ -194,6 +237,13 @@ type OrganizationMembership struct {
 	MembershipKind string
 	IsAdmin        bool
 	CreatedAt      pgtype.Timestamptz
+}
+
+type OrganizationTrust struct {
+	OrganizationID    pgtype.UUID
+	RootSignPublicKey []byte
+	SetBy             pgtype.UUID
+	SetAt             pgtype.Timestamptz
 }
 
 type Project struct {

@@ -580,3 +580,88 @@ INSERT INTO livekit_webhook_event (event_id) VALUES ($1) ON CONFLICT DO NOTHING;
 
 -- name: GetLatestAdmission :one
 SELECT * FROM call_admission WHERE call_id = $1 AND account_id = $2 ORDER BY created_at DESC LIMIT 1;
+
+-- name: SetTrustRoot :execrows
+INSERT INTO organization_trust (organization_id, root_sign_public_key, set_by) VALUES ($1, $2, $3)
+ON CONFLICT (organization_id) DO NOTHING;
+
+-- name: GetTrustRoot :one
+SELECT * FROM organization_trust WHERE organization_id = $1;
+
+-- name: CreateDevice :one
+INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetDevice :one
+SELECT * FROM device WHERE id = $1;
+
+-- name: ListDevicesForAccount :many
+SELECT * FROM device WHERE account_id = $1 AND state <> 'revoked' ORDER BY created_at, id;
+
+-- name: ListPendingDevices :many
+SELECT d.*, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.organization_id = $1 AND d.state = 'pending'
+ORDER BY d.created_at, d.id;
+
+-- name: ActivateDevice :execrows
+UPDATE device SET state = 'active', certificate = $2, authorizer_device_id = $3, authorized_at = now()
+WHERE id = $1 AND state = 'pending';
+
+-- name: RevokeDevice :execrows
+UPDATE device SET state = 'revoked', revoked_at = now() WHERE id = $1 AND state <> 'revoked';
+
+-- name: ListActiveDevicesForAccounts :many
+SELECT d.*, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.account_id = ANY (sqlc.arg('accounts')::uuid[]) AND d.state = 'active' AND d.kind = 'device'
+ORDER BY a.email_normalized, d.created_at, d.id;
+
+-- name: ListActiveRecoveryDevices :many
+SELECT d.*, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.organization_id = $1 AND d.state = 'active' AND d.kind = 'recovery'
+ORDER BY d.created_at, d.id;
+
+-- name: CreateKeyDomain :one
+INSERT INTO key_domain (organization_id, project_id, kind) VALUES ($1, $2, $3) RETURNING *;
+
+-- name: GetKeyDomain :one
+SELECT * FROM key_domain WHERE id = $1;
+
+-- name: LockKeyDomain :one
+SELECT * FROM key_domain WHERE id = $1 FOR UPDATE;
+
+-- name: ListKeyDomainsForProject :many
+SELECT * FROM key_domain WHERE project_id = $1 ORDER BY kind;
+
+-- name: ListKeyDomainsForAccount :many
+SELECT kd.*
+FROM key_domain AS kd JOIN project_member AS pm ON pm.project_id = kd.project_id
+WHERE pm.account_id = $1
+ORDER BY kd.created_at, kd.id;
+
+-- name: SetKeyDomainState :exec
+UPDATE key_domain SET state = $2 WHERE id = $1;
+
+-- name: AdvanceKeyDomain :exec
+UPDATE key_domain SET current_generation = $2, state = 'ok' WHERE id = $1;
+
+-- name: InsertKeyGeneration :exec
+INSERT INTO key_generation (domain_id, generation, created_by_device) VALUES ($1, $2, $3);
+
+-- name: InsertKeyEnvelope :exec
+INSERT INTO key_envelope (domain_id, generation, recipient_device_id, signer_device_id, sealed, signature)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: ListEnvelopeRecipients :many
+SELECT recipient_device_id FROM key_envelope WHERE domain_id = $1 AND generation = $2;
+
+-- name: ListEnvelopesForDevices :many
+SELECT * FROM key_envelope
+WHERE domain_id = $1 AND recipient_device_id = ANY (sqlc.arg('devices')::uuid[])
+ORDER BY generation, recipient_device_id;
+
+-- name: ListKeyDomainsForOrganization :many
+SELECT * FROM key_domain WHERE organization_id = $1 ORDER BY created_at, id;

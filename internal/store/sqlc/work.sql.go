@@ -55,6 +55,25 @@ func (q *Queries) AcquireScreenShare(ctx context.Context, arg AcquireScreenShare
 	return result.RowsAffected(), nil
 }
 
+const activateDevice = `-- name: ActivateDevice :execrows
+UPDATE device SET state = 'active', certificate = $2, authorizer_device_id = $3, authorized_at = now()
+WHERE id = $1 AND state = 'pending'
+`
+
+type ActivateDeviceParams struct {
+	ID                 pgtype.UUID
+	Certificate        []byte
+	AuthorizerDeviceID pgtype.UUID
+}
+
+func (q *Queries) ActivateDevice(ctx context.Context, arg ActivateDeviceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, activateDevice, arg.ID, arg.Certificate, arg.AuthorizerDeviceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const activeAdmissionForAccount = `-- name: ActiveAdmissionForAccount :one
 SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at FROM call_admission WHERE account_id = $1 AND state IN ('reserved', 'joined')
 `
@@ -131,6 +150,20 @@ func (q *Queries) AddReaction(ctx context.Context, arg AddReactionParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const advanceKeyDomain = `-- name: AdvanceKeyDomain :exec
+UPDATE key_domain SET current_generation = $2, state = 'ok' WHERE id = $1
+`
+
+type AdvanceKeyDomainParams struct {
+	ID                pgtype.UUID
+	CurrentGeneration int32
+}
+
+func (q *Queries) AdvanceKeyDomain(ctx context.Context, arg AdvanceKeyDomainParams) error {
+	_, err := q.db.Exec(ctx, advanceKeyDomain, arg.ID, arg.CurrentGeneration)
+	return err
 }
 
 const cancelPendingCallInvitations = `-- name: CancelPendingCallInvitations :exec
@@ -320,6 +353,49 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 	return i, err
 }
 
+const createDevice = `-- name: CreateDevice :one
+INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at
+`
+
+type CreateDeviceParams struct {
+	OrganizationID pgtype.UUID
+	AccountID      pgtype.UUID
+	Kind           string
+	Name           string
+	SignPublicKey  []byte
+	BoxPublicKey   []byte
+}
+
+func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, createDevice,
+		arg.OrganizationID,
+		arg.AccountID,
+		arg.Kind,
+		arg.Name,
+		arg.SignPublicKey,
+		arg.BoxPublicKey,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.AccountID,
+		&i.Kind,
+		&i.Name,
+		&i.SignPublicKey,
+		&i.BoxPublicKey,
+		&i.State,
+		&i.Certificate,
+		&i.AuthorizerDeviceID,
+		&i.CreatedAt,
+		&i.AuthorizedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const createEpic = `-- name: CreateEpic :one
 INSERT INTO epic (project_id, title, description, created_by)
 VALUES ($1, $2, $3, $4)
@@ -361,6 +437,31 @@ INSERT INTO external_project_policy (project_id) VALUES ($1)
 func (q *Queries) CreateExternalProjectPolicy(ctx context.Context, projectID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, createExternalProjectPolicy, projectID)
 	return err
+}
+
+const createKeyDomain = `-- name: CreateKeyDomain :one
+INSERT INTO key_domain (organization_id, project_id, kind) VALUES ($1, $2, $3) RETURNING id, organization_id, project_id, kind, current_generation, state, created_at
+`
+
+type CreateKeyDomainParams struct {
+	OrganizationID pgtype.UUID
+	ProjectID      pgtype.UUID
+	Kind           string
+}
+
+func (q *Queries) CreateKeyDomain(ctx context.Context, arg CreateKeyDomainParams) (KeyDomain, error) {
+	row := q.db.QueryRow(ctx, createKeyDomain, arg.OrganizationID, arg.ProjectID, arg.Kind)
+	var i KeyDomain
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.CurrentGeneration,
+		&i.State,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const createMessage = `-- name: CreateMessage :one
@@ -1003,6 +1104,31 @@ func (q *Queries) GetConversation(ctx context.Context, id pgtype.UUID) (Conversa
 	return i, err
 }
 
+const getDevice = `-- name: GetDevice :one
+SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at FROM device WHERE id = $1
+`
+
+func (q *Queries) GetDevice(ctx context.Context, id pgtype.UUID) (Device, error) {
+	row := q.db.QueryRow(ctx, getDevice, id)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.AccountID,
+		&i.Kind,
+		&i.Name,
+		&i.SignPublicKey,
+		&i.BoxPublicKey,
+		&i.State,
+		&i.Certificate,
+		&i.AuthorizerDeviceID,
+		&i.CreatedAt,
+		&i.AuthorizedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const getEpicForUpdate = `-- name: GetEpicForUpdate :one
 SELECT id, project_id, title, description, done, version, created_by, created_at FROM epic WHERE id = $1 FOR UPDATE
 `
@@ -1039,6 +1165,25 @@ func (q *Queries) GetExternalProjectPolicy(ctx context.Context, projectID pgtype
 	row := q.db.QueryRow(ctx, getExternalProjectPolicy, projectID)
 	var i GetExternalProjectPolicyRow
 	err := row.Scan(&i.ProjectID, &i.Permissions, &i.Version)
+	return i, err
+}
+
+const getKeyDomain = `-- name: GetKeyDomain :one
+SELECT id, organization_id, project_id, kind, current_generation, state, created_at FROM key_domain WHERE id = $1
+`
+
+func (q *Queries) GetKeyDomain(ctx context.Context, id pgtype.UUID) (KeyDomain, error) {
+	row := q.db.QueryRow(ctx, getKeyDomain, id)
+	var i KeyDomain
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.CurrentGeneration,
+		&i.State,
+		&i.CreatedAt,
+	)
 	return i, err
 }
 
@@ -1216,6 +1361,22 @@ func (q *Queries) GetSprintForUpdate(ctx context.Context, id pgtype.UUID) (Sprin
 	return i, err
 }
 
+const getTrustRoot = `-- name: GetTrustRoot :one
+SELECT organization_id, root_sign_public_key, set_by, set_at FROM organization_trust WHERE organization_id = $1
+`
+
+func (q *Queries) GetTrustRoot(ctx context.Context, organizationID pgtype.UUID) (OrganizationTrust, error) {
+	row := q.db.QueryRow(ctx, getTrustRoot, organizationID)
+	var i OrganizationTrust
+	err := row.Scan(
+		&i.OrganizationID,
+		&i.RootSignPublicKey,
+		&i.SetBy,
+		&i.SetAt,
+	)
+	return i, err
+}
+
 const getWorkItem = `-- name: GetWorkItem :one
 SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
 FROM work_item
@@ -1316,6 +1477,47 @@ func (q *Queries) InsertAdmission(ctx context.Context, arg InsertAdmissionParams
 	return i, err
 }
 
+const insertKeyEnvelope = `-- name: InsertKeyEnvelope :exec
+INSERT INTO key_envelope (domain_id, generation, recipient_device_id, signer_device_id, sealed, signature)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertKeyEnvelopeParams struct {
+	DomainID          pgtype.UUID
+	Generation        int32
+	RecipientDeviceID pgtype.UUID
+	SignerDeviceID    pgtype.UUID
+	Sealed            []byte
+	Signature         []byte
+}
+
+func (q *Queries) InsertKeyEnvelope(ctx context.Context, arg InsertKeyEnvelopeParams) error {
+	_, err := q.db.Exec(ctx, insertKeyEnvelope,
+		arg.DomainID,
+		arg.Generation,
+		arg.RecipientDeviceID,
+		arg.SignerDeviceID,
+		arg.Sealed,
+		arg.Signature,
+	)
+	return err
+}
+
+const insertKeyGeneration = `-- name: InsertKeyGeneration :exec
+INSERT INTO key_generation (domain_id, generation, created_by_device) VALUES ($1, $2, $3)
+`
+
+type InsertKeyGenerationParams struct {
+	DomainID        pgtype.UUID
+	Generation      int32
+	CreatedByDevice pgtype.UUID
+}
+
+func (q *Queries) InsertKeyGeneration(ctx context.Context, arg InsertKeyGenerationParams) error {
+	_, err := q.db.Exec(ctx, insertKeyGeneration, arg.DomainID, arg.Generation, arg.CreatedByDevice)
+	return err
+}
+
 const insertUserEvent = `-- name: InsertUserEvent :exec
 INSERT INTO user_event (account_id, seq, event_id, type, resource_id, resource_version, project_id, conversation_id, required_permission)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -1371,6 +1573,124 @@ func (q *Queries) ListActiveCalls(ctx context.Context) ([]Call, error) {
 			&i.CreatedAt,
 			&i.EndedAt,
 			&i.EndedReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveDevicesForAccounts = `-- name: ListActiveDevicesForAccounts :many
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.account_id = ANY ($1::uuid[]) AND d.state = 'active' AND d.kind = 'device'
+ORDER BY a.email_normalized, d.created_at, d.id
+`
+
+type ListActiveDevicesForAccountsRow struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	AccountID          pgtype.UUID
+	Kind               string
+	Name               string
+	SignPublicKey      []byte
+	BoxPublicKey       []byte
+	State              string
+	Certificate        []byte
+	AuthorizerDeviceID pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	AuthorizedAt       pgtype.Timestamptz
+	RevokedAt          pgtype.Timestamptz
+	EmailNormalized    string
+}
+
+func (q *Queries) ListActiveDevicesForAccounts(ctx context.Context, accounts []pgtype.UUID) ([]ListActiveDevicesForAccountsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveDevicesForAccounts, accounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveDevicesForAccountsRow
+	for rows.Next() {
+		var i ListActiveDevicesForAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.AccountID,
+			&i.Kind,
+			&i.Name,
+			&i.SignPublicKey,
+			&i.BoxPublicKey,
+			&i.State,
+			&i.Certificate,
+			&i.AuthorizerDeviceID,
+			&i.CreatedAt,
+			&i.AuthorizedAt,
+			&i.RevokedAt,
+			&i.EmailNormalized,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveRecoveryDevices = `-- name: ListActiveRecoveryDevices :many
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.organization_id = $1 AND d.state = 'active' AND d.kind = 'recovery'
+ORDER BY d.created_at, d.id
+`
+
+type ListActiveRecoveryDevicesRow struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	AccountID          pgtype.UUID
+	Kind               string
+	Name               string
+	SignPublicKey      []byte
+	BoxPublicKey       []byte
+	State              string
+	Certificate        []byte
+	AuthorizerDeviceID pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	AuthorizedAt       pgtype.Timestamptz
+	RevokedAt          pgtype.Timestamptz
+	EmailNormalized    string
+}
+
+func (q *Queries) ListActiveRecoveryDevices(ctx context.Context, organizationID pgtype.UUID) ([]ListActiveRecoveryDevicesRow, error) {
+	rows, err := q.db.Query(ctx, listActiveRecoveryDevices, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveRecoveryDevicesRow
+	for rows.Next() {
+		var i ListActiveRecoveryDevicesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.AccountID,
+			&i.Kind,
+			&i.Name,
+			&i.SignPublicKey,
+			&i.BoxPublicKey,
+			&i.State,
+			&i.Certificate,
+			&i.AuthorizerDeviceID,
+			&i.CreatedAt,
+			&i.AuthorizedAt,
+			&i.RevokedAt,
+			&i.EmailNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -1654,6 +1974,44 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 	return items, nil
 }
 
+const listDevicesForAccount = `-- name: ListDevicesForAccount :many
+SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at FROM device WHERE account_id = $1 AND state <> 'revoked' ORDER BY created_at, id
+`
+
+func (q *Queries) ListDevicesForAccount(ctx context.Context, accountID pgtype.UUID) ([]Device, error) {
+	rows, err := q.db.Query(ctx, listDevicesForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Device
+	for rows.Next() {
+		var i Device
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.AccountID,
+			&i.Kind,
+			&i.Name,
+			&i.SignPublicKey,
+			&i.BoxPublicKey,
+			&i.State,
+			&i.Certificate,
+			&i.AuthorizerDeviceID,
+			&i.CreatedAt,
+			&i.AuthorizedAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDirectContacts = `-- name: ListDirectContacts :many
 SELECT DISTINCT a.id AS account_id, a.email_normalized
 FROM project AS p
@@ -1736,6 +2094,74 @@ func (q *Queries) ListDirectConversations(ctx context.Context, accountID pgtype.
 	return items, nil
 }
 
+const listEnvelopeRecipients = `-- name: ListEnvelopeRecipients :many
+SELECT recipient_device_id FROM key_envelope WHERE domain_id = $1 AND generation = $2
+`
+
+type ListEnvelopeRecipientsParams struct {
+	DomainID   pgtype.UUID
+	Generation int32
+}
+
+func (q *Queries) ListEnvelopeRecipients(ctx context.Context, arg ListEnvelopeRecipientsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listEnvelopeRecipients, arg.DomainID, arg.Generation)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var recipient_device_id pgtype.UUID
+		if err := rows.Scan(&recipient_device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, recipient_device_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnvelopesForDevices = `-- name: ListEnvelopesForDevices :many
+SELECT domain_id, generation, recipient_device_id, signer_device_id, sealed, signature, created_at FROM key_envelope
+WHERE domain_id = $1 AND recipient_device_id = ANY ($2::uuid[])
+ORDER BY generation, recipient_device_id
+`
+
+type ListEnvelopesForDevicesParams struct {
+	DomainID pgtype.UUID
+	Devices  []pgtype.UUID
+}
+
+func (q *Queries) ListEnvelopesForDevices(ctx context.Context, arg ListEnvelopesForDevicesParams) ([]KeyEnvelope, error) {
+	rows, err := q.db.Query(ctx, listEnvelopesForDevices, arg.DomainID, arg.Devices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyEnvelope
+	for rows.Next() {
+		var i KeyEnvelope
+		if err := rows.Scan(
+			&i.DomainID,
+			&i.Generation,
+			&i.RecipientDeviceID,
+			&i.SignerDeviceID,
+			&i.Sealed,
+			&i.Signature,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEpics = `-- name: ListEpics :many
 SELECT id, project_id, title, description, done, version, created_by, created_at FROM epic WHERE project_id = $1 ORDER BY created_at, id
 `
@@ -1757,6 +2183,105 @@ func (q *Queries) ListEpics(ctx context.Context, projectID pgtype.UUID) ([]Epic,
 			&i.Done,
 			&i.Version,
 			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKeyDomainsForAccount = `-- name: ListKeyDomainsForAccount :many
+SELECT kd.id, kd.organization_id, kd.project_id, kd.kind, kd.current_generation, kd.state, kd.created_at
+FROM key_domain AS kd JOIN project_member AS pm ON pm.project_id = kd.project_id
+WHERE pm.account_id = $1
+ORDER BY kd.created_at, kd.id
+`
+
+func (q *Queries) ListKeyDomainsForAccount(ctx context.Context, accountID pgtype.UUID) ([]KeyDomain, error) {
+	rows, err := q.db.Query(ctx, listKeyDomainsForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyDomain
+	for rows.Next() {
+		var i KeyDomain
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectID,
+			&i.Kind,
+			&i.CurrentGeneration,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKeyDomainsForOrganization = `-- name: ListKeyDomainsForOrganization :many
+SELECT id, organization_id, project_id, kind, current_generation, state, created_at FROM key_domain WHERE organization_id = $1 ORDER BY created_at, id
+`
+
+func (q *Queries) ListKeyDomainsForOrganization(ctx context.Context, organizationID pgtype.UUID) ([]KeyDomain, error) {
+	rows, err := q.db.Query(ctx, listKeyDomainsForOrganization, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyDomain
+	for rows.Next() {
+		var i KeyDomain
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectID,
+			&i.Kind,
+			&i.CurrentGeneration,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKeyDomainsForProject = `-- name: ListKeyDomainsForProject :many
+SELECT id, organization_id, project_id, kind, current_generation, state, created_at FROM key_domain WHERE project_id = $1 ORDER BY kind
+`
+
+func (q *Queries) ListKeyDomainsForProject(ctx context.Context, projectID pgtype.UUID) ([]KeyDomain, error) {
+	rows, err := q.db.Query(ctx, listKeyDomainsForProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyDomain
+	for rows.Next() {
+		var i KeyDomain
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectID,
+			&i.Kind,
+			&i.CurrentGeneration,
+			&i.State,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -1915,6 +2440,65 @@ func (q *Queries) ListPendingCallInvitations(ctx context.Context, accountID pgty
 			&i.ConversationID,
 			&i.CreatedAt,
 			&i.StartedByEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingDevices = `-- name: ListPendingDevices :many
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+FROM device AS d JOIN account AS a ON a.id = d.account_id
+WHERE d.organization_id = $1 AND d.state = 'pending'
+ORDER BY d.created_at, d.id
+`
+
+type ListPendingDevicesRow struct {
+	ID                 pgtype.UUID
+	OrganizationID     pgtype.UUID
+	AccountID          pgtype.UUID
+	Kind               string
+	Name               string
+	SignPublicKey      []byte
+	BoxPublicKey       []byte
+	State              string
+	Certificate        []byte
+	AuthorizerDeviceID pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	AuthorizedAt       pgtype.Timestamptz
+	RevokedAt          pgtype.Timestamptz
+	EmailNormalized    string
+}
+
+func (q *Queries) ListPendingDevices(ctx context.Context, organizationID pgtype.UUID) ([]ListPendingDevicesRow, error) {
+	rows, err := q.db.Query(ctx, listPendingDevices, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingDevicesRow
+	for rows.Next() {
+		var i ListPendingDevicesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.AccountID,
+			&i.Kind,
+			&i.Name,
+			&i.SignPublicKey,
+			&i.BoxPublicKey,
+			&i.State,
+			&i.Certificate,
+			&i.AuthorizerDeviceID,
+			&i.CreatedAt,
+			&i.AuthorizedAt,
+			&i.RevokedAt,
+			&i.EmailNormalized,
 		); err != nil {
 			return nil, err
 		}
@@ -2509,6 +3093,25 @@ func (q *Queries) LockConversation(ctx context.Context, id pgtype.UUID) (Convers
 	return i, err
 }
 
+const lockKeyDomain = `-- name: LockKeyDomain :one
+SELECT id, organization_id, project_id, kind, current_generation, state, created_at FROM key_domain WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockKeyDomain(ctx context.Context, id pgtype.UUID) (KeyDomain, error) {
+	row := q.db.QueryRow(ctx, lockKeyDomain, id)
+	var i KeyDomain
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.CurrentGeneration,
+		&i.State,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockOrganization = `-- name: LockOrganization :exec
 SELECT id FROM organization WHERE id = $1 FOR UPDATE
 `
@@ -2854,6 +3457,18 @@ func (q *Queries) ReservedStorage(ctx context.Context, organizationID pgtype.UUI
 	return reserved, err
 }
 
+const revokeDevice = `-- name: RevokeDevice :execrows
+UPDATE device SET state = 'revoked', revoked_at = now() WHERE id = $1 AND state <> 'revoked'
+`
+
+func (q *Queries) RevokeDevice(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeDevice, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setAttachmentUploadID = `-- name: SetAttachmentUploadID :exec
 UPDATE attachment SET upload_id = $2 WHERE id = $1 AND state = 'uploading'
 `
@@ -2887,6 +3502,20 @@ func (q *Queries) SetCallInvitationState(ctx context.Context, arg SetCallInvitat
 	return result.RowsAffected(), nil
 }
 
+const setKeyDomainState = `-- name: SetKeyDomainState :exec
+UPDATE key_domain SET state = $2 WHERE id = $1
+`
+
+type SetKeyDomainStateParams struct {
+	ID    pgtype.UUID
+	State string
+}
+
+func (q *Queries) SetKeyDomainState(ctx context.Context, arg SetKeyDomainStateParams) error {
+	_, err := q.db.Exec(ctx, setKeyDomainState, arg.ID, arg.State)
+	return err
+}
+
 const setReadCursor = `-- name: SetReadCursor :exec
 INSERT INTO conversation_read_cursor (account_id, conversation_id, last_seq)
 VALUES ($1, $2, LEAST($3::bigint, (SELECT last_seq FROM conversation WHERE id = $2)))
@@ -2917,6 +3546,25 @@ type SetTaskSprintParams struct {
 func (q *Queries) SetTaskSprint(ctx context.Context, arg SetTaskSprintParams) error {
 	_, err := q.db.Exec(ctx, setTaskSprint, arg.ID, arg.SprintID)
 	return err
+}
+
+const setTrustRoot = `-- name: SetTrustRoot :execrows
+INSERT INTO organization_trust (organization_id, root_sign_public_key, set_by) VALUES ($1, $2, $3)
+ON CONFLICT (organization_id) DO NOTHING
+`
+
+type SetTrustRootParams struct {
+	OrganizationID    pgtype.UUID
+	RootSignPublicKey []byte
+	SetBy             pgtype.UUID
+}
+
+func (q *Queries) SetTrustRoot(ctx context.Context, arg SetTrustRootParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTrustRoot, arg.OrganizationID, arg.RootSignPublicKey, arg.SetBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const startSprint = `-- name: StartSprint :one

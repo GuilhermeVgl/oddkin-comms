@@ -162,6 +162,24 @@ func (e CreateInvitationRequestMembershipKind) Valid() bool {
 	}
 }
 
+// Defines values for CreateKeyDomainRequestKind.
+const (
+	CreateKeyDomainRequestKindChat CreateKeyDomainRequestKind = "chat"
+	CreateKeyDomainRequestKindWork CreateKeyDomainRequestKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the CreateKeyDomainRequestKind enum.
+func (e CreateKeyDomainRequestKind) Valid() bool {
+	switch e {
+	case CreateKeyDomainRequestKindChat:
+		return true
+	case CreateKeyDomainRequestKindWork:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateUploadRequestContextType.
 const (
 	CreateUploadRequestContextTypeConversation CreateUploadRequestContextType = "conversation"
@@ -234,6 +252,63 @@ func (e CurrentAccountMembershipKind) Valid() bool {
 	case CurrentAccountMembershipKindExternal:
 		return true
 	case CurrentAccountMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeviceKind.
+const (
+	DeviceKindDevice   DeviceKind = "device"
+	DeviceKindRecovery DeviceKind = "recovery"
+)
+
+// Valid indicates whether the value is a known member of the DeviceKind enum.
+func (e DeviceKind) Valid() bool {
+	switch e {
+	case DeviceKindDevice:
+		return true
+	case DeviceKindRecovery:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeviceState.
+const (
+	DeviceStateActive  DeviceState = "active"
+	DeviceStatePending DeviceState = "pending"
+	DeviceStateRevoked DeviceState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the DeviceState enum.
+func (e DeviceState) Valid() bool {
+	switch e {
+	case DeviceStateActive:
+		return true
+	case DeviceStatePending:
+		return true
+	case DeviceStateRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DirectoryDeviceKind.
+const (
+	DirectoryDeviceKindDevice   DirectoryDeviceKind = "device"
+	DirectoryDeviceKindRecovery DirectoryDeviceKind = "recovery"
+)
+
+// Valid indicates whether the value is a known member of the DirectoryDeviceKind enum.
+func (e DirectoryDeviceKind) Valid() bool {
+	switch e {
+	case DirectoryDeviceKindDevice:
+		return true
+	case DirectoryDeviceKindRecovery:
 		return true
 	default:
 		return false
@@ -330,6 +405,45 @@ func (e InvitationMembershipKind) Valid() bool {
 	}
 }
 
+// Defines values for KeyDomainKind.
+const (
+	KeyDomainKindChat KeyDomainKind = "chat"
+	KeyDomainKindWork KeyDomainKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the KeyDomainKind enum.
+func (e KeyDomainKind) Valid() bool {
+	switch e {
+	case KeyDomainKindChat:
+		return true
+	case KeyDomainKindWork:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KeyDomainState.
+const (
+	Ok               KeyDomainState = "ok"
+	PendingKeys      KeyDomainState = "pending_keys"
+	RotationRequired KeyDomainState = "rotation_required"
+)
+
+// Valid indicates whether the value is a known member of the KeyDomainState enum.
+func (e KeyDomainState) Valid() bool {
+	switch e {
+	case Ok:
+		return true
+	case PendingKeys:
+		return true
+	case RotationRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationKind.
 const (
 	Assignment    NotificationKind = "assignment"
@@ -366,6 +480,24 @@ func (e ProjectMemberMembershipKind) Valid() bool {
 	case ProjectMemberMembershipKindExternal:
 		return true
 	case ProjectMemberMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegisterDeviceRequestKind.
+const (
+	RegisterDeviceRequestKindDevice   RegisterDeviceRequestKind = "device"
+	RegisterDeviceRequestKindRecovery RegisterDeviceRequestKind = "recovery"
+)
+
+// Valid indicates whether the value is a known member of the RegisterDeviceRequestKind enum.
+func (e RegisterDeviceRequestKind) Valid() bool {
+	switch e {
+	case RegisterDeviceRequestKindDevice:
+		return true
+	case RegisterDeviceRequestKindRecovery:
 		return true
 	default:
 		return false
@@ -481,6 +613,18 @@ type Attachment struct {
 	Size          int64              `json:"size"`
 	UploaderEmail string             `json:"uploaderEmail"`
 }
+
+// AuthorizeDeviceRequest defines model for AuthorizeDeviceRequest.
+type AuthorizeDeviceRequest struct {
+	// AuthorizerDeviceId Active device of the same account that signed; omit when the trust root signed
+	AuthorizerDeviceId *openapi_types.UUID `json:"authorizerDeviceId,omitempty"`
+
+	// Certificate Unpadded base64url (RFC 4648 section 5) of binary data
+	Certificate Base64Url `json:"certificate"`
+}
+
+// Base64Url Unpadded base64url (RFC 4648 section 5) of binary data
+type Base64Url = string
 
 // BoardColumn defines model for BoardColumn.
 type BoardColumn struct {
@@ -603,6 +747,14 @@ type CreateInvitationRequest struct {
 // CreateInvitationRequestMembershipKind defines model for CreateInvitationRequest.MembershipKind.
 type CreateInvitationRequestMembershipKind string
 
+// CreateKeyDomainRequest defines model for CreateKeyDomainRequest.
+type CreateKeyDomainRequest struct {
+	Kind CreateKeyDomainRequestKind `json:"kind"`
+}
+
+// CreateKeyDomainRequestKind defines model for CreateKeyDomainRequest.Kind.
+type CreateKeyDomainRequestKind string
+
 // CreateProjectRequest defines model for CreateProjectRequest.
 type CreateProjectRequest struct {
 	Color       *string `json:"color,omitempty"`
@@ -659,6 +811,28 @@ type CurrentAccount struct {
 // CurrentAccountMembershipKind defines model for CurrentAccount.MembershipKind.
 type CurrentAccountMembershipKind string
 
+// Device defines model for Device.
+type Device struct {
+	// BoxPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	BoxPublicKey Base64Url `json:"boxPublicKey"`
+
+	// Certificate Unpadded base64url (RFC 4648 section 5) of binary data
+	Certificate *Base64Url         `json:"certificate,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	Kind        DeviceKind         `json:"kind"`
+	Name        string             `json:"name"`
+
+	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	SignPublicKey Base64Url   `json:"signPublicKey"`
+	State         DeviceState `json:"state"`
+}
+
+// DeviceKind defines model for Device.Kind.
+type DeviceKind string
+
+// DeviceState defines model for Device.State.
+type DeviceState string
+
 // DirectContact defines model for DirectContact.
 type DirectContact struct {
 	AccountId openapi_types.UUID `json:"accountId"`
@@ -672,6 +846,27 @@ type DirectConversation struct {
 	PeerId    openapi_types.UUID `json:"peerId"`
 	Unread    int64              `json:"unread"`
 }
+
+// DirectoryDevice defines model for DirectoryDevice.
+type DirectoryDevice struct {
+	AccountId          openapi_types.UUID  `json:"accountId"`
+	AuthorizerDeviceId *openapi_types.UUID `json:"authorizerDeviceId,omitempty"`
+
+	// BoxPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	BoxPublicKey Base64Url `json:"boxPublicKey"`
+
+	// Certificate Unpadded base64url (RFC 4648 section 5) of binary data
+	Certificate Base64Url           `json:"certificate"`
+	DeviceId    openapi_types.UUID  `json:"deviceId"`
+	Email       string              `json:"email"`
+	Kind        DirectoryDeviceKind `json:"kind"`
+
+	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	SignPublicKey Base64Url `json:"signPublicKey"`
+}
+
+// DirectoryDeviceKind defines model for DirectoryDevice.Kind.
+type DirectoryDeviceKind string
 
 // EditMessageRequest defines model for EditMessageRequest.
 type EditMessageRequest struct {
@@ -718,6 +913,37 @@ type JoinCallRequest struct {
 	Transfer *bool `json:"transfer,omitempty"`
 }
 
+// KeyDomain defines model for KeyDomain.
+type KeyDomain struct {
+	CurrentGeneration int                `json:"currentGeneration"`
+	Id                openapi_types.UUID `json:"id"`
+	Kind              KeyDomainKind      `json:"kind"`
+	ProjectId         openapi_types.UUID `json:"projectId"`
+	State             KeyDomainState     `json:"state"`
+
+	// Writable False while a revocation requires a new generation
+	Writable bool `json:"writable"`
+}
+
+// KeyDomainKind defines model for KeyDomain.Kind.
+type KeyDomainKind string
+
+// KeyDomainState defines model for KeyDomain.State.
+type KeyDomainState string
+
+// KeyEnvelope defines model for KeyEnvelope.
+type KeyEnvelope struct {
+	Generation        int                `json:"generation"`
+	RecipientDeviceId openapi_types.UUID `json:"recipientDeviceId"`
+
+	// Sealed Unpadded base64url (RFC 4648 section 5) of binary data
+	Sealed Base64Url `json:"sealed"`
+
+	// Signature Unpadded base64url (RFC 4648 section 5) of binary data
+	Signature      Base64Url          `json:"signature"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -756,6 +982,13 @@ type OpenDirectConversationRequest struct {
 	AccountId openapi_types.UUID `json:"accountId"`
 }
 
+// PendingDevice defines model for PendingDevice.
+type PendingDevice struct {
+	AccountId openapi_types.UUID `json:"accountId"`
+	Device    Device             `json:"device"`
+	Email     string             `json:"email"`
+}
+
 // PresignedUrl defines model for PresignedUrl.
 type PresignedUrl struct {
 	ExpiresInSeconds int    `json:"expiresInSeconds"`
@@ -784,6 +1017,21 @@ type ProjectMember struct {
 // ProjectMemberMembershipKind defines model for ProjectMember.MembershipKind.
 type ProjectMemberMembershipKind string
 
+// PublishGenerationRequest defines model for PublishGenerationRequest.
+type PublishGenerationRequest struct {
+	Envelopes []struct {
+		RecipientDeviceId openapi_types.UUID `json:"recipientDeviceId"`
+
+		// Sealed Unpadded base64url (RFC 4648 section 5) of binary data
+		Sealed Base64Url `json:"sealed"`
+
+		// Signature Unpadded base64url (RFC 4648 section 5) of binary data
+		Signature Base64Url `json:"signature"`
+	} `json:"envelopes"`
+	Generation     int                `json:"generation"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+}
+
 // ReactionSummary defines model for ReactionSummary.
 type ReactionSummary struct {
 	Count int    `json:"count"`
@@ -796,12 +1044,32 @@ type ReadCursorRequest struct {
 	Seq int64 `json:"seq"`
 }
 
+// RegisterDeviceRequest defines model for RegisterDeviceRequest.
+type RegisterDeviceRequest struct {
+	// BoxPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	BoxPublicKey Base64Url                  `json:"boxPublicKey"`
+	Kind         *RegisterDeviceRequestKind `json:"kind,omitempty"`
+	Name         string                     `json:"name"`
+
+	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	SignPublicKey Base64Url `json:"signPublicKey"`
+}
+
+// RegisterDeviceRequestKind defines model for RegisterDeviceRequest.Kind.
+type RegisterDeviceRequestKind string
+
 // SendMessageRequest defines model for SendMessageRequest.
 type SendMessageRequest struct {
 	Body             string                `json:"body"`
 	ClientMutationId openapi_types.UUID    `json:"clientMutationId"`
 	MentionIds       *[]openapi_types.UUID `json:"mentionIds,omitempty"`
 	ReplyToId        *openapi_types.UUID   `json:"replyToId,omitempty"`
+}
+
+// SetTrustRootRequest defines model for SetTrustRootRequest.
+type SetTrustRootRequest struct {
+	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	SignPublicKey Base64Url `json:"signPublicKey"`
 }
 
 // Sprint defines model for Sprint.
@@ -835,6 +1103,14 @@ type StartCallRequest struct {
 // ToggleReactionRequest defines model for ToggleReactionRequest.
 type ToggleReactionRequest struct {
 	Emoji string `json:"emoji"`
+}
+
+// TrustRoot defines model for TrustRoot.
+type TrustRoot struct {
+	SetAt time.Time `json:"setAt"`
+
+	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
+	SignPublicKey Base64Url `json:"signPublicKey"`
 }
 
 // UpdateEpicRequest defines model for UpdateEpicRequest.
@@ -916,6 +1192,12 @@ type WorkItemComment struct {
 // CallId defines model for CallId.
 type CallId = openapi_types.UUID
 
+// DeviceId defines model for DeviceId.
+type DeviceId = openapi_types.UUID
+
+// KeyDomainId defines model for KeyDomainId.
+type KeyDomainId = openapi_types.UUID
+
 // MessageId defines model for MessageId.
 type MessageId = openapi_types.UUID
 
@@ -957,8 +1239,17 @@ type SendMessageJSONRequestBody = SendMessageRequest
 // SetReadCursorJSONRequestBody defines body for SetReadCursor for application/json ContentType.
 type SetReadCursorJSONRequestBody = ReadCursorRequest
 
+// RegisterDeviceJSONRequestBody defines body for RegisterDevice for application/json ContentType.
+type RegisterDeviceJSONRequestBody = RegisterDeviceRequest
+
+// AuthorizeDeviceJSONRequestBody defines body for AuthorizeDevice for application/json ContentType.
+type AuthorizeDeviceJSONRequestBody = AuthorizeDeviceRequest
+
 // OpenDirectConversationJSONRequestBody defines body for OpenDirectConversation for application/json ContentType.
 type OpenDirectConversationJSONRequestBody = OpenDirectConversationRequest
+
+// SetTrustRootJSONRequestBody defines body for SetTrustRoot for application/json ContentType.
+type SetTrustRootJSONRequestBody = SetTrustRootRequest
 
 // UpdateEpicJSONRequestBody defines body for UpdateEpic for application/json ContentType.
 type UpdateEpicJSONRequestBody = UpdateEpicRequest
@@ -968,6 +1259,9 @@ type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// PublishKeyGenerationJSONRequestBody defines body for PublishKeyGeneration for application/json ContentType.
+type PublishKeyGenerationJSONRequestBody = PublishGenerationRequest
 
 // EditMessageJSONRequestBody defines body for EditMessage for application/json ContentType.
 type EditMessageJSONRequestBody = EditMessageRequest
@@ -983,6 +1277,9 @@ type CreateEpicJSONRequestBody = CreateEpicRequest
 
 // UpdateExternalPolicyJSONRequestBody defines body for UpdateExternalPolicy for application/json ContentType.
 type UpdateExternalPolicyJSONRequestBody = UpdateExternalPolicyRequest
+
+// CreateKeyDomainJSONRequestBody defines body for CreateKeyDomain for application/json ContentType.
+type CreateKeyDomainJSONRequestBody = CreateKeyDomainRequest
 
 // AddProjectMemberJSONRequestBody defines body for AddProjectMember for application/json ContentType.
 type AddProjectMemberJSONRequestBody = AddProjectMemberRequest
@@ -1073,6 +1370,21 @@ type ServerInterface interface {
 	// SetReadCursor Advance your read position; it never moves backwards
 	// (PUT /api/v1/conversations/{conversationId}/read-cursor)
 	SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// ListDevices Your devices
+	// (GET /api/v1/devices)
+	ListDevices(w http.ResponseWriter, r *http.Request)
+	// RegisterDevice Register a device public key; it stays pending until authorized
+	// (POST /api/v1/devices)
+	RegisterDevice(w http.ResponseWriter, r *http.Request)
+	// ListPendingDevices Devices waiting for trust-root approval (organization administrators)
+	// (GET /api/v1/devices/pending)
+	ListPendingDevices(w http.ResponseWriter, r *http.Request)
+	// AuthorizeDevice Activate a device with a signed certificate
+	// (POST /api/v1/devices/{deviceId}/authorize)
+	AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId DeviceId)
+	// RevokeDevice Revoke a device; affected key domains require rotation
+	// (POST /api/v1/devices/{deviceId}/revoke)
+	RevokeDevice(w http.ResponseWriter, r *http.Request, deviceId DeviceId)
 	// ListDirectContacts People the account may message, derived from shared eligible projects
 	// (GET /api/v1/direct-contacts)
 	ListDirectContacts(w http.ResponseWriter, r *http.Request)
@@ -1082,6 +1394,12 @@ type ServerInterface interface {
 	// OpenDirectConversation Open (or return) the single direct conversation with another person
 	// (POST /api/v1/direct-conversations)
 	OpenDirectConversation(w http.ResponseWriter, r *http.Request)
+	// GetTrustRoot Public key of the organization trust root (verify its fingerprint out of band)
+	// (GET /api/v1/e2ee/trust-root)
+	GetTrustRoot(w http.ResponseWriter, r *http.Request)
+	// SetTrustRoot Pin the trust root once (organization administrators)
+	// (PUT /api/v1/e2ee/trust-root)
+	SetTrustRoot(w http.ResponseWriter, r *http.Request)
 	// UpdateEpic Edit an epic; done=true requires every active task to be done
 	// (PATCH /api/v1/epics/{epicId})
 	UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID)
@@ -1100,6 +1418,12 @@ type ServerInterface interface {
 	// AcceptInvitation Accept an organization invitation
 	// (POST /api/v1/invitations/accept)
 	AcceptInvitation(w http.ResponseWriter, r *http.Request)
+	// ListMyKeyEnvelopes Envelopes addressed to your active devices, every generation
+	// (GET /api/v1/key-domains/{keyDomainId}/envelopes)
+	ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// PublishKeyGeneration Publish the next key generation with one signed envelope per authorized device
+	// (POST /api/v1/key-domains/{keyDomainId}/generations)
+	PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
 	// DeleteMessage Delete your own message, or any channel message as project manager
 	// (DELETE /api/v1/messages/{messageId})
 	DeleteMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
@@ -1133,6 +1457,9 @@ type ServerInterface interface {
 	// ListConversations List the project channels
 	// (GET /api/v1/projects/{projectId}/conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// GetProjectDirectory Active device keys of the project members and of the recovery identity
+	// (GET /api/v1/projects/{projectId}/directory)
+	GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListEpics List epics
 	// (GET /api/v1/projects/{projectId}/epics)
 	ListEpics(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -1145,6 +1472,12 @@ type ServerInterface interface {
 	// UpdateExternalPolicy Replace the external permission profile (managers)
 	// (PUT /api/v1/projects/{projectId}/external-policy)
 	UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListKeyDomains Key domains of a project
+	// (GET /api/v1/projects/{projectId}/key-domains)
+	ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateKeyDomain Create the work or chat key domain (it waits for its first generation)
+	// (POST /api/v1/projects/{projectId}/key-domains)
+	CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListProjectMembers List project members
 	// (GET /api/v1/projects/{projectId}/members)
 	ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -1732,6 +2065,100 @@ func (siw *ServerInterfaceWrapper) SetReadCursor(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListDevices(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDevices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterDevice operation middleware
+func (siw *ServerInterfaceWrapper) RegisterDevice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterDevice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPendingDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPendingDevices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AuthorizeDevice operation middleware
+func (siw *ServerInterfaceWrapper) AuthorizeDevice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deviceId" -------------
+	var deviceId DeviceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceId", r.PathValue("deviceId"), &deviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthorizeDevice(w, r, deviceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeDevice operation middleware
+func (siw *ServerInterfaceWrapper) RevokeDevice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deviceId" -------------
+	var deviceId DeviceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceId", r.PathValue("deviceId"), &deviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeDevice(w, r, deviceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDirectContacts operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
 
@@ -1765,6 +2192,34 @@ func (siw *ServerInterfaceWrapper) OpenDirectConversation(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenDirectConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrustRoot operation middleware
+func (siw *ServerInterfaceWrapper) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrustRoot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTrustRoot operation middleware
+func (siw *ServerInterfaceWrapper) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTrustRoot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1861,6 +2316,58 @@ func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AcceptInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyKeyEnvelopes operation middleware
+func (siw *ServerInterfaceWrapper) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyKeyEnvelopes(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishKeyGeneration operation middleware
+func (siw *ServerInterfaceWrapper) PublishKeyGeneration(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishKeyGeneration(w, r, keyDomainId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2108,6 +2615,32 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectDirectory operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectDirectory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectDirectory(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListEpics operation middleware
 func (siw *ServerInterfaceWrapper) ListEpics(w http.ResponseWriter, r *http.Request) {
 
@@ -2203,6 +2736,58 @@ func (siw *ServerInterfaceWrapper) UpdateExternalPolicy(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateExternalPolicy(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListKeyDomains operation middleware
+func (siw *ServerInterfaceWrapper) ListKeyDomains(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKeyDomains(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateKeyDomain operation middleware
+func (siw *ServerInterfaceWrapper) CreateKeyDomain(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateKeyDomain(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2849,6 +3434,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/calls/{callId}/screen-share", wrapper.StopScreenShare)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/screen-share", wrapper.StartScreenShare)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/webhooks/livekit", wrapper.LivekitWebhook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/e2ee/trust-root", wrapper.GetTrustRoot)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/e2ee/trust-root", wrapper.SetTrustRoot)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/devices", wrapper.ListDevices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/devices", wrapper.RegisterDevice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/devices/pending", wrapper.ListPendingDevices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/devices/{deviceId}/authorize", wrapper.AuthorizeDevice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/devices/{deviceId}/revoke", wrapper.RevokeDevice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/directory", wrapper.GetProjectDirectory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/key-domains", wrapper.ListKeyDomains)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/key-domains", wrapper.CreateKeyDomain)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/generations", wrapper.PublishKeyGeneration)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/envelopes", wrapper.ListMyKeyEnvelopes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 

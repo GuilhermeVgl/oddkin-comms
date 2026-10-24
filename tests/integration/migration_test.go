@@ -31,7 +31,7 @@ func TestMigrationsCanRunTwiceAndInstallRiver(t *testing.T) {
 		t.Fatal("could not configure test database pool")
 	}
 	defer pool.Close()
-	for _, table := range []string{"organization", "organization_invitation", "invitation_delivery", "account", "organization_membership", "auth_session", "project", "project_member", "external_project_policy", "board_column", "work_item", "work_item_comment", "river_job", "goose_db_version"} {
+	for _, table := range []string{"organization", "organization_invitation", "invitation_delivery", "account", "organization_membership", "auth_session", "project", "project_member", "external_project_policy", "board_column", "work_item", "work_item_comment", "organization_trust", "device", "key_domain", "key_generation", "key_envelope", "river_job", "goose_db_version"} {
 		var exists bool
 		err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists)
 		if err != nil || !exists {
