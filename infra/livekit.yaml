@@ -10,7 +10,7 @@ redis:
   address: redis:6379
 
 keys:
-  devkey: secret
+  devkey: oddkin-local-livekit-secret-00001
 
 webhook:
   api_key: devkey

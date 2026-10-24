@@ -58,7 +58,7 @@ services:
       LIVEKIT_URL: ws://${ODDKIN_LIVEKIT_HOST:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secret
+      LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -82,7 +82,7 @@ services:
       LIVEKIT_URL: ws://${ODDKIN_LIVEKIT_HOST:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secret
+      LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -105,12 +105,12 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8.2.3-alpine3.22@sha256:6b91bee4aa62e881fa78ea7ebc2fe1dc3e12a2df1e7873231d195f9a88b3a47f
+    image: redis:8.2.3-alpine3.22@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     restart: unless-stopped
 
   livekit:
-    image: livekit/livekit:v1.13.10
+    image: livekit/livekit-server:v1.13.7
     command: ["--config", "/etc/livekit.yaml"]
     volumes:
       - ./infra/livekit.yaml:/etc/livekit.yaml:ro
