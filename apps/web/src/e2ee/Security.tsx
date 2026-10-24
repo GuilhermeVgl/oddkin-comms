@@ -34,6 +34,8 @@ function RecoveryPanel() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
+  const [passphrase, setPassphrase] = useState("");
+  const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +99,49 @@ function RecoveryPanel() {
         </>
       )}
       <p aria-live="polite">{status}</p>
+      <details>
+        <summary>Trocar identidade de recuperação</summary>
+        <p>
+          A nova identidade recebe as chaves existentes antes de a atual ser
+          revogada. A operação fica registrada.
+        </p>
+        <label htmlFor="rotate-recovery-passphrase">
+          Senha de proteção deste navegador
+        </label>
+        <input
+          autoComplete="current-password"
+          id="rotate-recovery-passphrase"
+          minLength={MIN_PASSPHRASE}
+          onChange={(event) => setPassphrase(event.target.value)}
+          type="password"
+          value={passphrase}
+        />
+        <button
+          disabled={rotating || passphrase.length < MIN_PASSPHRASE}
+          onClick={() => {
+            setRotating(true);
+            setStatus("");
+            e2ee
+              .rotateRecoveryIdentity(passphrase)
+              .then(() => {
+                setPassphrase("");
+                setStatus("Identidade de recuperação trocada.");
+              })
+              .catch(() =>
+                setStatus(
+                  "Não foi possível trocar a identidade. A atual continua ativa.",
+                ),
+              )
+              .finally(() => {
+                setRotating(false);
+                setVersion((value) => value + 1);
+              });
+          }}
+          type="button"
+        >
+          {rotating ? "Trocando…" : "Trocar identidade"}
+        </button>
+      </details>
       {audit.length > 0 ? (
         <>
           <h4>Registro de usos</h4>

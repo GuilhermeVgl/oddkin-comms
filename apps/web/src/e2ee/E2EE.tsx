@@ -100,6 +100,7 @@ export type E2EEApi = {
   /** Administrative recovery; only the recovery administrator, only while unlocked. */
   recoveryGaps(): Promise<RecoveryGap[]>;
   restoreAccess(): Promise<{ granted: number; failed: number }>;
+  rotateRecoveryIdentity(passphrase: string): Promise<void>;
   recoveryAudit(): Promise<RecoveryAuditEntry[]>;
 };
 
@@ -520,7 +521,14 @@ export function E2EEProvider({
         const current = record.current;
         const ring = keyring.current;
         if (current === null || ring === null || !vault.unlocked) return null;
-        return new CallCrypto(client, crypto, vault, ring, current.deviceId, csrf);
+        return new CallCrypto(
+          client,
+          crypto,
+          vault,
+          ring,
+          current.deviceId,
+          csrf,
+        );
       },
 
       hasRecoveryIdentity: hasRecovery,
@@ -531,6 +539,68 @@ export function E2EEProvider({
         const ring = keyring.current;
         if (ring === null) throw new Error("locked");
         return ring.recoverGaps();
+      },
+
+      async rotateRecoveryIdentity(passphrase) {
+        const { crypto, vault } = await runtimeOf();
+        const current = record.current;
+        const ring = keyring.current;
+        const root = vault.rootSecretKey();
+        const previous = vault.recoveryKeys();
+        if (
+          current === null ||
+          ring === null ||
+          root === undefined ||
+          previous === undefined
+        ) {
+          throw new Error("recovery identity is unavailable");
+        }
+        // Verify the local passphrase before registering a new recovery key.
+        vault.unwrapSecret(passphrase, current.wrappedDevice);
+        const nextKeys = crypto.generateDeviceKeys();
+        const created = await registerDevice(client, csrf(), {
+          name: "Identidade de recuperação",
+          kind: "recovery",
+          signPublicKey: toBase64Url(nextKeys.signPublicKey),
+          boxPublicKey: toBase64Url(nextKeys.boxPublicKey),
+        });
+        const certificate = crypto.signDeviceCertificate(root, {
+          accountId: account.id,
+          deviceId: created.id,
+          signPublicKey: nextKeys.signPublicKey,
+          boxPublicKey: nextKeys.boxPublicKey,
+        });
+        await authorizeDevice(
+          client,
+          csrf(),
+          created.id,
+          toBase64Url(certificate),
+        );
+        const restored = await ring.recoverGaps();
+        if (restored.failed !== 0) {
+          throw new Error("recovery envelopes could not be copied");
+        }
+        const next: VaultRecord = {
+          ...current,
+          recovery: {
+            deviceId: created.id,
+            signPublicKey: toBase64Url(nextKeys.signPublicKey),
+            boxPublicKey: toBase64Url(nextKeys.boxPublicKey),
+            wrapped: vault.wrapSecret(
+              passphrase,
+              new Uint8Array([
+                ...nextKeys.signSecretKey,
+                ...nextKeys.boxSecretKey,
+              ]),
+            ),
+          },
+        };
+        await vault.save(next);
+        record.current = next;
+        await vault.unlock(next, passphrase);
+        await buildKeyring();
+        await revokeDevice(client, csrf(), previous.deviceId);
+        await refresh();
       },
 
       recoveryAudit: () => listRecoveryAudit(client),
