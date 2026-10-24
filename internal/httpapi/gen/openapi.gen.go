@@ -6,16 +6,716 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for BoardColumnCategory.
+const (
+	Done       BoardColumnCategory = "done"
+	InProgress BoardColumnCategory = "in_progress"
+	Todo       BoardColumnCategory = "todo"
+)
+
+// Valid indicates whether the value is a known member of the BoardColumnCategory enum.
+func (e BoardColumnCategory) Valid() bool {
+	switch e {
+	case Done:
+		return true
+	case InProgress:
+		return true
+	case Todo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CallState.
+const (
+	CallStateActive CallState = "active"
+	CallStateEnded  CallState = "ended"
+)
+
+// Valid indicates whether the value is a known member of the CallState enum.
+func (e CallState) Valid() bool {
+	switch e {
+	case CallStateActive:
+		return true
+	case CallStateEnded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CallConflictCode.
+const (
+	CallEnded        CallConflictCode = "call_ended"
+	CallFull         CallConflictCode = "call_full"
+	InOtherCall      CallConflictCode = "in_other_call"
+	NotInCall        CallConflictCode = "not_in_call"
+	OtherDevice      CallConflictCode = "other_device"
+	ScreenShareTaken CallConflictCode = "screen_share_taken"
+)
+
+// Valid indicates whether the value is a known member of the CallConflictCode enum.
+func (e CallConflictCode) Valid() bool {
+	switch e {
+	case CallEnded:
+		return true
+	case CallFull:
+		return true
+	case InOtherCall:
+		return true
+	case NotInCall:
+		return true
+	case OtherDevice:
+		return true
+	case ScreenShareTaken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CallInvitationStateState.
+const (
+	CallInvitationStateStateAccepted  CallInvitationStateState = "accepted"
+	CallInvitationStateStateCancelled CallInvitationStateState = "cancelled"
+	CallInvitationStateStateDeclined  CallInvitationStateState = "declined"
+	CallInvitationStateStatePending   CallInvitationStateState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the CallInvitationStateState enum.
+func (e CallInvitationStateState) Valid() bool {
+	switch e {
+	case CallInvitationStateStateAccepted:
+		return true
+	case CallInvitationStateStateCancelled:
+		return true
+	case CallInvitationStateStateDeclined:
+		return true
+	case CallInvitationStateStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CallParticipantState.
+const (
+	Joined   CallParticipantState = "joined"
+	Reserved CallParticipantState = "reserved"
+)
+
+// Valid indicates whether the value is a known member of the CallParticipantState enum.
+func (e CallParticipantState) Valid() bool {
+	switch e {
+	case Joined:
+		return true
+	case Reserved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CloseSprintRequestDecisionsDestination.
+const (
+	Backlog CloseSprintRequestDecisionsDestination = "backlog"
+	Next    CloseSprintRequestDecisionsDestination = "next"
+)
+
+// Valid indicates whether the value is a known member of the CloseSprintRequestDecisionsDestination enum.
+func (e CloseSprintRequestDecisionsDestination) Valid() bool {
+	switch e {
+	case Backlog:
+		return true
+	case Next:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateInvitationRequestMembershipKind.
+const (
+	CreateInvitationRequestMembershipKindExternal CreateInvitationRequestMembershipKind = "external"
+	CreateInvitationRequestMembershipKindInternal CreateInvitationRequestMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the CreateInvitationRequestMembershipKind enum.
+func (e CreateInvitationRequestMembershipKind) Valid() bool {
+	switch e {
+	case CreateInvitationRequestMembershipKindExternal:
+		return true
+	case CreateInvitationRequestMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateUploadRequestContextType.
+const (
+	CreateUploadRequestContextTypeConversation CreateUploadRequestContextType = "conversation"
+	CreateUploadRequestContextTypeWorkItem     CreateUploadRequestContextType = "work_item"
+)
+
+// Valid indicates whether the value is a known member of the CreateUploadRequestContextType enum.
+func (e CreateUploadRequestContextType) Valid() bool {
+	switch e {
+	case CreateUploadRequestContextTypeConversation:
+		return true
+	case CreateUploadRequestContextTypeWorkItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateWorkItemRequestKind.
+const (
+	CreateWorkItemRequestKindSubtask CreateWorkItemRequestKind = "subtask"
+	CreateWorkItemRequestKindTask    CreateWorkItemRequestKind = "task"
+)
+
+// Valid indicates whether the value is a known member of the CreateWorkItemRequestKind enum.
+func (e CreateWorkItemRequestKind) Valid() bool {
+	switch e {
+	case CreateWorkItemRequestKindSubtask:
+		return true
+	case CreateWorkItemRequestKindTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateWorkItemRequestPriority.
+const (
+	CreateWorkItemRequestPriorityHigh   CreateWorkItemRequestPriority = "high"
+	CreateWorkItemRequestPriorityLow    CreateWorkItemRequestPriority = "low"
+	CreateWorkItemRequestPriorityNormal CreateWorkItemRequestPriority = "normal"
+	CreateWorkItemRequestPriorityUrgent CreateWorkItemRequestPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the CreateWorkItemRequestPriority enum.
+func (e CreateWorkItemRequestPriority) Valid() bool {
+	switch e {
+	case CreateWorkItemRequestPriorityHigh:
+		return true
+	case CreateWorkItemRequestPriorityLow:
+		return true
+	case CreateWorkItemRequestPriorityNormal:
+		return true
+	case CreateWorkItemRequestPriorityUrgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CurrentAccountMembershipKind.
+const (
+	CurrentAccountMembershipKindExternal CurrentAccountMembershipKind = "external"
+	CurrentAccountMembershipKindInternal CurrentAccountMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the CurrentAccountMembershipKind enum.
+func (e CurrentAccountMembershipKind) Valid() bool {
+	switch e {
+	case CurrentAccountMembershipKindExternal:
+		return true
+	case CurrentAccountMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExternalPermission.
+const (
+	CallsJoin         ExternalPermission = "calls.join"
+	CallsScreenShare  ExternalPermission = "calls.screen_share"
+	CallsStart        ExternalPermission = "calls.start"
+	ChatRead          ExternalPermission = "chat.read"
+	ChatSend          ExternalPermission = "chat.send"
+	DirectMessagesUse ExternalPermission = "direct_messages.use"
+	FilesDownload     ExternalPermission = "files.download"
+	FilesUpload       ExternalPermission = "files.upload"
+	PlanningEdit      ExternalPermission = "planning.edit"
+	WorkArchive       ExternalPermission = "work.archive"
+	WorkComment       ExternalPermission = "work.comment"
+	WorkCreate        ExternalPermission = "work.create"
+	WorkEdit          ExternalPermission = "work.edit"
+	WorkMove          ExternalPermission = "work.move"
+	WorkRead          ExternalPermission = "work.read"
+)
+
+// Valid indicates whether the value is a known member of the ExternalPermission enum.
+func (e ExternalPermission) Valid() bool {
+	switch e {
+	case CallsJoin:
+		return true
+	case CallsScreenShare:
+		return true
+	case CallsStart:
+		return true
+	case ChatRead:
+		return true
+	case ChatSend:
+		return true
+	case DirectMessagesUse:
+		return true
+	case FilesDownload:
+		return true
+	case FilesUpload:
+		return true
+	case PlanningEdit:
+		return true
+	case WorkArchive:
+		return true
+	case WorkComment:
+		return true
+	case WorkCreate:
+		return true
+	case WorkEdit:
+		return true
+	case WorkMove:
+		return true
+	case WorkRead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvitationDeliveryState.
+const (
+	InvitationDeliveryStatePending InvitationDeliveryState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the InvitationDeliveryState enum.
+func (e InvitationDeliveryState) Valid() bool {
+	switch e {
+	case InvitationDeliveryStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvitationMembershipKind.
+const (
+	InvitationMembershipKindExternal InvitationMembershipKind = "external"
+	InvitationMembershipKindInternal InvitationMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the InvitationMembershipKind enum.
+func (e InvitationMembershipKind) Valid() bool {
+	switch e {
+	case InvitationMembershipKindExternal:
+		return true
+	case InvitationMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationKind.
+const (
+	Assignment    NotificationKind = "assignment"
+	CallInvite    NotificationKind = "call_invite"
+	DirectMessage NotificationKind = "direct_message"
+	Mention       NotificationKind = "mention"
+)
+
+// Valid indicates whether the value is a known member of the NotificationKind enum.
+func (e NotificationKind) Valid() bool {
+	switch e {
+	case Assignment:
+		return true
+	case CallInvite:
+		return true
+	case DirectMessage:
+		return true
+	case Mention:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProjectMemberMembershipKind.
+const (
+	ProjectMemberMembershipKindExternal ProjectMemberMembershipKind = "external"
+	ProjectMemberMembershipKindInternal ProjectMemberMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the ProjectMemberMembershipKind enum.
+func (e ProjectMemberMembershipKind) Valid() bool {
+	switch e {
+	case ProjectMemberMembershipKindExternal:
+		return true
+	case ProjectMemberMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SprintState.
+const (
+	SprintStateActive  SprintState = "active"
+	SprintStateClosed  SprintState = "closed"
+	SprintStatePlanned SprintState = "planned"
+)
+
+// Valid indicates whether the value is a known member of the SprintState enum.
+func (e SprintState) Valid() bool {
+	switch e {
+	case SprintStateActive:
+		return true
+	case SprintStateClosed:
+		return true
+	case SprintStatePlanned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateWorkItemRequestPriority.
+const (
+	UpdateWorkItemRequestPriorityHigh   UpdateWorkItemRequestPriority = "high"
+	UpdateWorkItemRequestPriorityLow    UpdateWorkItemRequestPriority = "low"
+	UpdateWorkItemRequestPriorityNormal UpdateWorkItemRequestPriority = "normal"
+	UpdateWorkItemRequestPriorityUrgent UpdateWorkItemRequestPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the UpdateWorkItemRequestPriority enum.
+func (e UpdateWorkItemRequestPriority) Valid() bool {
+	switch e {
+	case UpdateWorkItemRequestPriorityHigh:
+		return true
+	case UpdateWorkItemRequestPriorityLow:
+		return true
+	case UpdateWorkItemRequestPriorityNormal:
+		return true
+	case UpdateWorkItemRequestPriorityUrgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkItemKind.
+const (
+	WorkItemKindSubtask WorkItemKind = "subtask"
+	WorkItemKindTask    WorkItemKind = "task"
+)
+
+// Valid indicates whether the value is a known member of the WorkItemKind enum.
+func (e WorkItemKind) Valid() bool {
+	switch e {
+	case WorkItemKindSubtask:
+		return true
+	case WorkItemKindTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkItemPriority.
+const (
+	WorkItemPriorityHigh   WorkItemPriority = "high"
+	WorkItemPriorityLow    WorkItemPriority = "low"
+	WorkItemPriorityNormal WorkItemPriority = "normal"
+	WorkItemPriorityUrgent WorkItemPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the WorkItemPriority enum.
+func (e WorkItemPriority) Valid() bool {
+	switch e {
+	case WorkItemPriorityHigh:
+		return true
+	case WorkItemPriorityLow:
+		return true
+	case WorkItemPriorityNormal:
+		return true
+	case WorkItemPriorityUrgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// AcceptInvitationRequest defines model for AcceptInvitationRequest.
+type AcceptInvitationRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Password *string             `json:"password,omitempty"`
+	Token    string              `json:"token"`
+}
+
+// AddProjectMemberRequest defines model for AddProjectMemberRequest.
+type AddProjectMemberRequest struct {
+	Email     openapi_types.Email `json:"email"`
+	IsManager *bool               `json:"isManager,omitempty"`
+}
+
+// Attachment defines model for Attachment.
+type Attachment struct {
+	ContentType   string             `json:"contentType"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	Id            openapi_types.UUID `json:"id"`
+	Name          string             `json:"name"`
+	Size          int64              `json:"size"`
+	UploaderEmail string             `json:"uploaderEmail"`
+}
+
+// BoardColumn defines model for BoardColumn.
+type BoardColumn struct {
+	Category BoardColumnCategory `json:"category"`
+	Id       openapi_types.UUID  `json:"id"`
+	Name     string              `json:"name"`
+	Position int                 `json:"position"`
+}
+
+// BoardColumnCategory defines model for BoardColumn.Category.
+type BoardColumnCategory string
+
+// Call defines model for Call.
+type Call struct {
+	CanEnd          bool                  `json:"canEnd"`
+	ConversationId  openapi_types.UUID    `json:"conversationId"`
+	Id              openapi_types.UUID    `json:"id"`
+	Invitations     []CallInvitationState `json:"invitations"`
+	InvitedMe       bool                  `json:"invitedMe"`
+	MaxParticipants int                   `json:"maxParticipants"`
+	Participants    []CallParticipant     `json:"participants"`
+	ScreenSharerId  *openapi_types.UUID   `json:"screenSharerId,omitempty"`
+	StartedBy       string                `json:"startedBy"`
+	State           CallState             `json:"state"`
+}
+
+// CallState defines model for Call.State.
+type CallState string
+
+// CallConflict defines model for CallConflict.
+type CallConflict struct {
+	Code CallConflictCode `json:"code"`
+}
+
+// CallConflictCode defines model for CallConflict.Code.
+type CallConflictCode string
+
+// CallInvitation defines model for CallInvitation.
+type CallInvitation struct {
+	CallId         openapi_types.UUID `json:"callId"`
+	ConversationId openapi_types.UUID `json:"conversationId"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	StartedBy      string             `json:"startedBy"`
+}
+
+// CallInvitationState defines model for CallInvitationState.
+type CallInvitationState struct {
+	AccountId openapi_types.UUID       `json:"accountId"`
+	Email     string                   `json:"email"`
+	State     CallInvitationStateState `json:"state"`
+}
+
+// CallInvitationStateState defines model for CallInvitationState.State.
+type CallInvitationStateState string
+
+// CallParticipant defines model for CallParticipant.
+type CallParticipant struct {
+	AccountId openapi_types.UUID   `json:"accountId"`
+	Email     string               `json:"email"`
+	State     CallParticipantState `json:"state"`
+}
+
+// CallParticipantState defines model for CallParticipant.State.
+type CallParticipantState string
+
+// CallTicket defines model for CallTicket.
+type CallTicket struct {
+	ExpiresInSeconds   int    `json:"expiresInSeconds"`
+	Identity           string `json:"identity"`
+	ReservedForSeconds int    `json:"reservedForSeconds"`
+	Token              string `json:"token"`
+	Url                string `json:"url"`
+}
+
+// CloseSprintRequest defines model for CloseSprintRequest.
+type CloseSprintRequest struct {
+	Decisions []struct {
+		Destination CloseSprintRequestDecisionsDestination `json:"destination"`
+		Version     int                                    `json:"version"`
+		WorkItemId  openapi_types.UUID                     `json:"workItemId"`
+	} `json:"decisions"`
+	DestinationSprintId *openapi_types.UUID `json:"destinationSprintId,omitempty"`
+}
+
+// CloseSprintRequestDecisionsDestination defines model for CloseSprintRequest.Decisions.Destination.
+type CloseSprintRequestDecisionsDestination string
+
+// CompleteUploadRequest defines model for CompleteUploadRequest.
+type CompleteUploadRequest struct {
+	Parts []struct {
+		Etag       string `json:"etag"`
+		PartNumber int    `json:"partNumber"`
+	} `json:"parts"`
+}
+
+// Conversation defines model for Conversation.
+type Conversation struct {
+	Id     openapi_types.UUID `json:"id"`
+	Name   string             `json:"name"`
+	Unread int64              `json:"unread"`
+}
+
+// CreateCommentRequest defines model for CreateCommentRequest.
+type CreateCommentRequest struct {
+	Body string `json:"body"`
+}
+
+// CreateEpicRequest defines model for CreateEpicRequest.
+type CreateEpicRequest struct {
+	Description *string `json:"description,omitempty"`
+	Title       string  `json:"title"`
+}
+
+// CreateInvitationRequest defines model for CreateInvitationRequest.
+type CreateInvitationRequest struct {
+	Email          openapi_types.Email                   `json:"email"`
+	MembershipKind CreateInvitationRequestMembershipKind `json:"membershipKind"`
+}
+
+// CreateInvitationRequestMembershipKind defines model for CreateInvitationRequest.MembershipKind.
+type CreateInvitationRequestMembershipKind string
+
+// CreateProjectRequest defines model for CreateProjectRequest.
+type CreateProjectRequest struct {
+	Color       *string `json:"color,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// CreateSprintRequest defines model for CreateSprintRequest.
+type CreateSprintRequest struct {
+	EndsOn   openapi_types.Date `json:"endsOn"`
+	Goal     *string            `json:"goal,omitempty"`
+	Name     string             `json:"name"`
+	StartsOn openapi_types.Date `json:"startsOn"`
+}
+
+// CreateUploadRequest defines model for CreateUploadRequest.
+type CreateUploadRequest struct {
+	ContentType *string                        `json:"contentType,omitempty"`
+	ContextId   openapi_types.UUID             `json:"contextId"`
+	ContextType CreateUploadRequestContextType `json:"contextType"`
+	Name        string                         `json:"name"`
+	Size        int64                          `json:"size"`
+}
+
+// CreateUploadRequestContextType defines model for CreateUploadRequest.ContextType.
+type CreateUploadRequestContextType string
+
+// CreateWorkItemRequest defines model for CreateWorkItemRequest.
+type CreateWorkItemRequest struct {
+	AssigneeId  *openapi_types.UUID            `json:"assigneeId,omitempty"`
+	ColumnId    *openapi_types.UUID            `json:"columnId,omitempty"`
+	Description *string                        `json:"description,omitempty"`
+	DueDate     *openapi_types.Date            `json:"dueDate,omitempty"`
+	Kind        CreateWorkItemRequestKind      `json:"kind"`
+	ParentId    *openapi_types.UUID            `json:"parentId,omitempty"`
+	Priority    *CreateWorkItemRequestPriority `json:"priority,omitempty"`
+	Title       string                         `json:"title"`
+}
+
+// CreateWorkItemRequestKind defines model for CreateWorkItemRequest.Kind.
+type CreateWorkItemRequestKind string
+
+// CreateWorkItemRequestPriority defines model for CreateWorkItemRequest.Priority.
+type CreateWorkItemRequestPriority string
+
 // CurrentAccount defines model for CurrentAccount.
 type CurrentAccount struct {
-	Email openapi_types.Email `json:"email"`
-	Id    openapi_types.UUID  `json:"id"`
+	Email          openapi_types.Email          `json:"email"`
+	Id             openapi_types.UUID           `json:"id"`
+	IsAdmin        bool                         `json:"isAdmin"`
+	MembershipKind CurrentAccountMembershipKind `json:"membershipKind"`
+}
+
+// CurrentAccountMembershipKind defines model for CurrentAccount.MembershipKind.
+type CurrentAccountMembershipKind string
+
+// DirectContact defines model for DirectContact.
+type DirectContact struct {
+	AccountId openapi_types.UUID `json:"accountId"`
+	Email     string             `json:"email"`
+}
+
+// DirectConversation defines model for DirectConversation.
+type DirectConversation struct {
+	Id        openapi_types.UUID `json:"id"`
+	PeerEmail string             `json:"peerEmail"`
+	PeerId    openapi_types.UUID `json:"peerId"`
+	Unread    int64              `json:"unread"`
+}
+
+// EditMessageRequest defines model for EditMessageRequest.
+type EditMessageRequest struct {
+	Body string `json:"body"`
+}
+
+// Epic defines model for Epic.
+type Epic struct {
+	Description string             `json:"description"`
+	Done        bool               `json:"done"`
+	Id          openapi_types.UUID `json:"id"`
+	ProjectId   openapi_types.UUID `json:"projectId"`
+	Title       string             `json:"title"`
+	Version     int                `json:"version"`
+}
+
+// ExternalPermission defines model for ExternalPermission.
+type ExternalPermission string
+
+// ExternalPolicy defines model for ExternalPolicy.
+type ExternalPolicy struct {
+	Permissions []ExternalPermission `json:"permissions"`
+	Version     int                  `json:"version"`
+}
+
+// Invitation defines model for Invitation.
+type Invitation struct {
+	DeliveryState  InvitationDeliveryState  `json:"deliveryState"`
+	Email          openapi_types.Email      `json:"email"`
+	ExpiresAt      time.Time                `json:"expiresAt"`
+	Id             openapi_types.UUID       `json:"id"`
+	MembershipKind InvitationMembershipKind `json:"membershipKind"`
+}
+
+// InvitationDeliveryState defines model for Invitation.DeliveryState.
+type InvitationDeliveryState string
+
+// InvitationMembershipKind defines model for Invitation.MembershipKind.
+type InvitationMembershipKind string
+
+// JoinCallRequest defines model for JoinCallRequest.
+type JoinCallRequest struct {
+	// Transfer Move your seat from another device to this one
+	Transfer *bool `json:"transfer,omitempty"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -24,11 +724,298 @@ type LoginRequest struct {
 	Password string              `json:"password"`
 }
 
+// Message defines model for Message.
+type Message struct {
+	AuthorEmail string              `json:"authorEmail"`
+	Body        string              `json:"body"`
+	CreatedAt   time.Time           `json:"createdAt"`
+	Deleted     bool                `json:"deleted"`
+	EditedAt    *time.Time          `json:"editedAt,omitempty"`
+	Id          openapi_types.UUID  `json:"id"`
+	Reactions   []ReactionSummary   `json:"reactions"`
+	ReplyToId   *openapi_types.UUID `json:"replyToId,omitempty"`
+	Seq         int64               `json:"seq"`
+}
+
+// Notification defines model for Notification.
+type Notification struct {
+	ConversationId *openapi_types.UUID `json:"conversationId,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	Id             openapi_types.UUID  `json:"id"`
+	Kind           NotificationKind    `json:"kind"`
+	ProjectId      *openapi_types.UUID `json:"projectId,omitempty"`
+	Read           bool                `json:"read"`
+	ResourceId     openapi_types.UUID  `json:"resourceId"`
+}
+
+// NotificationKind defines model for Notification.Kind.
+type NotificationKind string
+
+// OpenDirectConversationRequest defines model for OpenDirectConversationRequest.
+type OpenDirectConversationRequest struct {
+	AccountId openapi_types.UUID `json:"accountId"`
+}
+
+// PresignedUrl defines model for PresignedUrl.
+type PresignedUrl struct {
+	ExpiresInSeconds int    `json:"expiresInSeconds"`
+	Url              string `json:"url"`
+}
+
+// Project defines model for Project.
+type Project struct {
+	Color       string             `json:"color"`
+	Description string             `json:"description"`
+	Icon        string             `json:"icon"`
+	Id          openapi_types.UUID `json:"id"`
+	IsManager   bool               `json:"isManager"`
+	Name        string             `json:"name"`
+	Version     int                `json:"version"`
+}
+
+// ProjectMember defines model for ProjectMember.
+type ProjectMember struct {
+	AccountId      openapi_types.UUID          `json:"accountId"`
+	Email          openapi_types.Email         `json:"email"`
+	IsManager      bool                        `json:"isManager"`
+	MembershipKind ProjectMemberMembershipKind `json:"membershipKind"`
+}
+
+// ProjectMemberMembershipKind defines model for ProjectMember.MembershipKind.
+type ProjectMemberMembershipKind string
+
+// ReactionSummary defines model for ReactionSummary.
+type ReactionSummary struct {
+	Count int    `json:"count"`
+	Emoji string `json:"emoji"`
+	Mine  bool   `json:"mine"`
+}
+
+// ReadCursorRequest defines model for ReadCursorRequest.
+type ReadCursorRequest struct {
+	Seq int64 `json:"seq"`
+}
+
+// SendMessageRequest defines model for SendMessageRequest.
+type SendMessageRequest struct {
+	Body             string                `json:"body"`
+	ClientMutationId openapi_types.UUID    `json:"clientMutationId"`
+	MentionIds       *[]openapi_types.UUID `json:"mentionIds,omitempty"`
+	ReplyToId        *openapi_types.UUID   `json:"replyToId,omitempty"`
+}
+
+// Sprint defines model for Sprint.
+type Sprint struct {
+	EndsOn   openapi_types.Date `json:"endsOn"`
+	Goal     string             `json:"goal"`
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	StartsOn openapi_types.Date `json:"startsOn"`
+	State    SprintState        `json:"state"`
+	Version  int                `json:"version"`
+}
+
+// SprintState defines model for Sprint.State.
+type SprintState string
+
+// SprintClosePreview defines model for SprintClosePreview.
+type SprintClosePreview struct {
+	// Blocked True when pending work exists in projects the administrator cannot access
+	Blocked   bool       `json:"blocked"`
+	Completed []WorkItem `json:"completed"`
+	Pending   []WorkItem `json:"pending"`
+}
+
+// StartCallRequest defines model for StartCallRequest.
+type StartCallRequest struct {
+	ConversationId openapi_types.UUID    `json:"conversationId"`
+	InviteeIds     *[]openapi_types.UUID `json:"inviteeIds,omitempty"`
+}
+
+// ToggleReactionRequest defines model for ToggleReactionRequest.
+type ToggleReactionRequest struct {
+	Emoji string `json:"emoji"`
+}
+
+// UpdateEpicRequest defines model for UpdateEpicRequest.
+type UpdateEpicRequest struct {
+	Description *string `json:"description,omitempty"`
+	Done        *bool   `json:"done,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Version     int     `json:"version"`
+}
+
+// UpdateExternalPolicyRequest defines model for UpdateExternalPolicyRequest.
+type UpdateExternalPolicyRequest struct {
+	Permissions []ExternalPermission `json:"permissions"`
+	Version     int                  `json:"version"`
+}
+
+// UpdateWorkItemRequest defines model for UpdateWorkItemRequest.
+type UpdateWorkItemRequest struct {
+	Archived         *bool                          `json:"archived,omitempty"`
+	AssigneeId       *openapi_types.UUID            `json:"assigneeId,omitempty"`
+	ClearAssignee    *bool                          `json:"clearAssignee,omitempty"`
+	ClearDueDate     *bool                          `json:"clearDueDate,omitempty"`
+	ClearEpic        *bool                          `json:"clearEpic,omitempty"`
+	ClearSprint      *bool                          `json:"clearSprint,omitempty"`
+	ColumnId         *openapi_types.UUID            `json:"columnId,omitempty"`
+	CompleteSubtasks *bool                          `json:"completeSubtasks,omitempty"`
+	Description      *string                        `json:"description,omitempty"`
+	DueDate          *openapi_types.Date            `json:"dueDate,omitempty"`
+	EpicId           *openapi_types.UUID            `json:"epicId,omitempty"`
+	Priority         *UpdateWorkItemRequestPriority `json:"priority,omitempty"`
+	SprintId         *openapi_types.UUID            `json:"sprintId,omitempty"`
+	Title            *string                        `json:"title,omitempty"`
+	Version          int                            `json:"version"`
+}
+
+// UpdateWorkItemRequestPriority defines model for UpdateWorkItemRequest.Priority.
+type UpdateWorkItemRequestPriority string
+
+// Upload defines model for Upload.
+type Upload struct {
+	Id        openapi_types.UUID `json:"id"`
+	PartCount int                `json:"partCount"`
+	PartSize  int                `json:"partSize"`
+}
+
+// WorkItem defines model for WorkItem.
+type WorkItem struct {
+	AssigneeId  *openapi_types.UUID `json:"assigneeId,omitempty"`
+	ColumnId    openapi_types.UUID  `json:"columnId"`
+	CreatedAt   time.Time           `json:"createdAt"`
+	Description string              `json:"description"`
+	DueDate     *openapi_types.Date `json:"dueDate,omitempty"`
+	EpicId      *openapi_types.UUID `json:"epicId,omitempty"`
+	Id          openapi_types.UUID  `json:"id"`
+	Kind        WorkItemKind        `json:"kind"`
+	ParentId    *openapi_types.UUID `json:"parentId,omitempty"`
+	Priority    WorkItemPriority    `json:"priority"`
+	ProjectId   openapi_types.UUID  `json:"projectId"`
+	SprintId    *openapi_types.UUID `json:"sprintId,omitempty"`
+	Title       string              `json:"title"`
+	UpdatedAt   time.Time           `json:"updatedAt"`
+	Version     int                 `json:"version"`
+}
+
+// WorkItemKind defines model for WorkItem.Kind.
+type WorkItemKind string
+
+// WorkItemPriority defines model for WorkItem.Priority.
+type WorkItemPriority string
+
+// WorkItemComment defines model for WorkItemComment.
+type WorkItemComment struct {
+	AuthorEmail string             `json:"authorEmail"`
+	Body        string             `json:"body"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
+// CallId defines model for CallId.
+type CallId = openapi_types.UUID
+
+// MessageId defines model for MessageId.
+type MessageId = openapi_types.UUID
+
+// ProjectId defines model for ProjectId.
+type ProjectId = openapi_types.UUID
+
+// SprintId defines model for SprintId.
+type SprintId = openapi_types.UUID
+
+// UploadId defines model for UploadId.
+type UploadId = openapi_types.UUID
+
+// WorkItemId defines model for WorkItemId.
+type WorkItemId = openapi_types.UUID
+
+// ListActiveCallsParams defines parameters for ListActiveCalls.
+type ListActiveCallsParams struct {
+	ConversationId openapi_types.UUID `form:"conversationId" json:"conversationId"`
+}
+
+// ListMessagesParams defines parameters for ListMessages.
+type ListMessagesParams struct {
+	After *int64 `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// StartCallJSONRequestBody defines body for StartCall for application/json ContentType.
+type StartCallJSONRequestBody = StartCallRequest
+
+// JoinCallJSONRequestBody defines body for JoinCall for application/json ContentType.
+type JoinCallJSONRequestBody = JoinCallRequest
+
+// SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
+type SendMessageJSONRequestBody = SendMessageRequest
+
+// SetReadCursorJSONRequestBody defines body for SetReadCursor for application/json ContentType.
+type SetReadCursorJSONRequestBody = ReadCursorRequest
+
+// OpenDirectConversationJSONRequestBody defines body for OpenDirectConversation for application/json ContentType.
+type OpenDirectConversationJSONRequestBody = OpenDirectConversationRequest
+
+// UpdateEpicJSONRequestBody defines body for UpdateEpic for application/json ContentType.
+type UpdateEpicJSONRequestBody = UpdateEpicRequest
+
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = CreateInvitationRequest
+
+// AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
+type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// EditMessageJSONRequestBody defines body for EditMessage for application/json ContentType.
+type EditMessageJSONRequestBody = EditMessageRequest
+
+// ToggleReactionJSONRequestBody defines body for ToggleReaction for application/json ContentType.
+type ToggleReactionJSONRequestBody = ToggleReactionRequest
+
+// CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
+type CreateProjectJSONRequestBody = CreateProjectRequest
+
+// CreateEpicJSONRequestBody defines body for CreateEpic for application/json ContentType.
+type CreateEpicJSONRequestBody = CreateEpicRequest
+
+// UpdateExternalPolicyJSONRequestBody defines body for UpdateExternalPolicy for application/json ContentType.
+type UpdateExternalPolicyJSONRequestBody = UpdateExternalPolicyRequest
+
+// AddProjectMemberJSONRequestBody defines body for AddProjectMember for application/json ContentType.
+type AddProjectMemberJSONRequestBody = AddProjectMemberRequest
+
+// CreateWorkItemJSONRequestBody defines body for CreateWorkItem for application/json ContentType.
+type CreateWorkItemJSONRequestBody = CreateWorkItemRequest
+
+// CreateSprintJSONRequestBody defines body for CreateSprint for application/json ContentType.
+type CreateSprintJSONRequestBody = CreateSprintRequest
+
+// CloseSprintJSONRequestBody defines body for CloseSprint for application/json ContentType.
+type CloseSprintJSONRequestBody = CloseSprintRequest
+
+// CreateUploadJSONRequestBody defines body for CreateUpload for application/json ContentType.
+type CreateUploadJSONRequestBody = CreateUploadRequest
+
+// CompleteUploadJSONRequestBody defines body for CompleteUpload for application/json ContentType.
+type CompleteUploadJSONRequestBody = CompleteUploadRequest
+
+// UpdateWorkItemJSONRequestBody defines body for UpdateWorkItem for application/json ContentType.
+type UpdateWorkItemJSONRequestBody = UpdateWorkItemRequest
+
+// CreateWorkItemCommentJSONRequestBody defines body for CreateWorkItemComment for application/json ContentType.
+type CreateWorkItemCommentJSONRequestBody = CreateCommentRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// DeleteAttachment Remove an attachment (uploader or project manager)
+	// (DELETE /api/v1/attachments/{attachmentId})
+	DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID)
+	// GetAttachmentDownload Authorize and issue a 60-second presigned download URL
+	// (GET /api/v1/attachments/{attachmentId}/download)
+	GetAttachmentDownload(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID)
 	// Login Create an account session
 	// (POST /api/v1/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -41,12 +1028,180 @@ type ServerInterface interface {
 	// GetCurrentAccount Return the authenticated account
 	// (GET /api/v1/auth/me)
 	GetCurrentAccount(w http.ResponseWriter, r *http.Request)
+	// ListCallInvitations Pending invitations to active calls
+	// (GET /api/v1/call-invitations)
+	ListCallInvitations(w http.ResponseWriter, r *http.Request)
+	// StartCall Start a call in a channel or DM and invite eligible people (calls.start)
+	// (POST /api/v1/calls)
+	StartCall(w http.ResponseWriter, r *http.Request)
+	// ListActiveCalls The active call of a conversation, if any
+	// (GET /api/v1/calls/active)
+	ListActiveCalls(w http.ResponseWriter, r *http.Request, params ListActiveCallsParams)
+	// GetCall Call state, participants and invitations
+	// (GET /api/v1/calls/{callId})
+	GetCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// DeclineCall Decline an invitation
+	// (POST /api/v1/calls/{callId}/decline)
+	DeclineCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// EndCall End the channel call for everyone (initiator or project manager)
+	// (POST /api/v1/calls/{callId}/end)
+	EndCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// CancelCallInvitation Cancel a pending invitation (the person who started the call)
+	// (POST /api/v1/calls/{callId}/invitations/{accountId}/cancel)
+	CancelCallInvitation(w http.ResponseWriter, r *http.Request, callId CallId, accountId openapi_types.UUID)
+	// JoinCall Reserve a seat atomically and receive a short media token (calls.join)
+	// (POST /api/v1/calls/{callId}/join)
+	JoinCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// LeaveCall Free your seat; the call closes when it becomes empty
+	// (POST /api/v1/calls/{callId}/leave)
+	LeaveCall(w http.ResponseWriter, r *http.Request, callId CallId)
+	// StopScreenShare Release the screen-share slot
+	// (DELETE /api/v1/calls/{callId}/screen-share)
+	StopScreenShare(w http.ResponseWriter, r *http.Request, callId CallId)
+	// StartScreenShare Take the single screen-share slot and receive a token allowing that source
+	// (POST /api/v1/calls/{callId}/screen-share)
+	StartScreenShare(w http.ResponseWriter, r *http.Request, callId CallId)
+	// ListConversationAttachments Ready attachments of a channel or DM
+	// (GET /api/v1/conversations/{conversationId}/attachments)
+	ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// ListMessages List messages after a sequence number, oldest first
+	// (GET /api/v1/conversations/{conversationId}/messages)
+	ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params ListMessagesParams)
+	// SendMessage Send a message; clientMutationId makes retries idempotent
+	// (POST /api/v1/conversations/{conversationId}/messages)
+	SendMessage(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// SetReadCursor Advance your read position; it never moves backwards
+	// (PUT /api/v1/conversations/{conversationId}/read-cursor)
+	SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// ListDirectContacts People the account may message, derived from shared eligible projects
+	// (GET /api/v1/direct-contacts)
+	ListDirectContacts(w http.ResponseWriter, r *http.Request)
+	// ListDirectConversations List the account's direct conversations
+	// (GET /api/v1/direct-conversations)
+	ListDirectConversations(w http.ResponseWriter, r *http.Request)
+	// OpenDirectConversation Open (or return) the single direct conversation with another person
+	// (POST /api/v1/direct-conversations)
+	OpenDirectConversation(w http.ResponseWriter, r *http.Request)
+	// UpdateEpic Edit an epic; done=true requires every active task to be done
+	// (PATCH /api/v1/epics/{epicId})
+	UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID)
+	// EventsSocket WebSocket delivering authorized event references (protocol version 1)
+	// (GET /api/v1/events/ws)
+	EventsSocket(w http.ResponseWriter, r *http.Request)
 	// GetLiveness Check whether the API process is running
 	// (GET /api/v1/health/live)
 	GetLiveness(w http.ResponseWriter, r *http.Request)
 	// GetReadiness Check whether the API can access its required database
 	// (GET /api/v1/health/ready)
 	GetReadiness(w http.ResponseWriter, r *http.Request)
+	// CreateInvitation Invite a person to the organization
+	// (POST /api/v1/invitations)
+	CreateInvitation(w http.ResponseWriter, r *http.Request)
+	// AcceptInvitation Accept an organization invitation
+	// (POST /api/v1/invitations/accept)
+	AcceptInvitation(w http.ResponseWriter, r *http.Request)
+	// DeleteMessage Delete your own message, or any channel message as project manager
+	// (DELETE /api/v1/messages/{messageId})
+	DeleteMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
+	// EditMessage Edit your own message
+	// (PATCH /api/v1/messages/{messageId})
+	EditMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
+	// ToggleReaction Add your reaction, or remove it if already present
+	// (POST /api/v1/messages/{messageId}/reactions)
+	ToggleReaction(w http.ResponseWriter, r *http.Request, messageId MessageId)
+	// ListNotifications In-app notifications still authorized for the account, newest first
+	// (GET /api/v1/notifications)
+	ListNotifications(w http.ResponseWriter, r *http.Request)
+	// MarkAllNotificationsRead Mark every notification as read
+	// (POST /api/v1/notifications/read-all)
+	MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request)
+	// MarkNotificationRead Mark one notification as read
+	// (POST /api/v1/notifications/{notificationId}/read)
+	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID)
+	// ListProjects List projects the account belongs to
+	// (GET /api/v1/projects)
+	ListProjects(w http.ResponseWriter, r *http.Request)
+	// CreateProject Create a project with the default board (organization administrators)
+	// (POST /api/v1/projects)
+	CreateProject(w http.ResponseWriter, r *http.Request)
+	// GetProject Return one project the account belongs to
+	// (GET /api/v1/projects/{projectId})
+	GetProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListBoardColumns List board columns
+	// (GET /api/v1/projects/{projectId}/columns)
+	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListConversations List the project channels
+	// (GET /api/v1/projects/{projectId}/conversations)
+	ListConversations(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListEpics List epics
+	// (GET /api/v1/projects/{projectId}/epics)
+	ListEpics(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateEpic Create an epic (requires planning.edit)
+	// (POST /api/v1/projects/{projectId}/epics)
+	CreateEpic(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// GetExternalPolicy Return the single permission profile shared by external members
+	// (GET /api/v1/projects/{projectId}/external-policy)
+	GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// UpdateExternalPolicy Replace the external permission profile (managers)
+	// (PUT /api/v1/projects/{projectId}/external-policy)
+	UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListProjectMembers List project members
+	// (GET /api/v1/projects/{projectId}/members)
+	ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// AddProjectMember Add an existing organization member to the project (managers)
+	// (POST /api/v1/projects/{projectId}/members)
+	AddProjectMember(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListWorkItems List non-archived tasks and subtasks
+	// (GET /api/v1/projects/{projectId}/work-items)
+	ListWorkItems(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateWorkItem Create a task or subtask
+	// (POST /api/v1/projects/{projectId}/work-items)
+	CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListSprints List sprints visible to the account
+	// (GET /api/v1/sprints)
+	ListSprints(w http.ResponseWriter, r *http.Request)
+	// CreateSprint Plan a sprint (organization administrators)
+	// (POST /api/v1/sprints)
+	CreateSprint(w http.ResponseWriter, r *http.Request)
+	// CloseSprint Close an active sprint with a decision for every pending task
+	// (POST /api/v1/sprints/{sprintId}/close)
+	CloseSprint(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// GetSprintClosePreview Summary of completed and pending tasks before closing
+	// (GET /api/v1/sprints/{sprintId}/close-preview)
+	GetSprintClosePreview(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// StartSprint Start a planned sprint; only one may be active
+	// (POST /api/v1/sprints/{sprintId}/start)
+	StartSprint(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// ListSprintWorkItems Tasks of the sprint the account is authorized to read
+	// (GET /api/v1/sprints/{sprintId}/work-items)
+	ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// CreateUpload Reserve storage and start a multipart upload (500000000 bytes at most)
+	// (POST /api/v1/uploads)
+	CreateUpload(w http.ResponseWriter, r *http.Request)
+	// AbortUpload Cancel an upload and release its reservation
+	// (POST /api/v1/uploads/{uploadId}/abort)
+	AbortUpload(w http.ResponseWriter, r *http.Request, uploadId UploadId)
+	// CompleteUpload Finish the multipart upload and publish the attachment atomically
+	// (POST /api/v1/uploads/{uploadId}/complete)
+	CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId UploadId)
+	// PresignUploadPart Short-lived presigned URL to PUT one part directly to the bucket
+	// (GET /api/v1/uploads/{uploadId}/parts/{partNumber})
+	PresignUploadPart(w http.ResponseWriter, r *http.Request, uploadId UploadId, partNumber int)
+	// LivekitWebhook Signed LiveKit webhook used to reconcile presence
+	// (POST /api/v1/webhooks/livekit)
+	LivekitWebhook(w http.ResponseWriter, r *http.Request)
+	// UpdateWorkItem Edit, move, archive or restore a work item with optimistic versioning
+	// (PATCH /api/v1/work-items/{workItemId})
+	UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// ListWorkItemAttachments Ready attachments of a work item
+	// (GET /api/v1/work-items/{workItemId}/attachments)
+	ListWorkItemAttachments(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// ListWorkItemComments List comments in chronological order
+	// (GET /api/v1/work-items/{workItemId}/comments)
+	ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// CreateWorkItemComment Add a comment
+	// (POST /api/v1/work-items/{workItemId}/comments)
+	CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -57,6 +1212,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DeleteAttachment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAttachment(w, r, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAttachmentDownload operation middleware
+func (siw *ServerInterfaceWrapper) GetAttachmentDownload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAttachmentDownload(w, r, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +1321,499 @@ func (siw *ServerInterfaceWrapper) GetCurrentAccount(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListCallInvitations operation middleware
+func (siw *ServerInterfaceWrapper) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCallInvitations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartCall operation middleware
+func (siw *ServerInterfaceWrapper) StartCall(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartCall(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListActiveCalls operation middleware
+func (siw *ServerInterfaceWrapper) ListActiveCalls(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListActiveCallsParams
+
+	// ------------- Required query parameter "conversationId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "conversationId", r.URL.Query(), &params.ConversationId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "conversationId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListActiveCalls(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCall operation middleware
+func (siw *ServerInterfaceWrapper) GetCall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeclineCall operation middleware
+func (siw *ServerInterfaceWrapper) DeclineCall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeclineCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EndCall operation middleware
+func (siw *ServerInterfaceWrapper) EndCall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelCallInvitation operation middleware
+func (siw *ServerInterfaceWrapper) CancelCallInvitation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelCallInvitation(w, r, callId, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinCall operation middleware
+func (siw *ServerInterfaceWrapper) JoinCall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LeaveCall operation middleware
+func (siw *ServerInterfaceWrapper) LeaveCall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LeaveCall(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopScreenShare operation middleware
+func (siw *ServerInterfaceWrapper) StopScreenShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopScreenShare(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartScreenShare operation middleware
+func (siw *ServerInterfaceWrapper) StartScreenShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "callId" -------------
+	var callId CallId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "callId", r.PathValue("callId"), &callId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "callId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartScreenShare(w, r, callId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListConversationAttachments operation middleware
+func (siw *ServerInterfaceWrapper) ListConversationAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversationAttachments(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMessagesParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMessages(w, r, conversationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendMessage(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetReadCursor operation middleware
+func (siw *ServerInterfaceWrapper) SetReadCursor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetReadCursor(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDirectContacts operation middleware
+func (siw *ServerInterfaceWrapper) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDirectContacts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDirectConversations operation middleware
+func (siw *ServerInterfaceWrapper) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDirectConversations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenDirectConversation operation middleware
+func (siw *ServerInterfaceWrapper) OpenDirectConversation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenDirectConversation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateEpic operation middleware
+func (siw *ServerInterfaceWrapper) UpdateEpic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "epicId" -------------
+	var epicId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "epicId", r.PathValue("epicId"), &epicId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "epicId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateEpic(w, r, epicId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EventsSocket operation middleware
+func (siw *ServerInterfaceWrapper) EventsSocket(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EventsSocket(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetLiveness operation middleware
 func (siw *ServerInterfaceWrapper) GetLiveness(w http.ResponseWriter, r *http.Request) {
 
@@ -133,6 +1833,831 @@ func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvitation operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptInvitation operation middleware
+func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMessage operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMessage(w, r, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EditMessage operation middleware
+func (siw *ServerInterfaceWrapper) EditMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EditMessage(w, r, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ToggleReaction operation middleware
+func (siw *ServerInterfaceWrapper) ToggleReaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId MessageId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ToggleReaction(w, r, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotifications operation middleware
+func (siw *ServerInterfaceWrapper) ListNotifications(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotifications(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkAllNotificationsRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkAllNotificationsRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkNotificationRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notificationId" -------------
+	var notificationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notificationId", r.PathValue("notificationId"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notificationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkNotificationRead(w, r, notificationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProject operation middleware
+func (siw *ServerInterfaceWrapper) GetProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProject(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBoardColumns operation middleware
+func (siw *ServerInterfaceWrapper) ListBoardColumns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBoardColumns(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListConversations operation middleware
+func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConversations(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEpics operation middleware
+func (siw *ServerInterfaceWrapper) ListEpics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEpics(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateEpic operation middleware
+func (siw *ServerInterfaceWrapper) CreateEpic(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateEpic(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExternalPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetExternalPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExternalPolicy(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateExternalPolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateExternalPolicy(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjectMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectMembers(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) AddProjectMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddProjectMember(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkItems operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkItems(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkItem operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkItem(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSprints operation middleware
+func (siw *ServerInterfaceWrapper) ListSprints(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSprints(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSprint operation middleware
+func (siw *ServerInterfaceWrapper) CreateSprint(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSprint(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseSprint operation middleware
+func (siw *ServerInterfaceWrapper) CloseSprint(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseSprint(w, r, sprintId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSprintClosePreview operation middleware
+func (siw *ServerInterfaceWrapper) GetSprintClosePreview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSprintClosePreview(w, r, sprintId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartSprint operation middleware
+func (siw *ServerInterfaceWrapper) StartSprint(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartSprint(w, r, sprintId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSprintWorkItems operation middleware
+func (siw *ServerInterfaceWrapper) ListSprintWorkItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSprintWorkItems(w, r, sprintId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AbortUpload operation middleware
+func (siw *ServerInterfaceWrapper) AbortUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId UploadId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", r.PathValue("uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AbortUpload(w, r, uploadId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId UploadId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", r.PathValue("uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteUpload(w, r, uploadId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PresignUploadPart operation middleware
+func (siw *ServerInterfaceWrapper) PresignUploadPart(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId UploadId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", r.PathValue("uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "partNumber" -------------
+	var partNumber int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "partNumber", r.PathValue("partNumber"), &partNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "partNumber", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PresignUploadPart(w, r, uploadId, partNumber)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LivekitWebhook operation middleware
+func (siw *ServerInterfaceWrapper) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LivekitWebhook(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateWorkItem operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateWorkItem(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkItemAttachments operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkItemAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkItemAttachments(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkItemComments operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkItemComments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkItemComments(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkItemComment operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkItemComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkItemComment(w, r, workItemId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -262,10 +2787,68 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations", wrapper.CreateInvitation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations/accept", wrapper.AcceptInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.Login)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.ListProjects)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.CreateProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.GetProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.ListProjectMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.AddProjectMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.GetExternalPolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.UpdateExternalPolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns", wrapper.ListBoardColumns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.ListWorkItems)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.CreateWorkItem)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/work-items/{workItemId}", wrapper.UpdateWorkItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.ListWorkItemComments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.CreateWorkItemComment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.ListConversations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.ListMessages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.SendMessage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/epics", wrapper.ListEpics)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/epics", wrapper.CreateEpic)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/epics/{epicId}", wrapper.UpdateEpic)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints", wrapper.ListSprints)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints", wrapper.CreateSprint)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/work-items", wrapper.ListSprintWorkItems)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/start", wrapper.StartSprint)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/close-preview", wrapper.GetSprintClosePreview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/close", wrapper.CloseSprint)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/direct-contacts", wrapper.ListDirectContacts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/direct-conversations", wrapper.ListDirectConversations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/direct-conversations", wrapper.OpenDirectConversation)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/messages/{messageId}", wrapper.DeleteMessage)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/messages/{messageId}", wrapper.EditMessage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/messages/{messageId}/reactions", wrapper.ToggleReaction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/notifications", wrapper.ListNotifications)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/notifications/read-all", wrapper.MarkAllNotificationsRead)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/notifications/{notificationId}/read", wrapper.MarkNotificationRead)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/read-cursor", wrapper.SetReadCursor)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/events/ws", wrapper.EventsSocket)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/uploads", wrapper.CreateUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/uploads/{uploadId}/parts/{partNumber}", wrapper.PresignUploadPart)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/uploads/{uploadId}/complete", wrapper.CompleteUpload)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/uploads/{uploadId}/abort", wrapper.AbortUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/attachments/{attachmentId}/download", wrapper.GetAttachmentDownload)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/attachments/{attachmentId}", wrapper.DeleteAttachment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/attachments", wrapper.ListWorkItemAttachments)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/attachments", wrapper.ListConversationAttachments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls", wrapper.StartCall)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/active", wrapper.ListActiveCalls)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/call-invitations", wrapper.ListCallInvitations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/{callId}", wrapper.GetCall)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/join", wrapper.JoinCall)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/decline", wrapper.DeclineCall)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/invitations/{accountId}/cancel", wrapper.CancelCallInvitation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/leave", wrapper.LeaveCall)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/end", wrapper.EndCall)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/calls/{callId}/screen-share", wrapper.StopScreenShare)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/screen-share", wrapper.StartScreenShare)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/webhooks/livekit", wrapper.LivekitWebhook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 

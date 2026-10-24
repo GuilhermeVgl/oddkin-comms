@@ -4,6 +4,52 @@ info:
   version: 0.1.0
   description: Operational and account session endpoints.
 paths:
+  /api/v1/invitations:
+    post:
+      operationId: createInvitation
+      summary: Invite a person to the organization
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation persisted and queued for delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "503":
+          description: Invitation service temporarily unavailable
+  /api/v1/invitations/accept:
+    post:
+      operationId: acceptInvitation
+      summary: Accept an organization invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitationRequest"
+      responses:
+        "204":
+          description: Invitation accepted
+        "400":
+          description: Invalid, expired, used, or mismatched invitation
+        "403":
+          description: Origin rejected
+        "503":
+          description: Invitation service temporarily unavailable
   /api/v1/auth/login:
     post:
       operationId: login
@@ -74,6 +120,1308 @@ paths:
           description: Origin or CSRF token rejected
         "503":
           description: Logout temporarily unavailable
+  /api/v1/projects:
+    get:
+      operationId: listProjects
+      summary: List projects the account belongs to
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+        "401":
+          description: No active session
+    post:
+      operationId: createProject
+      summary: Create a project with the default board (organization administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+  /api/v1/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProject
+      summary: Return one project the account belongs to
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+  /api/v1/projects/{projectId}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listProjectMembers
+      summary: List project members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectMember"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: addProjectMember
+      summary: Add an existing organization member to the project (managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddProjectMemberRequest"
+      responses:
+        "204":
+          description: Member added
+        "400":
+          description: Invalid request or unknown organization member
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
+  /api/v1/projects/{projectId}/external-policy:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getExternalPolicy
+      summary: Return the single permission profile shared by external members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalPolicy"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+    put:
+      operationId: updateExternalPolicy
+      summary: Replace the external permission profile (managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExternalPolicyRequest"
+      responses:
+        "200":
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalPolicy"
+        "400":
+          description: Invalid permission set
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Policy version conflict
+  /api/v1/projects/{projectId}/columns:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listBoardColumns
+      summary: List board columns
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Columns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BoardColumn"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+  /api/v1/projects/{projectId}/work-items:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listWorkItems
+      summary: List non-archived tasks and subtasks
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Work items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkItem"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: createWorkItem
+      summary: Create a task or subtask
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkItemRequest"
+      responses:
+        "201":
+          description: Work item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Invalid request or relation
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
+  /api/v1/work-items/{workItemId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    patch:
+      operationId: updateWorkItem
+      summary: Edit, move, archive or restore a work item with optimistic versioning
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkItemRequest"
+      responses:
+        "200":
+          description: Updated work item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Invalid request or relation
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible item
+        "409":
+          description: Version conflict, archived project, or open subtasks
+  /api/v1/work-items/{workItemId}/comments:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    get:
+      operationId: listWorkItemComments
+      summary: List comments in chronological order
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkItemComment"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible item
+    post:
+      operationId: createWorkItemComment
+      summary: Add a comment
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItemComment"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible item
+        "409":
+          description: Project is archived
+  /api/v1/projects/{projectId}/conversations:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listConversations
+      summary: List the project channels
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow reading chat
+        "404":
+          description: Unknown or inaccessible project
+  /api/v1/conversations/{conversationId}/messages:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listMessages
+      summary: List messages after a sequence number, oldest first
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow reading chat
+        "404":
+          description: Unknown or inaccessible conversation
+    post:
+      operationId: sendMessage
+      summary: Send a message; clientMutationId makes retries idempotent
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "200":
+          description: Same mutation already stored; original message returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "201":
+          description: Message stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible conversation
+        "409":
+          description: Project is archived
+  /api/v1/projects/{projectId}/epics:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listEpics
+      summary: List epics
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Epics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Epic"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow reading work
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: createEpic
+      summary: Create an epic (requires planning.edit)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEpicRequest"
+      responses:
+        "201":
+          description: Epic created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Epic"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
+  /api/v1/epics/{epicId}:
+    parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateEpic
+      summary: Edit an epic; done=true requires every active task to be done
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEpicRequest"
+      responses:
+        "200":
+          description: Updated epic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Epic"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible epic
+        "409":
+          description: Version conflict, archived project, or open tasks
+  /api/v1/sprints:
+    get:
+      operationId: listSprints
+      summary: List sprints visible to the account
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sprints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sprint"
+        "401":
+          description: No active session
+    post:
+      operationId: createSprint
+      summary: Plan a sprint (organization administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSprintRequest"
+      responses:
+        "201":
+          description: Sprint planned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+  /api/v1/sprints/{sprintId}/work-items:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    get:
+      operationId: listSprintWorkItems
+      summary: Tasks of the sprint the account is authorized to read
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkItem"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or invisible sprint
+  /api/v1/sprints/{sprintId}/start:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    post:
+      operationId: startSprint
+      summary: Start a planned sprint; only one may be active
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sprint started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown sprint
+        "409":
+          description: Sprint is not planned or another sprint is active
+  /api/v1/sprints/{sprintId}/close-preview:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    get:
+      operationId: getSprintClosePreview
+      summary: Summary of completed and pending tasks before closing
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SprintClosePreview"
+        "401":
+          description: No active session
+        "403":
+          description: Role rejected
+        "404":
+          description: Unknown sprint
+  /api/v1/sprints/{sprintId}/close:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    post:
+      operationId: closeSprint
+      summary: Close an active sprint with a decision for every pending task
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseSprintRequest"
+      responses:
+        "204":
+          description: Sprint closed
+        "400":
+          description: Invalid or incomplete decision list
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown sprint
+        "409":
+          description: Stale versions, closed sprint, or blocked by pending work the administrator cannot access
+  /api/v1/direct-contacts:
+    get:
+      operationId: listDirectContacts
+      summary: People the account may message, derived from shared eligible projects
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectContact"
+        "401":
+          description: No active session
+  /api/v1/direct-conversations:
+    get:
+      operationId: listDirectConversations
+      summary: List the account's direct conversations
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Direct conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectConversation"
+        "401":
+          description: No active session
+    post:
+      operationId: openDirectConversation
+      summary: Open (or return) the single direct conversation with another person
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenDirectConversationRequest"
+      responses:
+        "200":
+          description: Existing conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectConversation"
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectConversation"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or no shared eligible project
+  /api/v1/messages/{messageId}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    patch:
+      operationId: editMessage
+      summary: Edit your own message
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditMessageRequest"
+      responses:
+        "200":
+          description: Edited message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or not the author
+        "404":
+          description: Unknown or inaccessible message
+        "409":
+          description: Message was deleted or project archived
+    delete:
+      operationId: deleteMessage
+      summary: Delete your own message, or any channel message as project manager
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Message replaced by a tombstone
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or not allowed
+        "404":
+          description: Unknown or inaccessible message
+  /api/v1/messages/{messageId}/reactions:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    post:
+      operationId: toggleReaction
+      summary: Add your reaction, or remove it if already present
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleReactionRequest"
+      responses:
+        "200":
+          description: Reaction summary of the message
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReactionSummary"
+        "400":
+          description: Invalid emoji
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible message
+        "409":
+          description: Message was deleted
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: In-app notifications still authorized for the account, newest first
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+        "401":
+          description: No active session
+  /api/v1/notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Mark every notification as read
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Done
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+  /api/v1/notifications/{notificationId}/read:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: markNotificationRead
+      summary: Mark one notification as read
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Done
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown notification
+  /api/v1/conversations/{conversationId}/read-cursor:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setReadCursor
+      summary: Advance your read position; it never moves backwards
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReadCursorRequest"
+      responses:
+        "204":
+          description: Done
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible conversation
+  /api/v1/events/ws:
+    get:
+      operationId: eventsSocket
+      summary: WebSocket delivering authorized event references (protocol version 1)
+      security:
+        - sessionCookie: []
+      responses:
+        "101":
+          description: Switching protocols
+        "401":
+          description: No active session
+        "403":
+          description: Origin rejected
+  /api/v1/uploads:
+    post:
+      operationId: createUpload
+      summary: Reserve storage and start a multipart upload (500000000 bytes at most)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUploadRequest"
+      responses:
+        "201":
+          description: Upload session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "400":
+          description: Invalid request
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible context
+        "409":
+          description: Another upload is in progress, or the context is archived
+        "413":
+          description: File larger than 500000000 bytes
+        "503":
+          description: Object storage is not configured or unavailable
+        "507":
+          description: Organization storage quota exhausted
+  /api/v1/uploads/{uploadId}/parts/{partNumber}:
+    parameters:
+      - $ref: "#/components/parameters/UploadId"
+      - name: partNumber
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1, maximum: 10000 }
+    get:
+      operationId: presignUploadPart
+      summary: Short-lived presigned URL to PUT one part directly to the bucket
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrl"
+        "400":
+          description: Part number outside the session
+        "401":
+          description: No active session
+        "404":
+          description: Unknown upload
+        "409":
+          description: Upload is no longer active
+        "503":
+          description: Object storage unavailable
+  /api/v1/uploads/{uploadId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/UploadId"
+    post:
+      operationId: completeUpload
+      summary: Finish the multipart upload and publish the attachment atomically
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteUploadRequest"
+      responses:
+        "200":
+          description: Attachment is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+        "400":
+          description: Parts or stored size do not match the reservation
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown upload
+        "409":
+          description: Upload is no longer active
+        "503":
+          description: Object storage unavailable
+  /api/v1/uploads/{uploadId}/abort:
+    parameters:
+      - $ref: "#/components/parameters/UploadId"
+    post:
+      operationId: abortUpload
+      summary: Cancel an upload and release its reservation
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Upload aborted
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown upload
+  /api/v1/attachments/{attachmentId}/download:
+    parameters:
+      - name: attachmentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAttachmentDownload
+      summary: Authorize and issue a 60-second presigned download URL
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrl"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow downloads
+        "404":
+          description: Unknown or inaccessible attachment
+        "503":
+          description: Object storage unavailable
+  /api/v1/attachments/{attachmentId}:
+    parameters:
+      - name: attachmentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteAttachment
+      summary: Remove an attachment (uploader or project manager)
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Attachment removed; the object is released by retryable cleanup
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible attachment
+  /api/v1/work-items/{workItemId}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    get:
+      operationId: listWorkItemAttachments
+      summary: Ready attachments of a work item
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Attachment"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow downloads
+        "404":
+          description: Unknown or inaccessible item
+  /api/v1/conversations/{conversationId}/attachments:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listConversationAttachments
+      summary: Ready attachments of a channel or DM
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Attachment"
+        "401":
+          description: No active session
+        "403":
+          description: Profile does not allow downloads
+        "404":
+          description: Unknown or inaccessible conversation
+  /api/v1/calls:
+    post:
+      operationId: startCall
+      summary: Start a call in a channel or DM and invite eligible people (calls.start)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartCallRequest"
+      responses:
+        "201":
+          description: Call started; join it to receive media credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "400":
+          description: Invalid or ineligible invitee
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible conversation
+        "409":
+          description: A call is already active here, or the project is archived
+        "503":
+          description: Media server not configured or unavailable
+  /api/v1/calls/active:
+    get:
+      operationId: listActiveCalls
+      summary: The active call of a conversation, if any
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: conversationId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Zero or one active call
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Call"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible conversation
+  /api/v1/call-invitations:
+    get:
+      operationId: listCallInvitations
+      summary: Pending invitations to active calls
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallInvitation"
+        "401":
+          description: No active session
+  /api/v1/calls/{callId}:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    get:
+      operationId: getCall
+      summary: Call state, participants and invitations
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible call
+  /api/v1/calls/{callId}/join:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: joinCall
+      summary: Reserve a seat atomically and receive a short media token (calls.join)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinCallRequest"
+      responses:
+        "200":
+          description: Seat reserved; connect before it expires
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallTicket"
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, permission, or no invitation
+        "404":
+          description: Unknown or inaccessible call
+        "409":
+          description: call_full, in_other_call, other_device or call_ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallConflict"
+        "503":
+          description: Media server not configured
+  /api/v1/calls/{callId}/decline:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: declineCall
+      summary: Decline an invitation
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Declined
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown call or no invitation
+  /api/v1/calls/{callId}/invitations/{accountId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+      - name: accountId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelCallInvitation
+      summary: Cancel a pending invitation (the person who started the call)
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Cancelled
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown call or invitation
+  /api/v1/calls/{callId}/leave:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: leaveCall
+      summary: Free your seat; the call closes when it becomes empty
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Left
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown or inaccessible call
+  /api/v1/calls/{callId}/end:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: endCall
+      summary: End the channel call for everyone (initiator or project manager)
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Ended
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible call
+  /api/v1/calls/{callId}/screen-share:
+    parameters:
+      - $ref: "#/components/parameters/CallId"
+    post:
+      operationId: startScreenShare
+      summary: Take the single screen-share slot and receive a token allowing that source
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Token including the screen_share source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallTicket"
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible call
+        "409":
+          description: screen_share_taken, not_in_call or call_ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallConflict"
+    delete:
+      operationId: stopScreenShare
+      summary: Release the screen-share slot
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Released
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown or inaccessible call
+  /api/v1/webhooks/livekit:
+    post:
+      operationId: livekitWebhook
+      summary: Signed LiveKit webhook used to reconcile presence
+      responses:
+        "204":
+          description: Accepted
+        "401":
+          description: Missing or invalid signature
+        "503":
+          description: Media server not configured
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -91,12 +1439,92 @@ paths:
         "503":
           description: A required dependency is unavailable
 components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CallId:
+      name: callId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UploadId:
+      name: uploadId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SprintId:
+      name: sprintId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WorkItemId:
+      name: workItemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
       name: oddkin_session
   schemas:
+    AcceptInvitationRequest:
+      type: object
+      required: [token, email]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 43
+          maxLength: 43
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+    CreateInvitationRequest:
+      type: object
+      required: [email, membershipKind]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        membershipKind:
+          type: string
+          enum: [internal, external]
+    Invitation:
+      type: object
+      required: [id, email, membershipKind, expiresAt, deliveryState]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        membershipKind:
+          type: string
+          enum: [internal, external]
+        expiresAt:
+          type: string
+          format: date-time
+        deliveryState:
+          type: string
+          enum: [pending]
     LoginRequest:
       type: object
       required: [email, password]
@@ -112,7 +1540,7 @@ components:
           maxLength: 1024
     CurrentAccount:
       type: object
-      required: [id, email]
+      required: [id, email, membershipKind, isAdmin]
       additionalProperties: false
       properties:
         id:
@@ -121,3 +1549,448 @@ components:
         email:
           type: string
           format: email
+        membershipKind:
+          type: string
+          enum: [internal, external]
+        isAdmin:
+          type: boolean
+    Project:
+      type: object
+      required: [id, name, description, color, icon, version, isManager]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        color: { type: string }
+        icon: { type: string }
+        version: { type: integer }
+        isManager: { type: boolean }
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$" }
+    ProjectMember:
+      type: object
+      required: [accountId, email, membershipKind, isManager]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        membershipKind: { type: string, enum: [internal, external] }
+        isManager: { type: boolean }
+    AddProjectMemberRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        isManager: { type: boolean }
+    ExternalPolicy:
+      type: object
+      required: [permissions, version]
+      additionalProperties: false
+      properties:
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalPermission" }
+        version: { type: integer }
+    UpdateExternalPolicyRequest:
+      type: object
+      required: [permissions, version]
+      additionalProperties: false
+      properties:
+        permissions:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/ExternalPermission" }
+        version: { type: integer }
+    ExternalPermission:
+      type: string
+      enum: [work.read, work.create, work.edit, work.move, work.archive, work.comment, planning.edit, chat.read, chat.send, direct_messages.use, files.upload, files.download, calls.start, calls.join, calls.screen_share]
+    BoardColumn:
+      type: object
+      required: [id, name, position, category]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        position: { type: integer }
+        category: { type: string, enum: [todo, in_progress, done] }
+    WorkItem:
+      type: object
+      required: [id, projectId, kind, title, description, priority, columnId, version, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        kind: { type: string, enum: [task, subtask] }
+        parentId: { type: string, format: uuid }
+        epicId: { type: string, format: uuid }
+        sprintId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        assigneeId: { type: string, format: uuid }
+        dueDate: { type: string, format: date }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        columnId: { type: string, format: uuid }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateWorkItemRequest:
+      type: object
+      required: [kind, title]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [task, subtask] }
+        parentId: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+        assigneeId: { type: string, format: uuid }
+        dueDate: { type: string, format: date }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        columnId: { type: string, format: uuid }
+    UpdateWorkItemRequest:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { type: integer }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        assigneeId: { type: string, format: uuid }
+        clearAssignee: { type: boolean }
+        dueDate: { type: string, format: date }
+        clearDueDate: { type: boolean }
+        columnId: { type: string, format: uuid }
+        completeSubtasks: { type: boolean }
+        archived: { type: boolean }
+        epicId: { type: string, format: uuid }
+        clearEpic: { type: boolean }
+        sprintId: { type: string, format: uuid }
+        clearSprint: { type: boolean }
+    WorkItemComment:
+      type: object
+      required: [id, authorEmail, body, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        authorEmail: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 10000 }
+    Conversation:
+      type: object
+      required: [id, name, unread]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        unread: { type: integer, format: int64 }
+    ReactionSummary:
+      type: object
+      required: [emoji, count, mine]
+      additionalProperties: false
+      properties:
+        emoji: { type: string }
+        count: { type: integer }
+        mine: { type: boolean }
+    Message:
+      type: object
+      required: [id, seq, authorEmail, body, createdAt, deleted, reactions]
+      additionalProperties: false
+      properties:
+        replyToId: { type: string, format: uuid }
+        editedAt: { type: string, format: date-time }
+        deleted: { type: boolean }
+        reactions:
+          type: array
+          items: { $ref: "#/components/schemas/ReactionSummary" }
+        id: { type: string, format: uuid }
+        seq: { type: integer, format: int64 }
+        authorEmail: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    SendMessageRequest:
+      type: object
+      required: [body, clientMutationId]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 10000 }
+        clientMutationId: { type: string, format: uuid }
+        replyToId: { type: string, format: uuid }
+        mentionIds:
+          type: array
+          maxItems: 20
+          items: { type: string, format: uuid }
+    Epic:
+      type: object
+      required: [id, projectId, title, description, done, version]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        done: { type: boolean }
+        version: { type: integer }
+    CreateEpicRequest:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+    UpdateEpicRequest:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { type: integer }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+        done: { type: boolean }
+    Sprint:
+      type: object
+      required: [id, name, goal, startsOn, endsOn, state, version]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        goal: { type: string }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        state: { type: string, enum: [planned, active, closed] }
+        version: { type: integer }
+    CreateSprintRequest:
+      type: object
+      required: [name, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        goal: { type: string, maxLength: 2000 }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+    SprintClosePreview:
+      type: object
+      required: [completed, pending, blocked]
+      additionalProperties: false
+      properties:
+        completed:
+          type: array
+          items: { $ref: "#/components/schemas/WorkItem" }
+        pending:
+          type: array
+          items: { $ref: "#/components/schemas/WorkItem" }
+        blocked:
+          type: boolean
+          description: True when pending work exists in projects the administrator cannot access
+    CloseSprintRequest:
+      type: object
+      required: [decisions]
+      additionalProperties: false
+      properties:
+        destinationSprintId: { type: string, format: uuid }
+        decisions:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required: [workItemId, version, destination]
+            additionalProperties: false
+            properties:
+              workItemId: { type: string, format: uuid }
+              version: { type: integer }
+              destination: { type: string, enum: [next, backlog] }
+    DirectContact:
+      type: object
+      required: [accountId, email]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+        email: { type: string }
+    DirectConversation:
+      type: object
+      required: [id, peerId, peerEmail, unread]
+      additionalProperties: false
+      properties:
+        unread: { type: integer, format: int64 }
+        id: { type: string, format: uuid }
+        peerId: { type: string, format: uuid }
+        peerEmail: { type: string }
+    OpenDirectConversationRequest:
+      type: object
+      required: [accountId]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+    EditMessageRequest:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 10000 }
+    ToggleReactionRequest:
+      type: object
+      required: [emoji]
+      additionalProperties: false
+      properties:
+        emoji: { type: string, minLength: 1, maxLength: 16 }
+    Notification:
+      type: object
+      required: [id, kind, resourceId, createdAt, read]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [mention, assignment, direct_message, call_invite] }
+        resourceId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        read: { type: boolean }
+    ReadCursorRequest:
+      type: object
+      required: [seq]
+      additionalProperties: false
+      properties:
+        seq: { type: integer, format: int64, minimum: 0 }
+    CreateUploadRequest:
+      type: object
+      required: [contextType, contextId, name, size]
+      additionalProperties: false
+      properties:
+        contextType: { type: string, enum: [work_item, conversation] }
+        contextId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        contentType: { type: string, maxLength: 255 }
+        size: { type: integer, format: int64, minimum: 1 }
+    Upload:
+      type: object
+      required: [id, partSize, partCount]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        partSize: { type: integer }
+        partCount: { type: integer }
+    PresignedUrl:
+      type: object
+      required: [url, expiresInSeconds]
+      additionalProperties: false
+      properties:
+        url: { type: string }
+        expiresInSeconds: { type: integer }
+    CompleteUploadRequest:
+      type: object
+      required: [parts]
+      additionalProperties: false
+      properties:
+        parts:
+          type: array
+          maxItems: 10000
+          items:
+            type: object
+            required: [partNumber, etag]
+            additionalProperties: false
+            properties:
+              partNumber: { type: integer, minimum: 1 }
+              etag: { type: string, minLength: 1, maxLength: 256 }
+    Attachment:
+      type: object
+      required: [id, name, contentType, size, uploaderEmail, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        contentType: { type: string }
+        size: { type: integer, format: int64 }
+        uploaderEmail: { type: string }
+        createdAt: { type: string, format: date-time }
+    StartCallRequest:
+      type: object
+      required: [conversationId]
+      additionalProperties: false
+      properties:
+        conversationId: { type: string, format: uuid }
+        inviteeIds:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    JoinCallRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        transfer:
+          type: boolean
+          description: Move your seat from another device to this one
+    CallParticipant:
+      type: object
+      required: [accountId, email, state]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+        email: { type: string }
+        state: { type: string, enum: [reserved, joined] }
+    CallInvitationState:
+      type: object
+      required: [accountId, email, state]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+        email: { type: string }
+        state: { type: string, enum: [pending, accepted, declined, cancelled] }
+    Call:
+      type: object
+      required: [id, conversationId, state, startedBy, maxParticipants, participants, invitations, canEnd, invitedMe]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        state: { type: string, enum: [active, ended] }
+        startedBy: { type: string }
+        maxParticipants: { type: integer }
+        screenSharerId: { type: string, format: uuid }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/CallParticipant" }
+        invitations:
+          type: array
+          items: { $ref: "#/components/schemas/CallInvitationState" }
+        canEnd: { type: boolean }
+        invitedMe: { type: boolean }
+    CallInvitation:
+      type: object
+      required: [callId, conversationId, startedBy, createdAt]
+      additionalProperties: false
+      properties:
+        callId: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        startedBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    CallTicket:
+      type: object
+      required: [url, token, identity, expiresInSeconds, reservedForSeconds]
+      additionalProperties: false
+      properties:
+        url: { type: string }
+        token: { type: string }
+        identity: { type: string }
+        expiresInSeconds: { type: integer }
+        reservedForSeconds: { type: integer }
+    CallConflict:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum: [call_full, in_other_call, other_device, call_ended, screen_share_taken, not_in_call]
