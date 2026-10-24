@@ -1,0 +1,834 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+// Provisional content format: titles, descriptions and comments are stored as
+// text until the E2EE key directory exists (docs/adr/0012-work-v1-plaintext.md).
+
+var defaultColumns = []struct{ name, category string }{
+	{"A fazer", "todo"}, {"Em andamento", "in_progress"}, {"Em revisão", "in_progress"}, {"Concluído", "done"},
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_, _ = w.Write(encoded)
+}
+
+// reader authenticates a read request.
+func (h *healthHandler) reader(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
+	session, status := h.activeSession(r)
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+		return session, false
+	}
+	return session, true
+}
+
+// mutator authenticates a state-changing request: origin, session and CSRF.
+func (h *healthHandler) mutator(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
+	if !sameOrigin(r) {
+		w.WriteHeader(http.StatusForbidden)
+		return sqlc.FindActiveSessionByTokenHashRow{}, false
+	}
+	session, ok := h.reader(w, r)
+	if !ok {
+		return session, false
+	}
+	if !identity.VerifyCSRFToken(r.Header.Get("X-CSRF-Token"), session.CsrfHash) {
+		w.WriteHeader(http.StatusForbidden)
+		return session, false
+	}
+	return session, true
+}
+
+type projectAccess struct {
+	access   work.Access
+	archived bool
+}
+
+// lookupAccess reports the account's access to a project without writing a
+// response; found is false for unknown projects and non-members alike.
+func lookupAccess(ctx context.Context, q *sqlc.Queries, projectID, accountID pgtype.UUID) (access projectAccess, found bool, err error) {
+	row, err := q.GetProjectAccess(ctx, sqlc.GetProjectAccessParams{ID: projectID, AccountID: accountID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return projectAccess{}, false, nil
+	}
+	if err != nil {
+		return projectAccess{}, false, err
+	}
+	return projectAccess{
+		access:   work.Access{Kind: row.MembershipKind, Manager: row.IsManager, External: row.ExternalPermissions},
+		archived: row.Archived,
+	}, true, nil
+}
+
+// loadAccess returns false after writing 404 when the account is not a member:
+// unknown and inaccessible projects are indistinguishable.
+func loadAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, projectID, accountID pgtype.UUID) (projectAccess, bool) {
+	access, found, err := lookupAccess(ctx, q, projectID, accountID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return projectAccess{}, false
+	}
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+		return projectAccess{}, false
+	}
+	return access, true
+}
+
+func pgUUID(id uuid.UUID) pgtype.UUID { return pgtype.UUID{Bytes: id, Valid: true} }
+
+func optionalUUID(id *openapi_types.UUID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{}
+	}
+	return pgUUID(uuid.UUID(*id))
+}
+
+func uuidFrom(id openapi_types.UUID) uuid.UUID { return uuid.UUID(id) }
+
+func fromPG(id pgtype.UUID) openapi_types.UUID { return openapi_types.UUID(uuid.UUID(id.Bytes)) }
+
+func isConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23514" || pgErr.Code == "23505")
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func toProject(id pgtype.UUID, name, description, color, icon string, version int32, manager bool) gen.Project {
+	return gen.Project{Id: fromPG(id), Name: name, Description: description, Color: color, Icon: icon, Version: int(version), IsManager: manager}
+}
+
+func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rows, err := sqlc.New(h.auth.pool).ListProjectsForAccount(ctx, session.AccountID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	projects := make([]gen.Project, 0, len(rows))
+	for _, row := range rows {
+		projects = append(projects, toProject(row.ID, row.Name, row.Description, row.Color, row.Icon, row.Version, row.IsManager))
+	}
+	writeJSON(w, http.StatusOK, projects)
+}
+
+func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var payload gen.CreateProjectRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	description, color := "", "#63745A"
+	if payload.Description != nil {
+		description = *payload.Description
+	}
+	if payload.Color != nil {
+		color = *payload.Color
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	project, err := q.CreateProject(ctx, sqlc.CreateProjectParams{
+		OrganizationID: membership.OrganizationID, Name: payload.Name, Description: description,
+		Color: color, Icon: "folder", CreatedBy: session.AccountID,
+	})
+	if isConstraintViolation(err) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err = q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: project.ID, AccountID: session.AccountID, IsManager: true}); err == nil {
+		err = q.CreateExternalProjectPolicy(ctx, project.ID)
+	}
+	if err == nil {
+		_, err = q.CreateConversation(ctx, sqlc.CreateConversationParams{ProjectID: project.ID, Name: "geral"})
+	}
+	for index, column := range defaultColumns {
+		if err != nil {
+			break
+		}
+		_, err = q.CreateBoardColumn(ctx, sqlc.CreateBoardColumnParams{
+			ProjectID: project.ID, Name: column.name, Position: int32(index), Category: column.category,
+		})
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toProject(project.ID, project.Name, project.Description, project.Color, project.Icon, project.Version, true))
+}
+
+func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	project, err := q.GetProject(ctx, pgUUID(projectId))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toProject(project.ID, project.Name, project.Description, project.Color, project.Icon, project.Version, access.access.Manager))
+}
+
+func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	if _, ok = loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID); !ok {
+		return
+	}
+	rows, err := q.ListProjectMembers(ctx, pgUUID(projectId))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	members := make([]gen.ProjectMember, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, gen.ProjectMember{
+			AccountId: fromPG(row.AccountID), Email: openapi_types.Email(row.EmailNormalized),
+			MembershipKind: gen.ProjectMemberMembershipKind(row.MembershipKind), IsManager: row.IsManager,
+		})
+	}
+	writeJSON(w, http.StatusOK, members)
+}
+
+func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.AddProjectMemberRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	email, err := identity.NormalizeEmail(string(payload.Email))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Manager {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if access.archived {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	target, err := q.FindOrganizationMemberByEmail(ctx, sqlc.FindOrganizationMemberByEmailParams{ID: pgUUID(projectId), EmailNormalized: email})
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	// A project manager never promotes an external member to manager.
+	manager := payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
+	if err = q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager}); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func toPolicy(permissions []string, version int32) gen.ExternalPolicy {
+	converted := make([]gen.ExternalPermission, 0, len(permissions))
+	for _, permission := range permissions {
+		converted = append(converted, gen.ExternalPermission(permission))
+	}
+	return gen.ExternalPolicy{Permissions: converted, Version: int(version)}
+}
+
+func (h *healthHandler) GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	if _, ok = loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID); !ok {
+		return
+	}
+	policy, err := q.GetExternalProjectPolicy(ctx, pgUUID(projectId))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
+}
+
+func (h *healthHandler) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.UpdateExternalPolicyRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	requested := make([]string, 0, len(payload.Permissions))
+	for _, permission := range payload.Permissions {
+		requested = append(requested, string(permission))
+	}
+	permissions, err := work.ValidatePolicy(requested)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Manager {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	policy, err := q.UpdateExternalProjectPolicy(ctx, sqlc.UpdateExternalProjectPolicyParams{
+		ProjectID: pgUUID(projectId), Permissions: permissions, Version: int32(payload.Version),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err == nil {
+		var members []pgtype.UUID
+		if members, err = projectRecipients(ctx, q, pgUUID(projectId), ""); err == nil {
+			err = emitEvent(ctx, q, members, eventSpec{Type: "policy.changed", ResourceID: pgUUID(projectId), Version: policy.Version, ProjectID: pgUUID(projectId)})
+		}
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
+}
+
+func (h *healthHandler) ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Can(work.WorkRead) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	rows, err := q.ListBoardColumns(ctx, pgUUID(projectId))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	columns := make([]gen.BoardColumn, 0, len(rows))
+	for _, row := range rows {
+		columns = append(columns, gen.BoardColumn{Id: fromPG(row.ID), Name: row.Name, Position: int(row.Position), Category: gen.BoardColumnCategory(row.Category)})
+	}
+	writeJSON(w, http.StatusOK, columns)
+}
+
+func toWorkItem(item sqlc.WorkItem) gen.WorkItem {
+	response := gen.WorkItem{
+		Id: fromPG(item.ID), ProjectId: fromPG(item.ProjectID), Kind: gen.WorkItemKind(item.Kind),
+		Title: item.Title, Description: item.Description, Priority: gen.WorkItemPriority(item.Priority),
+		ColumnId: fromPG(item.ColumnID), Version: int(item.Version),
+		CreatedAt: item.CreatedAt.Time, UpdatedAt: item.UpdatedAt.Time,
+	}
+	if item.ParentID.Valid {
+		parent := fromPG(item.ParentID)
+		response.ParentId = &parent
+	}
+	if item.SprintID.Valid {
+		sprint := fromPG(item.SprintID)
+		response.SprintId = &sprint
+	}
+	if item.EpicID.Valid {
+		epic := fromPG(item.EpicID)
+		response.EpicId = &epic
+	}
+	if item.AssigneeID.Valid {
+		assignee := fromPG(item.AssigneeID)
+		response.AssigneeId = &assignee
+	}
+	if item.DueDate.Valid {
+		response.DueDate = &openapi_types.Date{Time: item.DueDate.Time}
+	}
+	return response
+}
+
+func (h *healthHandler) ListWorkItems(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Can(work.WorkRead) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	rows, err := q.ListWorkItems(ctx, pgUUID(projectId))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	items := make([]gen.WorkItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, toWorkItem(row))
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.CreateWorkItemRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	kind := string(payload.Kind)
+	if (kind == "task") == (payload.ParentId != nil) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Can(work.WorkRead) || !access.access.Can(work.WorkCreate) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if access.archived {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	params := sqlc.CreateWorkItemParams{
+		ProjectID: pgUUID(projectId), Kind: kind, ParentID: optionalUUID(payload.ParentId), Title: payload.Title,
+		AssigneeID: optionalUUID(payload.AssigneeId), Priority: "normal", CreatedBy: session.AccountID,
+	}
+	if payload.Description != nil {
+		params.Description = *payload.Description
+	}
+	if payload.Priority != nil {
+		params.Priority = string(*payload.Priority)
+	}
+	if payload.DueDate != nil {
+		params.DueDate = pgtype.Date{Time: payload.DueDate.Time, Valid: true}
+	}
+	if payload.ColumnId != nil {
+		params.ColumnID = pgUUID(uuid.UUID(*payload.ColumnId))
+	} else {
+		columns, listErr := q.ListBoardColumns(ctx, pgUUID(projectId))
+		if listErr != nil || len(columns) == 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		params.ColumnID = columns[0].ID
+		for _, column := range columns {
+			if column.Category == "todo" {
+				params.ColumnID = column.ID
+				break
+			}
+		}
+	}
+	item, err := q.CreateWorkItem(ctx, params)
+	if isConstraintViolation(err) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err == nil {
+		err = emitWorkItemChanged(ctx, q, item)
+	}
+	if err == nil {
+		err = notifyAssignment(ctx, q, item, session.AccountID, pgtype.UUID{})
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err = tx.Commit(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toWorkItem(item))
+}
+
+func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.UpdateWorkItemRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	// Lock the row first; authorization is checked on the locked row's project.
+	item, err := q.GetWorkItemForUpdate(ctx, pgUUID(workItemId))
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
+	if !ok {
+		return
+	}
+	editing := payload.Title != nil || payload.Description != nil || payload.Priority != nil ||
+		payload.AssigneeId != nil || payload.ClearAssignee != nil || payload.DueDate != nil || payload.ClearDueDate != nil ||
+		payload.EpicId != nil || payload.ClearEpic != nil
+	moving := payload.ColumnId != nil
+	archiving := payload.Archived != nil
+	planning := payload.SprintId != nil || payload.ClearSprint != nil
+	if !access.access.Can(work.WorkRead) ||
+		(editing && !access.access.Can(work.WorkEdit)) ||
+		(moving && !access.access.Can(work.WorkMove)) ||
+		(archiving && !access.access.Can(work.WorkArchive)) ||
+		(planning && !access.access.Can(work.PlanningEdit)) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if access.archived || int32(payload.Version) != item.Version {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+
+	params := sqlc.UpdateWorkItemParams{ID: item.ID, Version: item.Version}
+	if payload.Title != nil {
+		params.Title = pgtype.Text{String: *payload.Title, Valid: true}
+	}
+	if payload.Description != nil {
+		params.Description = pgtype.Text{String: *payload.Description, Valid: true}
+	}
+	if payload.Priority != nil {
+		params.Priority = pgtype.Text{String: string(*payload.Priority), Valid: true}
+	}
+	if payload.Archived != nil {
+		params.Archived = pgtype.Bool{Bool: *payload.Archived, Valid: true}
+	}
+	if payload.ClearAssignee != nil && *payload.ClearAssignee {
+		params.SetAssignee = true
+	} else if payload.AssigneeId != nil {
+		params.SetAssignee, params.AssigneeID = true, optionalUUID(payload.AssigneeId)
+	}
+	if payload.ClearSprint != nil && *payload.ClearSprint {
+		params.SetSprint = true
+	} else if payload.SprintId != nil {
+		organizationID, orgErr := q.GetProjectOrganization(ctx, item.ProjectID)
+		sprint, sprintErr := q.GetSprint(ctx, pgUUID(uuidFrom(*payload.SprintId)))
+		if orgErr != nil || sprintErr != nil || sprint.OrganizationID != organizationID || sprint.State == "closed" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		params.SetSprint, params.SprintID = true, sprint.ID
+	}
+	if payload.ClearEpic != nil && *payload.ClearEpic {
+		params.SetEpic = true
+	} else if payload.EpicId != nil {
+		params.SetEpic, params.EpicID = true, optionalUUID(payload.EpicId)
+	}
+	if payload.ClearDueDate != nil && *payload.ClearDueDate {
+		params.SetDueDate = true
+	} else if payload.DueDate != nil {
+		params.SetDueDate, params.DueDate = true, pgtype.Date{Time: payload.DueDate.Time, Valid: true}
+	}
+
+	if moving {
+		target, moveErr := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: pgUUID(uuid.UUID(*payload.ColumnId)), ProjectID: item.ProjectID})
+		if errors.Is(moveErr, pgx.ErrNoRows) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if moveErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		params.ColumnID = target.ID
+		if status := h.applyMoveRules(ctx, q, item, target, payload.CompleteSubtasks != nil && *payload.CompleteSubtasks); status != 0 {
+			w.WriteHeader(status)
+			return
+		}
+	}
+
+	updated, err := q.UpdateWorkItem(ctx, params)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if isConstraintViolation(err) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err == nil {
+		err = emitWorkItemChanged(ctx, q, updated)
+	}
+	if err == nil {
+		err = notifyAssignment(ctx, q, updated, session.AccountID, item.AssigneeID)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err = tx.Commit(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toWorkItem(updated))
+}
+
+// applyMoveRules enforces the completion rules of SPEC 6.5 inside the caller's
+// transaction. It returns a non-zero status when the move must be rejected.
+func (h *healthHandler) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) int {
+	current, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: item.ColumnID, ProjectID: item.ProjectID})
+	if err != nil {
+		return http.StatusServiceUnavailable
+	}
+	switch {
+	case item.Kind == "task" && target.Category == "done" && current.Category != "done":
+		open, listErr := q.ListOpenSubtasks(ctx, item.ID)
+		if listErr != nil {
+			return http.StatusServiceUnavailable
+		}
+		if len(open) > 0 && !completeSubtasks {
+			return http.StatusConflict
+		}
+		for _, subtaskID := range open {
+			if err = q.MoveWorkItemToColumn(ctx, sqlc.MoveWorkItemToColumnParams{ID: subtaskID, ColumnID: target.ID}); err != nil {
+				return http.StatusServiceUnavailable
+			}
+		}
+	case item.Kind == "task" && current.Category == "done" && target.Category != "done":
+		if item.EpicID.Valid {
+			if err = q.ReopenEpic(ctx, item.EpicID); err != nil {
+				return http.StatusServiceUnavailable
+			}
+		}
+	case item.Kind == "subtask" && current.Category == "done" && target.Category != "done":
+		parent, parentErr := q.GetWorkItemForUpdate(ctx, item.ParentID)
+		if parentErr != nil {
+			return http.StatusServiceUnavailable
+		}
+		parentColumn, columnErr := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: parent.ColumnID, ProjectID: parent.ProjectID})
+		if columnErr != nil {
+			return http.StatusServiceUnavailable
+		}
+		if parentColumn.Category == "done" {
+			if parent.EpicID.Valid {
+				if err = q.ReopenEpic(ctx, parent.EpicID); err != nil {
+					return http.StatusServiceUnavailable
+				}
+			}
+			reopen, reopenErr := q.FirstColumnForReopen(ctx, item.ProjectID)
+			if reopenErr != nil {
+				return http.StatusServiceUnavailable
+			}
+			if err = q.MoveWorkItemToColumn(ctx, sqlc.MoveWorkItemToColumnParams{ID: parent.ID, ColumnID: reopen}); err != nil {
+				return http.StatusServiceUnavailable
+			}
+		}
+	}
+	return 0
+}
+
+// workItemAccess resolves an item and the caller's access without leaking the
+// existence of items in projects the caller cannot see.
+func (h *healthHandler) workItemAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, itemID gen.WorkItemId, accountID pgtype.UUID) (sqlc.WorkItem, projectAccess, bool) {
+	item, err := q.GetWorkItem(ctx, pgUUID(itemID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return item, projectAccess{}, false
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return item, projectAccess{}, false
+	}
+	access, ok := loadAccess(ctx, w, q, item.ProjectID, accountID)
+	return item, access, ok
+}
+
+func (h *healthHandler) ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	item, access, ok := h.workItemAccess(ctx, w, q, workItemId, session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Can(work.WorkRead) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	rows, err := q.ListWorkItemComments(ctx, item.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	comments := make([]gen.WorkItemComment, 0, len(rows))
+	for _, row := range rows {
+		comments = append(comments, gen.WorkItemComment{Id: fromPG(row.ID), AuthorEmail: row.AuthorEmail.String, Body: row.Body, CreatedAt: row.CreatedAt.Time})
+	}
+	writeJSON(w, http.StatusOK, comments)
+}
+
+func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.CreateCommentRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	item, access, ok := h.workItemAccess(ctx, w, q, workItemId, session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Can(work.WorkRead) || !access.access.Can(work.WorkComment) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if access.archived {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	comment, err := q.CreateWorkItemComment(ctx, sqlc.CreateWorkItemCommentParams{WorkItemID: item.ID, AuthorID: session.AccountID, Body: payload.Body})
+	if isConstraintViolation(err) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusCreated, gen.WorkItemComment{Id: fromPG(comment.ID), AuthorEmail: session.EmailNormalized, Body: comment.Body, CreatedAt: comment.CreatedAt.Time})
+}

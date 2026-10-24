@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,32 +12,84 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 const sessionCookieName = "oddkin_session"
 const csrfCookieName = "oddkin_csrf"
 
 type authService struct {
-	pool      *pgxpool.Pool
-	dummyHash string
-	limiter   *loginLimiter
+	pool                  *pgxpool.Pool
+	dummyHash             string
+	limiter               *loginLimiter
+	invitationDeliveryKey []byte
+	jobs                  *river.Client[pgx.Tx]
+	cursorKey             []byte
+	store                 objectstore.Store
+	quota                 int64
+	livekit               calls.Config
+	rooms                 calls.Rooms
 }
 
 func NewAppHandler(pool *pgxpool.Pool) (http.Handler, error) {
+	return NewAppHandlerWithConfig(pool, AppConfig{})
+}
+
+type AppConfig struct {
+	InvitationDeliveryKey []byte
+	// EventCursorKey signs WebSocket resume cursors; when empty a random key
+	// is generated, so cursors do not survive a restart (clients resync).
+	EventCursorKey []byte
+	// ObjectStore holds attachment bytes; nil disables uploads (503).
+	ObjectStore objectstore.Store
+	// StorageQuotaBytes caps reserved attachment bytes per organization.
+	StorageQuotaBytes int64
+	// LiveKit enables calls; Rooms overrides the administrative client (tests).
+	LiveKit calls.Config
+	Rooms   calls.Rooms
+}
+
+func NewAppHandlerWithConfig(pool *pgxpool.Pool, config AppConfig) (http.Handler, error) {
 	dummyHash, err := identity.HashPassword("synthetic unknown account password")
+	if err != nil {
+		return nil, err
+	}
+	cursorKey := append([]byte(nil), config.EventCursorKey...)
+	if len(cursorKey) == 0 {
+		cursorKey = make([]byte, 32)
+		if _, err = rand.Read(cursorKey); err != nil {
+			return nil, err
+		}
+	}
+	rooms := config.Rooms
+	if rooms == nil && config.LiveKit.APIKey != "" {
+		var roomsErr error
+		if rooms, roomsErr = calls.NewRooms(config.LiveKit); roomsErr != nil {
+			return nil, roomsErr
+		}
+	}
+	quota := config.StorageQuotaBytes
+	if quota <= 0 {
+		quota = defaultStorageQuota
+	}
+	jobClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{})
 	if err != nil {
 		return nil, err
 	}
 	return gen.Handler(&healthHandler{database: pool, auth: &authService{
 		pool: pool, dummyHash: dummyHash, limiter: newLoginLimiter(),
+		invitationDeliveryKey: append([]byte(nil), config.InvitationDeliveryKey...), jobs: jobClient, cursorKey: cursorKey, store: config.ObjectStore, quota: quota, livekit: config.LiveKit, rooms: rooms,
 	}}), nil
 }
 
@@ -136,8 +189,10 @@ func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request
 		return
 	}
 	response := gen.CurrentAccount{
-		Id:    openapi_types.UUID(uuid.UUID(session.AccountID.Bytes)),
-		Email: openapi_types.Email(session.EmailNormalized),
+		Id:             openapi_types.UUID(uuid.UUID(session.AccountID.Bytes)),
+		Email:          openapi_types.Email(session.EmailNormalized),
+		MembershipKind: gen.CurrentAccountMembershipKind(session.MembershipKind),
+		IsAdmin:        session.IsAdmin,
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil {

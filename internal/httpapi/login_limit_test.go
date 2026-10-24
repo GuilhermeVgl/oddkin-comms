@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -34,5 +35,17 @@ func TestLoginLimiterBlocksRepeatedFailuresAndRecovers(t *testing.T) {
 	limiter.fail("account@example.test", 5, now)
 	if !limiter.allow("account@example.test", 5, now.Add(11*time.Minute)) {
 		t.Fatal("old failures did not expire")
+	}
+}
+
+func TestLoginLimiterPrunesExpiredEntriesAtCapacity(t *testing.T) {
+	t.Parallel()
+	limiter := newLoginLimiter()
+	now := time.Date(2026, 10, 23, 20, 0, 0, 0, time.UTC)
+	for index := range maxLoginLimitEntries {
+		limiter.attempts[fmt.Sprintf("expired-%d", index)] = loginAttempt{resetAt: now.Add(-time.Second)}
+	}
+	if !limiter.allow("new-address", 5, now) || len(limiter.attempts) != 0 {
+		t.Fatalf("expired entries were not pruned: count=%d", len(limiter.attempts))
 	}
 }

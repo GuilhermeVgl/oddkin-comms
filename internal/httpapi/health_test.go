@@ -88,3 +88,19 @@ func TestReadinessBoundsDatabaseProbe(t *testing.T) {
 		t.Fatal("database probe has no deadline")
 	}
 }
+
+func TestHealthOnlyHandlerDoesNotServeInvitationFlows(t *testing.T) {
+	t.Parallel()
+	handler := NewHandler(probeFunc(func(context.Context) error { return nil }))
+	for _, path := range []string{"/api/v1/invitations", "/api/v1/invitations/accept"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"email":"person@example.test","membershipKind":"external","token":"0000000000000000000000000000000000000000000"}`))
+		request.Host = "oddkin.test"
+		request.Header.Set("Origin", "http://oddkin.test")
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s status=%d", path, response.Code)
+		}
+	}
+}
