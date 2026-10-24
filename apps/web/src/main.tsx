@@ -72,6 +72,13 @@ function Celebration({
   return (
     <div className="completion-celebration" role="status">
       <div className="completion-celebration__panel">
+        <div aria-hidden="true" className="celebration-sparks">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
         <div
           aria-hidden="true"
           className="explorer-pair explorer-pair--celebrate"
