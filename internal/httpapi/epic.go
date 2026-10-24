@@ -15,10 +15,23 @@ import (
 )
 
 func toEpic(epic sqlc.Epic) gen.Epic {
-	return gen.Epic{
+	response := gen.Epic{
 		Id: fromPG(epic.ID), ProjectId: fromPG(epic.ProjectID), Title: epic.Title,
 		Description: epic.Description, Done: epic.Done, Version: int(epic.Version),
+		Encrypted: epic.Encrypted, ContentRevision: int(epic.ContentRevision),
 	}
+	if epic.Encrypted {
+		response.TitleEnc, response.DescriptionEnc = blob(epic.TitleEnc), blob(epic.DescriptionEnc)
+		if epic.ContentAuthorID.Valid {
+			author := fromPG(epic.ContentAuthorID)
+			response.ContentAuthorId = &author
+		}
+		if epic.ContentSignerDeviceID.Valid {
+			signer := fromPG(epic.ContentSignerDeviceID)
+			response.SignerDeviceId = &signer
+		}
+	}
+	return response
 }
 
 func (h *healthHandler) ListEpics(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
@@ -55,7 +68,13 @@ func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, proje
 		return
 	}
 	var payload gen.CreateEpicRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encrypted := payload.TitleEnc != nil || payload.DescriptionEnc != nil
+	if encrypted && (payload.TitleEnc == nil || payload.DescriptionEnc == nil || payload.Id == nil || payload.SignerDeviceId == nil || payload.Title != nil || payload.Description != nil) ||
+		!encrypted && payload.Title == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -73,11 +92,51 @@ func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, proje
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	description := ""
-	if payload.Description != nil {
-		description = *payload.Description
+	var (
+		epic sqlc.Epic
+		err  error
+	)
+	if encrypted {
+		id := pgUUID(uuidFrom(*payload.Id))
+		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		if prepErr == nil && fail == nil {
+			if fail = writer.verify(session.AccountID, epicResource(id, "title"), 1, *payload.TitleEnc); fail == nil {
+				fail = writer.verify(session.AccountID, epicResource(id, "desc"), 1, *payload.DescriptionEnc)
+			}
+		}
+		if prepErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		titleEnc, _ := unb64(*payload.TitleEnc, 0)
+		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+		epic, err = q.CreateEncryptedEpic(ctx, sqlc.CreateEncryptedEpicParams{
+			ID: id, ProjectID: pgUUID(projectId), CreatedBy: session.AccountID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
+		})
+	} else {
+		fail, planErr := requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
+		if planErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		description := ""
+		if payload.Description != nil {
+			description = *payload.Description
+		}
+		epic, err = q.CreateEpic(ctx, sqlc.CreateEpicParams{ProjectID: pgUUID(projectId), Title: *payload.Title, Description: description, CreatedBy: session.AccountID})
 	}
-	epic, err := q.CreateEpic(ctx, sqlc.CreateEpicParams{ProjectID: pgUUID(projectId), Title: payload.Title, Description: description, CreatedBy: session.AccountID})
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -95,7 +154,13 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 		return
 	}
 	var payload gen.UpdateEpicRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encContent := payload.TitleEnc != nil || payload.DescriptionEnc != nil
+	if encContent && (payload.TitleEnc == nil || payload.DescriptionEnc == nil || payload.SignerDeviceId == nil || payload.ContentRevision == nil ||
+		payload.Title != nil || payload.Description != nil) {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -128,6 +193,38 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
+	var writer *encContext
+	if encContent {
+		var fail *encFailure
+		revision := int32(*payload.ContentRevision)
+		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, epic.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		if err == nil && fail == nil && revision != epic.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		}
+		if err == nil && fail == nil {
+			if fail = writer.verify(session.AccountID, epicResource(epic.ID, "title"), revision, *payload.TitleEnc); fail == nil {
+				fail = writer.verify(session.AccountID, epicResource(epic.ID, "desc"), revision, *payload.DescriptionEnc)
+			}
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+	} else if payload.Title != nil || payload.Description != nil {
+		fail, planErr := requirePlaintextAllowed(ctx, q, epic.ProjectID, "work")
+		if planErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+	}
 	params := sqlc.UpdateEpicParams{ID: epic.ID, Version: epic.Version}
 	if payload.Title != nil {
 		params.Title = pgtype.Text{String: *payload.Title, Valid: true}
@@ -157,6 +254,26 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err == nil && encContent {
+		titleEnc, _ := unb64(*payload.TitleEnc, 0)
+		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+		var changed int64
+		changed, err = q.SetEpicContent(ctx, sqlc.SetEpicContentParams{
+			ID: epic.ID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
+			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		})
+		if err == nil && changed == 0 {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if err == nil {
+			updated, err = q.GetEpic(ctx, epic.ID)
+		}
 	}
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)

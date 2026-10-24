@@ -21,6 +21,9 @@ import (
 // Provisional content format: titles, descriptions and comments are stored as
 // text until the E2EE key directory exists (docs/adr/0012-work-v1-plaintext.md).
 
+// contentBodyLimit bounds JSON bodies that may carry encrypted fields (up to ~350 KB each).
+const contentBodyLimit = 1 << 20
+
 var defaultColumns = []struct{ name, category string }{
 	{"A fazer", "todo"}, {"Em andamento", "in_progress"}, {"Em revisão", "in_progress"}, {"Concluído", "done"},
 }
@@ -445,6 +448,19 @@ func toWorkItem(item sqlc.WorkItem) gen.WorkItem {
 		Title: item.Title, Description: item.Description, Priority: gen.WorkItemPriority(item.Priority),
 		ColumnId: fromPG(item.ColumnID), Version: int(item.Version),
 		CreatedAt: item.CreatedAt.Time, UpdatedAt: item.UpdatedAt.Time,
+		Encrypted: item.Encrypted, ContentRevision: int(item.ContentRevision),
+	}
+	if item.Encrypted {
+		titleEnc, descriptionEnc := *blob(item.TitleEnc), *blob(item.DescriptionEnc)
+		response.TitleEnc, response.DescriptionEnc = &titleEnc, &descriptionEnc
+		if item.ContentAuthorID.Valid {
+			author := fromPG(item.ContentAuthorID)
+			response.ContentAuthorId = &author
+		}
+		if item.ContentSignerDeviceID.Valid {
+			signer := fromPG(item.ContentSignerDeviceID)
+			response.SignerDeviceId = &signer
+		}
 	}
 	if item.ParentID.Valid {
 		parent := fromPG(item.ParentID)
@@ -502,7 +518,16 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 		return
 	}
 	var payload gen.CreateWorkItemRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encrypted := payload.TitleEnc != nil || payload.DescriptionEnc != nil
+	if encrypted && (payload.TitleEnc == nil || payload.DescriptionEnc == nil || payload.Id == nil || payload.Title != nil || payload.Description != nil) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !encrypted && payload.Title == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	kind := string(payload.Kind)
@@ -531,8 +556,39 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
+	var (
+		writer *encContext
+		fail   *encFailure
+	)
+	if encrypted {
+		var signerID *pgtype.UUID
+		if payload.SignerDeviceId != nil {
+			signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+		}
+		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", signerID)
+		if err == nil && fail == nil {
+			id := pgUUID(uuidFrom(*payload.Id))
+			if fail = writer.verify(session.AccountID, workItemResource(id, "title"), 1, string(*payload.TitleEnc)); fail == nil {
+				fail = writer.verify(session.AccountID, workItemResource(id, "desc"), 1, string(*payload.DescriptionEnc))
+			}
+		}
+	} else {
+		fail, err = requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	title := ""
+	if payload.Title != nil {
+		title = *payload.Title
+	}
 	params := sqlc.CreateWorkItemParams{
-		ProjectID: pgUUID(projectId), Kind: kind, ParentID: optionalUUID(payload.ParentId), Title: payload.Title,
+		ProjectID: pgUUID(projectId), Kind: kind, ParentID: optionalUUID(payload.ParentId), Title: title,
 		AssigneeID: optionalUUID(payload.AssigneeId), Priority: "normal", CreatedBy: session.AccountID,
 	}
 	if payload.Description != nil {
@@ -560,7 +616,22 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 			}
 		}
 	}
-	item, err := q.CreateWorkItem(ctx, params)
+	var item sqlc.WorkItem
+	if encrypted {
+		titleEnc, _ := unb64(string(*payload.TitleEnc), 0)
+		descriptionEnc, _ := unb64(string(*payload.DescriptionEnc), 0)
+		item, err = q.CreateEncryptedWorkItem(ctx, sqlc.CreateEncryptedWorkItemParams{
+			ID: pgUUID(uuidFrom(*payload.Id)), ProjectID: params.ProjectID, Kind: kind, ParentID: params.ParentID,
+			AssigneeID: params.AssigneeID, DueDate: params.DueDate, Priority: params.Priority, ColumnID: params.ColumnID,
+			CreatedBy: session.AccountID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
+		})
+	} else {
+		item, err = q.CreateWorkItem(ctx, params)
+	}
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -588,7 +659,13 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	var payload gen.UpdateWorkItemRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encContent := payload.TitleEnc != nil || payload.DescriptionEnc != nil
+	if encContent && (payload.TitleEnc == nil || payload.DescriptionEnc == nil || payload.SignerDeviceId == nil || payload.ContentRevision == nil ||
+		payload.Title != nil || payload.Description != nil) {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -616,7 +693,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	}
 	editing := payload.Title != nil || payload.Description != nil || payload.Priority != nil ||
 		payload.AssigneeId != nil || payload.ClearAssignee != nil || payload.DueDate != nil || payload.ClearDueDate != nil ||
-		payload.EpicId != nil || payload.ClearEpic != nil
+		payload.EpicId != nil || payload.ClearEpic != nil || encContent
 	moving := payload.ColumnId != nil
 	archiving := payload.Archived != nil
 	planning := payload.SprintId != nil || payload.ClearSprint != nil
@@ -631,6 +708,39 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	if access.archived || int32(payload.Version) != item.Version {
 		w.WriteHeader(http.StatusConflict)
 		return
+	}
+
+	var writer *encContext
+	if encContent {
+		var fail *encFailure
+		revision := int32(*payload.ContentRevision)
+		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		if err == nil && fail == nil && revision != item.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		}
+		if err == nil && fail == nil {
+			if fail = writer.verify(session.AccountID, workItemResource(item.ID, "title"), revision, *payload.TitleEnc); fail == nil {
+				fail = writer.verify(session.AccountID, workItemResource(item.ID, "desc"), revision, *payload.DescriptionEnc)
+			}
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+	} else if payload.Title != nil || payload.Description != nil {
+		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
+		if planErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
 	}
 
 	params := sqlc.UpdateWorkItemParams{ID: item.ID, Version: item.Version}
@@ -698,6 +808,22 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	if err == nil && encContent {
+		titleEnc, _ := unb64(*payload.TitleEnc, 0)
+		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+		var changed int64
+		changed, err = q.SetWorkItemContent(ctx, sqlc.SetWorkItemContentParams{
+			ID: item.ID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
+			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		})
+		if err == nil && changed == 0 {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if err == nil {
+			updated, err = q.GetWorkItem(ctx, item.ID)
+		}
 	}
 	if err == nil {
 		err = emitWorkItemChanged(ctx, q, updated)
@@ -809,7 +935,19 @@ func (h *healthHandler) ListWorkItemComments(w http.ResponseWriter, r *http.Requ
 	}
 	comments := make([]gen.WorkItemComment, 0, len(rows))
 	for _, row := range rows {
-		comments = append(comments, gen.WorkItemComment{Id: fromPG(row.ID), AuthorEmail: row.AuthorEmail.String, Body: row.Body, CreatedAt: row.CreatedAt.Time})
+		comment := gen.WorkItemComment{Id: fromPG(row.ID), AuthorEmail: row.AuthorEmail.String, Body: row.Body, CreatedAt: row.CreatedAt.Time, Encrypted: row.Encrypted}
+		if row.Encrypted {
+			comment.BodyEnc = blob(row.BodyEnc)
+			if row.AuthorID.Valid {
+				author := fromPG(row.AuthorID)
+				comment.AuthorId = &author
+			}
+			if row.ContentSignerDeviceID.Valid {
+				signer := fromPG(row.ContentSignerDeviceID)
+				comment.SignerDeviceId = &signer
+			}
+		}
+		comments = append(comments, comment)
 	}
 	writeJSON(w, http.StatusOK, comments)
 }
@@ -820,7 +958,12 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var payload gen.CreateCommentRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encrypted := payload.BodyEnc != nil
+	if encrypted && (payload.Id == nil || payload.SignerDeviceId == nil || payload.Body != nil) || !encrypted && payload.Body == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -838,7 +981,44 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	comment, err := q.CreateWorkItemComment(ctx, sqlc.CreateWorkItemCommentParams{WorkItemID: item.ID, AuthorID: session.AccountID, Body: payload.Body})
+	var (
+		comment sqlc.WorkItemComment
+		err     error
+	)
+	if encrypted {
+		commentID := pgUUID(uuidFrom(*payload.Id))
+		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		if prepErr == nil && fail == nil {
+			fail = writer.verify(session.AccountID, commentResource(commentID), 1, *payload.BodyEnc)
+		}
+		if prepErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		bodyEnc, _ := unb64(*payload.BodyEnc, 0)
+		comment, err = q.CreateEncryptedComment(ctx, sqlc.CreateEncryptedCommentParams{
+			ID: commentID, WorkItemID: item.ID, AuthorID: session.AccountID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
+		})
+	} else {
+		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
+		if planErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		comment, err = q.CreateWorkItemComment(ctx, sqlc.CreateWorkItemCommentParams{WorkItemID: item.ID, AuthorID: session.AccountID, Body: *payload.Body})
+	}
+	if isUniqueViolation(err) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -847,5 +1027,11 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusCreated, gen.WorkItemComment{Id: fromPG(comment.ID), AuthorEmail: session.EmailNormalized, Body: comment.Body, CreatedAt: comment.CreatedAt.Time})
+	response := gen.WorkItemComment{Id: fromPG(comment.ID), AuthorEmail: session.EmailNormalized, Body: comment.Body, CreatedAt: comment.CreatedAt.Time, Encrypted: comment.Encrypted}
+	if comment.Encrypted {
+		response.BodyEnc = blob(comment.BodyEnc)
+		author, signer := fromPG(session.AccountID), fromPG(comment.ContentSignerDeviceID)
+		response.AuthorId, response.SignerDeviceId = &author, &signer
+	}
+	writeJSON(w, http.StatusCreated, response)
 }

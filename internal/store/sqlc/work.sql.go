@@ -396,10 +396,207 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 	return i, err
 }
 
+const createEncryptedComment = `-- name: CreateEncryptedComment :one
+INSERT INTO work_item_comment (id, work_item_id, author_id, body, encrypted, body_enc, content_signer_device_id)
+VALUES ($1, $2, $3, '', true, $4, $5)
+RETURNING id, work_item_id, author_id, body, created_at, encrypted, body_enc, content_signer_device_id
+`
+
+type CreateEncryptedCommentParams struct {
+	ID                    pgtype.UUID
+	WorkItemID            pgtype.UUID
+	AuthorID              pgtype.UUID
+	BodyEnc               []byte
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) CreateEncryptedComment(ctx context.Context, arg CreateEncryptedCommentParams) (WorkItemComment, error) {
+	row := q.db.QueryRow(ctx, createEncryptedComment,
+		arg.ID,
+		arg.WorkItemID,
+		arg.AuthorID,
+		arg.BodyEnc,
+		arg.ContentSignerDeviceID,
+	)
+	var i WorkItemComment
+	err := row.Scan(
+		&i.ID,
+		&i.WorkItemID,
+		&i.AuthorID,
+		&i.Body,
+		&i.CreatedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
+const createEncryptedEpic = `-- name: CreateEncryptedEpic :one
+INSERT INTO epic (id, project_id, title, description, created_by, encrypted, title_enc, description_enc,
+                  content_revision, content_author_id, content_signer_device_id)
+VALUES ($1, $2, '', '', $3, true, $4, $5, 1, $3, $6)
+RETURNING id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+`
+
+type CreateEncryptedEpicParams struct {
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	CreatedBy             pgtype.UUID
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) CreateEncryptedEpic(ctx context.Context, arg CreateEncryptedEpicParams) (Epic, error) {
+	row := q.db.QueryRow(ctx, createEncryptedEpic,
+		arg.ID,
+		arg.ProjectID,
+		arg.CreatedBy,
+		arg.TitleEnc,
+		arg.DescriptionEnc,
+		arg.ContentSignerDeviceID,
+	)
+	var i Epic
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Description,
+		&i.Done,
+		&i.Version,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
+const createEncryptedMessage = `-- name: CreateEncryptedMessage :one
+INSERT INTO message (conversation_id, seq, author_id, body, client_mutation_id, reply_to_id, encrypted, body_enc,
+                     content_revision, content_signer_device_id)
+VALUES ($1, $2, $3, '', $4, $5, $6, $7, 1, $8)
+RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id
+`
+
+type CreateEncryptedMessageParams struct {
+	ConversationID        pgtype.UUID
+	Seq                   int64
+	AuthorID              pgtype.UUID
+	ClientMutationID      pgtype.UUID
+	ReplyToID             pgtype.UUID
+	Encrypted             bool
+	BodyEnc               []byte
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) CreateEncryptedMessage(ctx context.Context, arg CreateEncryptedMessageParams) (Message, error) {
+	row := q.db.QueryRow(ctx, createEncryptedMessage,
+		arg.ConversationID,
+		arg.Seq,
+		arg.AuthorID,
+		arg.ClientMutationID,
+		arg.ReplyToID,
+		arg.Encrypted,
+		arg.BodyEnc,
+		arg.ContentSignerDeviceID,
+	)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Seq,
+		&i.AuthorID,
+		&i.Body,
+		&i.ClientMutationID,
+		&i.CreatedAt,
+		&i.ReplyToID,
+		&i.EditedAt,
+		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
+const createEncryptedWorkItem = `-- name: CreateEncryptedWorkItem :one
+INSERT INTO work_item (id, project_id, kind, parent_id, title, description, assignee_id, due_date, priority, column_id, created_by,
+                       encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id)
+VALUES ($1, $2, $3, $4, '', '', $5, $6, $7, $8, $9, true, $10, $11, 1, $9, $12)
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+`
+
+type CreateEncryptedWorkItemParams struct {
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	Kind                  string
+	ParentID              pgtype.UUID
+	AssigneeID            pgtype.UUID
+	DueDate               pgtype.Date
+	Priority              string
+	ColumnID              pgtype.UUID
+	CreatedBy             pgtype.UUID
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) CreateEncryptedWorkItem(ctx context.Context, arg CreateEncryptedWorkItemParams) (WorkItem, error) {
+	row := q.db.QueryRow(ctx, createEncryptedWorkItem,
+		arg.ID,
+		arg.ProjectID,
+		arg.Kind,
+		arg.ParentID,
+		arg.AssigneeID,
+		arg.DueDate,
+		arg.Priority,
+		arg.ColumnID,
+		arg.CreatedBy,
+		arg.TitleEnc,
+		arg.DescriptionEnc,
+		arg.ContentSignerDeviceID,
+	)
+	var i WorkItem
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.ParentID,
+		&i.ParentKind,
+		&i.Title,
+		&i.Description,
+		&i.AssigneeID,
+		&i.DueDate,
+		&i.Priority,
+		&i.ColumnID,
+		&i.Archived,
+		&i.Version,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EpicID,
+		&i.SprintID,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
 const createEpic = `-- name: CreateEpic :one
 INSERT INTO epic (project_id, title, description, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, title, description, done, version, created_by, created_at
+RETURNING id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 `
 
 type CreateEpicParams struct {
@@ -426,6 +623,12 @@ func (q *Queries) CreateEpic(ctx context.Context, arg CreateEpicParams) (Epic, e
 		&i.Version,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -467,7 +670,7 @@ func (q *Queries) CreateKeyDomain(ctx context.Context, arg CreateKeyDomainParams
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO message (conversation_id, seq, author_id, body, client_mutation_id, reply_to_id)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at
+RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id
 `
 
 type CreateMessageParams struct {
@@ -500,6 +703,10 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -635,7 +842,7 @@ func (q *Queries) CreateSprint(ctx context.Context, arg CreateSprintParams) (Spr
 const createWorkItem = `-- name: CreateWorkItem :one
 INSERT INTO work_item (project_id, kind, parent_id, title, description, assignee_id, due_date, priority, column_id, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 `
 
 type CreateWorkItemParams struct {
@@ -684,6 +891,12 @@ func (q *Queries) CreateWorkItem(ctx context.Context, arg CreateWorkItemParams) 
 		&i.UpdatedAt,
 		&i.EpicID,
 		&i.SprintID,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -691,7 +904,7 @@ func (q *Queries) CreateWorkItem(ctx context.Context, arg CreateWorkItemParams) 
 const createWorkItemComment = `-- name: CreateWorkItemComment :one
 INSERT INTO work_item_comment (work_item_id, author_id, body)
 VALUES ($1, $2, $3)
-RETURNING id, work_item_id, author_id, body, created_at
+RETURNING id, work_item_id, author_id, body, created_at, encrypted, body_enc, content_signer_device_id
 `
 
 type CreateWorkItemCommentParams struct {
@@ -709,12 +922,15 @@ func (q *Queries) CreateWorkItemComment(ctx context.Context, arg CreateWorkItemC
 		&i.AuthorID,
 		&i.Body,
 		&i.CreatedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
 
 const deleteMessage = `-- name: DeleteMessage :exec
-UPDATE message SET body = '', deleted_at = now() WHERE id = $1
+UPDATE message SET body = '', body_enc = NULL, deleted_at = now() WHERE id = $1
 `
 
 func (q *Queries) DeleteMessage(ctx context.Context, id pgtype.UUID) error {
@@ -758,9 +974,51 @@ func (q *Queries) DirectMessagesAllowed(ctx context.Context, arg DirectMessagesA
 	return allowed, err
 }
 
+const editEncryptedMessage = `-- name: EditEncryptedMessage :one
+UPDATE message
+SET body = '', encrypted = true, body_enc = $2, content_revision = $3, content_signer_device_id = $4,
+    edited_at = CASE WHEN message.encrypted THEN now() ELSE message.edited_at END
+WHERE id = $1 AND deleted_at IS NULL AND content_revision = $3 - 1
+RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id
+`
+
+type EditEncryptedMessageParams struct {
+	ID                    pgtype.UUID
+	BodyEnc               []byte
+	ContentRevision       int32
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) EditEncryptedMessage(ctx context.Context, arg EditEncryptedMessageParams) (Message, error) {
+	row := q.db.QueryRow(ctx, editEncryptedMessage,
+		arg.ID,
+		arg.BodyEnc,
+		arg.ContentRevision,
+		arg.ContentSignerDeviceID,
+	)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Seq,
+		&i.AuthorID,
+		&i.Body,
+		&i.ClientMutationID,
+		&i.CreatedAt,
+		&i.ReplyToID,
+		&i.EditedAt,
+		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
 const editMessage = `-- name: EditMessage :one
 UPDATE message SET body = $2, edited_at = now() WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at
+RETURNING id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id
 `
 
 type EditMessageParams struct {
@@ -782,6 +1040,10 @@ func (q *Queries) EditMessage(ctx context.Context, arg EditMessageParams) (Messa
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -849,7 +1111,7 @@ func (q *Queries) ExpireStaleAdmissionsForCall(ctx context.Context, callID pgtyp
 }
 
 const findMessageByMutation = `-- name: FindMessageByMutation :one
-SELECT id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at
+SELECT id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id
 FROM message
 WHERE conversation_id = $1 AND author_id = $2 AND client_mutation_id = $3
 `
@@ -874,6 +1136,10 @@ func (q *Queries) FindMessageByMutation(ctx context.Context, arg FindMessageByMu
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -1129,8 +1395,34 @@ func (q *Queries) GetDevice(ctx context.Context, id pgtype.UUID) (Device, error)
 	return i, err
 }
 
+const getEpic = `-- name: GetEpic :one
+SELECT id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id FROM epic WHERE id = $1
+`
+
+func (q *Queries) GetEpic(ctx context.Context, id pgtype.UUID) (Epic, error) {
+	row := q.db.QueryRow(ctx, getEpic, id)
+	var i Epic
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Description,
+		&i.Done,
+		&i.Version,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
 const getEpicForUpdate = `-- name: GetEpicForUpdate :one
-SELECT id, project_id, title, description, done, version, created_by, created_at FROM epic WHERE id = $1 FOR UPDATE
+SELECT id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id FROM epic WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetEpicForUpdate(ctx context.Context, id pgtype.UUID) (Epic, error) {
@@ -1145,6 +1437,12 @@ func (q *Queries) GetEpicForUpdate(ctx context.Context, id pgtype.UUID) (Epic, e
 		&i.Version,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -1187,6 +1485,30 @@ func (q *Queries) GetKeyDomain(ctx context.Context, id pgtype.UUID) (KeyDomain, 
 	return i, err
 }
 
+const getKeyDomainByProjectKind = `-- name: GetKeyDomainByProjectKind :one
+SELECT id, organization_id, project_id, kind, current_generation, state, created_at FROM key_domain WHERE project_id = $1 AND kind = $2
+`
+
+type GetKeyDomainByProjectKindParams struct {
+	ProjectID pgtype.UUID
+	Kind      string
+}
+
+func (q *Queries) GetKeyDomainByProjectKind(ctx context.Context, arg GetKeyDomainByProjectKindParams) (KeyDomain, error) {
+	row := q.db.QueryRow(ctx, getKeyDomainByProjectKind, arg.ProjectID, arg.Kind)
+	var i KeyDomain
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.Kind,
+		&i.CurrentGeneration,
+		&i.State,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLatestAdmission = `-- name: GetLatestAdmission :one
 SELECT id, call_id, account_id, session_id, state, reserved_until, created_at, joined_at, left_at FROM call_admission WHERE call_id = $1 AND account_id = $2 ORDER BY created_at DESC LIMIT 1
 `
@@ -1214,7 +1536,7 @@ func (q *Queries) GetLatestAdmission(ctx context.Context, arg GetLatestAdmission
 }
 
 const getMessageForUpdate = `-- name: GetMessageForUpdate :one
-SELECT id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at FROM message WHERE id = $1 FOR UPDATE
+SELECT id, conversation_id, seq, author_id, body, client_mutation_id, created_at, reply_to_id, edited_at, deleted_at, encrypted, body_enc, content_revision, content_signer_device_id FROM message WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetMessageForUpdate(ctx context.Context, id pgtype.UUID) (Message, error) {
@@ -1231,6 +1553,10 @@ func (q *Queries) GetMessageForUpdate(ctx context.Context, id pgtype.UUID) (Mess
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.DeletedAt,
+		&i.Encrypted,
+		&i.BodyEnc,
+		&i.ContentRevision,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -1378,7 +1704,7 @@ func (q *Queries) GetTrustRoot(ctx context.Context, organizationID pgtype.UUID) 
 }
 
 const getWorkItem = `-- name: GetWorkItem :one
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 FROM work_item
 WHERE id = $1
 `
@@ -1405,12 +1731,18 @@ func (q *Queries) GetWorkItem(ctx context.Context, id pgtype.UUID) (WorkItem, er
 		&i.UpdatedAt,
 		&i.EpicID,
 		&i.SprintID,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
 
 const getWorkItemForUpdate = `-- name: GetWorkItemForUpdate :one
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 FROM work_item
 WHERE id = $1
 FOR UPDATE
@@ -1438,6 +1770,12 @@ func (q *Queries) GetWorkItemForUpdate(ctx context.Context, id pgtype.UUID) (Wor
 		&i.UpdatedAt,
 		&i.EpicID,
 		&i.SprintID,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -1692,6 +2030,35 @@ func (q *Queries) ListActiveRecoveryDevices(ctx context.Context, organizationID 
 			&i.RevokedAt,
 			&i.EmailNormalized,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllEnvelopeRecipients = `-- name: ListAllEnvelopeRecipients :many
+SELECT generation, recipient_device_id FROM key_envelope WHERE domain_id = $1 ORDER BY generation, recipient_device_id
+`
+
+type ListAllEnvelopeRecipientsRow struct {
+	Generation        int32
+	RecipientDeviceID pgtype.UUID
+}
+
+func (q *Queries) ListAllEnvelopeRecipients(ctx context.Context, domainID pgtype.UUID) ([]ListAllEnvelopeRecipientsRow, error) {
+	rows, err := q.db.Query(ctx, listAllEnvelopeRecipients, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllEnvelopeRecipientsRow
+	for rows.Next() {
+		var i ListAllEnvelopeRecipientsRow
+		if err := rows.Scan(&i.Generation, &i.RecipientDeviceID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -2163,7 +2530,7 @@ func (q *Queries) ListEnvelopesForDevices(ctx context.Context, arg ListEnvelopes
 }
 
 const listEpics = `-- name: ListEpics :many
-SELECT id, project_id, title, description, done, version, created_by, created_at FROM epic WHERE project_id = $1 ORDER BY created_at, id
+SELECT id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id FROM epic WHERE project_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListEpics(ctx context.Context, projectID pgtype.UUID) ([]Epic, error) {
@@ -2184,6 +2551,12 @@ func (q *Queries) ListEpics(ctx context.Context, projectID pgtype.UUID) ([]Epic,
 			&i.Version,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.Encrypted,
+			&i.TitleEnc,
+			&i.DescriptionEnc,
+			&i.ContentRevision,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -2295,7 +2668,8 @@ func (q *Queries) ListKeyDomainsForProject(ctx context.Context, projectID pgtype
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT m.id, m.seq, m.body, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, COALESCE(a.email_normalized, '')::text AS author_email
+SELECT m.id, m.seq, m.body, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.encrypted, m.body_enc, m.content_revision,
+       m.content_signer_device_id, m.author_id, m.client_mutation_id, COALESCE(a.email_normalized, '')::text AS author_email
 FROM message AS m
 LEFT JOIN account AS a ON a.id = m.author_id
 WHERE m.conversation_id = $1 AND m.seq > $2
@@ -2310,14 +2684,20 @@ type ListMessagesParams struct {
 }
 
 type ListMessagesRow struct {
-	ID          pgtype.UUID
-	Seq         int64
-	Body        string
-	CreatedAt   pgtype.Timestamptz
-	ReplyToID   pgtype.UUID
-	EditedAt    pgtype.Timestamptz
-	DeletedAt   pgtype.Timestamptz
-	AuthorEmail string
+	ID                    pgtype.UUID
+	Seq                   int64
+	Body                  string
+	CreatedAt             pgtype.Timestamptz
+	ReplyToID             pgtype.UUID
+	EditedAt              pgtype.Timestamptz
+	DeletedAt             pgtype.Timestamptz
+	Encrypted             bool
+	BodyEnc               []byte
+	ContentRevision       int32
+	ContentSignerDeviceID pgtype.UUID
+	AuthorID              pgtype.UUID
+	ClientMutationID      pgtype.UUID
+	AuthorEmail           string
 }
 
 func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
@@ -2337,6 +2717,12 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 			&i.ReplyToID,
 			&i.EditedAt,
 			&i.DeletedAt,
+			&i.Encrypted,
+			&i.BodyEnc,
+			&i.ContentRevision,
+			&i.ContentSignerDeviceID,
+			&i.AuthorID,
+			&i.ClientMutationID,
 			&i.AuthorEmail,
 		); err != nil {
 			return nil, err
@@ -2692,7 +3078,7 @@ func (q *Queries) ListReactions(ctx context.Context, arg ListReactionsParams) ([
 }
 
 const listSprintTasksForAccount = `-- name: ListSprintTasksForAccount :many
-SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id
+SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id
 FROM work_item AS w
 JOIN project AS p ON p.id = w.project_id
 JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = $2
@@ -2736,6 +3122,12 @@ func (q *Queries) ListSprintTasksForAccount(ctx context.Context, arg ListSprintT
 			&i.UpdatedAt,
 			&i.EpicID,
 			&i.SprintID,
+			&i.Encrypted,
+			&i.TitleEnc,
+			&i.DescriptionEnc,
+			&i.ContentRevision,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -2960,7 +3352,8 @@ func (q *Queries) ListWorkItemAttachments(ctx context.Context, workItemID pgtype
 }
 
 const listWorkItemComments = `-- name: ListWorkItemComments :many
-SELECT c.id, c.work_item_id, c.author_id, a.email_normalized AS author_email, c.body, c.created_at
+SELECT c.id, c.work_item_id, c.author_id, a.email_normalized AS author_email, c.body, c.created_at,
+       c.encrypted, c.body_enc, c.content_signer_device_id
 FROM work_item_comment AS c
 LEFT JOIN account AS a ON a.id = c.author_id
 WHERE c.work_item_id = $1
@@ -2968,12 +3361,15 @@ ORDER BY c.created_at, c.id
 `
 
 type ListWorkItemCommentsRow struct {
-	ID          pgtype.UUID
-	WorkItemID  pgtype.UUID
-	AuthorID    pgtype.UUID
-	AuthorEmail pgtype.Text
-	Body        string
-	CreatedAt   pgtype.Timestamptz
+	ID                    pgtype.UUID
+	WorkItemID            pgtype.UUID
+	AuthorID              pgtype.UUID
+	AuthorEmail           pgtype.Text
+	Body                  string
+	CreatedAt             pgtype.Timestamptz
+	Encrypted             bool
+	BodyEnc               []byte
+	ContentSignerDeviceID pgtype.UUID
 }
 
 func (q *Queries) ListWorkItemComments(ctx context.Context, workItemID pgtype.UUID) ([]ListWorkItemCommentsRow, error) {
@@ -2992,6 +3388,9 @@ func (q *Queries) ListWorkItemComments(ctx context.Context, workItemID pgtype.UU
 			&i.AuthorEmail,
 			&i.Body,
 			&i.CreatedAt,
+			&i.Encrypted,
+			&i.BodyEnc,
+			&i.ContentSignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -3004,7 +3403,7 @@ func (q *Queries) ListWorkItemComments(ctx context.Context, workItemID pgtype.UU
 }
 
 const listWorkItems = `-- name: ListWorkItems :many
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 FROM work_item
 WHERE project_id = $1 AND NOT archived
 ORDER BY created_at, id
@@ -3038,6 +3437,12 @@ func (q *Queries) ListWorkItems(ctx context.Context, projectID pgtype.UUID) ([]W
 			&i.UpdatedAt,
 			&i.EpicID,
 			&i.SprintID,
+			&i.Encrypted,
+			&i.TitleEnc,
+			&i.DescriptionEnc,
+			&i.ContentRevision,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -3502,6 +3907,37 @@ func (q *Queries) SetCallInvitationState(ctx context.Context, arg SetCallInvitat
 	return result.RowsAffected(), nil
 }
 
+const setEpicContent = `-- name: SetEpicContent :execrows
+UPDATE epic
+SET encrypted = true, title = '', description = '', title_enc = $2, description_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6
+WHERE id = $1 AND content_revision = $4 - 1
+`
+
+type SetEpicContentParams struct {
+	ID                    pgtype.UUID
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) SetEpicContent(ctx context.Context, arg SetEpicContentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setEpicContent,
+		arg.ID,
+		arg.TitleEnc,
+		arg.DescriptionEnc,
+		arg.ContentRevision,
+		arg.ContentAuthorID,
+		arg.ContentSignerDeviceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setKeyDomainState = `-- name: SetKeyDomainState :exec
 UPDATE key_domain SET state = $2 WHERE id = $1
 `
@@ -3567,6 +4003,37 @@ func (q *Queries) SetTrustRoot(ctx context.Context, arg SetTrustRootParams) (int
 	return result.RowsAffected(), nil
 }
 
+const setWorkItemContent = `-- name: SetWorkItemContent :execrows
+UPDATE work_item
+SET encrypted = true, title = '', description = '', title_enc = $2, description_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6
+WHERE id = $1 AND content_revision = $4 - 1
+`
+
+type SetWorkItemContentParams struct {
+	ID                    pgtype.UUID
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) SetWorkItemContent(ctx context.Context, arg SetWorkItemContentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setWorkItemContent,
+		arg.ID,
+		arg.TitleEnc,
+		arg.DescriptionEnc,
+		arg.ContentRevision,
+		arg.ContentAuthorID,
+		arg.ContentSignerDeviceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const startSprint = `-- name: StartSprint :one
 UPDATE sprint SET state = 'active', version = version + 1
 WHERE id = $1 AND state = 'planned'
@@ -3599,7 +4066,7 @@ SET title = COALESCE($1, title),
     done = COALESCE($3, done),
     version = version + 1
 WHERE id = $4 AND version = $5
-RETURNING id, project_id, title, description, done, version, created_by, created_at
+RETURNING id, project_id, title, description, done, version, created_by, created_at, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 `
 
 type UpdateEpicParams struct {
@@ -3628,6 +4095,12 @@ func (q *Queries) UpdateEpic(ctx context.Context, arg UpdateEpicParams) (Epic, e
 		&i.Version,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }
@@ -3672,7 +4145,7 @@ SET title = COALESCE($1, title),
     version = version + 1,
     updated_at = now()
 WHERE id = $14 AND version = $15
-RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
 `
 
 type UpdateWorkItemParams struct {
@@ -3731,6 +4204,12 @@ func (q *Queries) UpdateWorkItem(ctx context.Context, arg UpdateWorkItemParams) 
 		&i.UpdatedAt,
 		&i.EpicID,
 		&i.SprintID,
+		&i.Encrypted,
+		&i.TitleEnc,
+		&i.DescriptionEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
 	)
 	return i, err
 }

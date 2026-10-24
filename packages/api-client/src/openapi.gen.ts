@@ -1111,6 +1111,64 @@ export interface paths {
     /** Envelopes addressed to your active devices, every generation */
     get: operations["listMyKeyEnvelopes"];
     put?: never;
+    /** Give authorized devices that lack it an envelope for an existing generation (history) */
+    post: operations["grantKeyEnvelopes"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/devices/{deviceId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    /** Public keys and certificate of any non-pending device of the organization */
+    get: operations["getDevice"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/recipients": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    /** Which devices hold an envelope for which generation */
+    get: operations["listKeyRecipients"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/key-domains/{keyDomainId}/authorized-devices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    /** Exactly the devices that must hold the domain key, with certificates */
+    get: operations["listAuthorizedDevices"];
+    put?: never;
     post?: never;
     delete?: never;
     options?: never;
@@ -1257,6 +1315,14 @@ export interface components {
       category: "todo" | "in_progress" | "done";
     };
     WorkItem: {
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      contentAuthorId?: string;
       /** Format: uuid */
       id: string;
       /** Format: uuid */
@@ -1286,11 +1352,20 @@ export interface components {
       updatedAt: string;
     };
     CreateWorkItemRequest: {
+      /**
+       * Format: uuid
+       * @description Client-chosen ID, required with encrypted content because the envelope is bound to it
+       */
+      id?: string;
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
       /** @enum {string} */
       kind: "task" | "subtask";
       /** Format: uuid */
       parentId?: string;
-      title: string;
+      title?: string;
       description?: string;
       /** Format: uuid */
       assigneeId?: string;
@@ -1302,6 +1377,12 @@ export interface components {
       columnId?: string;
     };
     UpdateWorkItemRequest: {
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      /** @description Revision the encrypted fields are bound to; the current one plus one */
+      contentRevision?: number;
       version: number;
       title?: string;
       description?: string;
@@ -1325,6 +1406,12 @@ export interface components {
       clearSprint?: boolean;
     };
     WorkItemComment: {
+      bodyEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      /** Format: uuid */
+      authorId?: string;
       /** Format: uuid */
       id: string;
       authorEmail: string;
@@ -1333,7 +1420,12 @@ export interface components {
       createdAt: string;
     };
     CreateCommentRequest: {
-      body: string;
+      /** Format: uuid */
+      id?: string;
+      bodyEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      body?: string;
     };
     Conversation: {
       /** Format: uuid */
@@ -1348,6 +1440,15 @@ export interface components {
       mine: boolean;
     };
     Message: {
+      bodyEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      clientMutationId: string;
+      /** Format: uuid */
+      authorId?: string;
       /** Format: uuid */
       replyToId?: string;
       /** Format: date-time */
@@ -1364,7 +1465,10 @@ export interface components {
       createdAt: string;
     };
     SendMessageRequest: {
-      body: string;
+      bodyEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      body?: string;
       /** Format: uuid */
       clientMutationId: string;
       /** Format: uuid */
@@ -1372,6 +1476,14 @@ export interface components {
       mentionIds?: string[];
     };
     Epic: {
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      encrypted: boolean;
+      contentRevision: number;
+      /** Format: uuid */
+      contentAuthorId?: string;
       /** Format: uuid */
       id: string;
       /** Format: uuid */
@@ -1382,10 +1494,21 @@ export interface components {
       version: number;
     };
     CreateEpicRequest: {
-      title: string;
+      /** Format: uuid */
+      id?: string;
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      title?: string;
       description?: string;
     };
     UpdateEpicRequest: {
+      titleEnc?: components["schemas"]["EncryptedBlob"];
+      descriptionEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      contentRevision?: number;
       version: number;
       title?: string;
       description?: string;
@@ -1448,7 +1571,11 @@ export interface components {
       accountId: string;
     };
     EditMessageRequest: {
-      body: string;
+      bodyEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+      contentRevision?: number;
+      body?: string;
     };
     ToggleReactionRequest: {
       emoji: string;
@@ -1618,6 +1745,8 @@ export interface components {
       certificate: components["schemas"]["Base64Url"];
     };
     DirectoryDevice: {
+      /** @enum {string} */
+      state: "active" | "revoked";
       /** Format: uuid */
       deviceId: string;
       /** Format: uuid */
@@ -1667,6 +1796,35 @@ export interface components {
       signerDeviceId: string;
       sealed: components["schemas"]["Base64Url"];
       signature: components["schemas"]["Base64Url"];
+    };
+    /** @description Unpadded base64url of a content envelope (header, ciphertext and signature) */
+    EncryptedBlob: string;
+    ApiError: {
+      /** @enum {string} */
+      code:
+        | "encryption_required"
+        | "stale_generation"
+        | "rotation_required"
+        | "domain_unavailable"
+        | "bad_revision"
+        | "bad_envelope"
+        | "id_required";
+    };
+    KeyRecipient: {
+      generation: number;
+      /** Format: uuid */
+      deviceId: string;
+    };
+    GrantEnvelopesRequest: {
+      generation: number;
+      /** Format: uuid */
+      signerDeviceId: string;
+      envelopes: {
+        /** Format: uuid */
+        recipientDeviceId: string;
+        sealed: components["schemas"]["Base64Url"];
+        signature: components["schemas"]["Base64Url"];
+      }[];
     };
   };
   responses: never;
@@ -2379,7 +2537,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -2440,7 +2600,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -2537,7 +2699,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -2696,7 +2860,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -2800,7 +2966,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -2861,7 +3029,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -3331,7 +3501,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -5021,6 +5193,189 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["KeyEnvelope"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an authorized reader */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  grantKeyEnvelopes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GrantEnvelopesRequest"];
+      };
+    };
+    responses: {
+      /** @description Envelopes stored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyDomain"];
+        };
+      };
+      /** @description Envelope signature, recipient or size is invalid */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown generation or the device already holds it */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: components["parameters"]["DeviceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Device */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryDevice"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown device */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listKeyRecipients: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Recipients */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KeyRecipient"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an authorized reader */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible key domain */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listAuthorizedDevices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        keyDomainId: components["parameters"]["KeyDomainId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Devices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryDevice"][];
         };
       };
       /** @description No active session */

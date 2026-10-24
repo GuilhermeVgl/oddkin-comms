@@ -122,14 +122,20 @@ type Device struct {
 }
 
 type Epic struct {
-	ID          pgtype.UUID
-	ProjectID   pgtype.UUID
-	Title       string
-	Description string
-	Done        bool
-	Version     int32
-	CreatedBy   pgtype.UUID
-	CreatedAt   pgtype.Timestamptz
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	Title                 string
+	Description           string
+	Done                  bool
+	Version               int32
+	CreatedBy             pgtype.UUID
+	CreatedAt             pgtype.Timestamptz
+	Encrypted             bool
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type ExternalProjectPolicy struct {
@@ -181,16 +187,20 @@ type LivekitWebhookEvent struct {
 }
 
 type Message struct {
-	ID               pgtype.UUID
-	ConversationID   pgtype.UUID
-	Seq              int64
-	AuthorID         pgtype.UUID
-	Body             string
-	ClientMutationID pgtype.UUID
-	CreatedAt        pgtype.Timestamptz
-	ReplyToID        pgtype.UUID
-	EditedAt         pgtype.Timestamptz
-	DeletedAt        pgtype.Timestamptz
+	ID                    pgtype.UUID
+	ConversationID        pgtype.UUID
+	Seq                   int64
+	AuthorID              pgtype.UUID
+	Body                  string
+	ClientMutationID      pgtype.UUID
+	CreatedAt             pgtype.Timestamptz
+	ReplyToID             pgtype.UUID
+	EditedAt              pgtype.Timestamptz
+	DeletedAt             pgtype.Timestamptz
+	Encrypted             bool
+	BodyEnc               []byte
+	ContentRevision       int32
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type MessageReaction struct {
@@ -307,30 +317,39 @@ type UserEventCursor struct {
 }
 
 type WorkItem struct {
-	ID          pgtype.UUID
-	ProjectID   pgtype.UUID
-	Kind        string
-	ParentID    pgtype.UUID
-	ParentKind  pgtype.Text
-	Title       string
-	Description string
-	AssigneeID  pgtype.UUID
-	DueDate     pgtype.Date
-	Priority    string
-	ColumnID    pgtype.UUID
-	Archived    bool
-	Version     int32
-	CreatedBy   pgtype.UUID
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
-	EpicID      pgtype.UUID
-	SprintID    pgtype.UUID
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	Kind                  string
+	ParentID              pgtype.UUID
+	ParentKind            pgtype.Text
+	Title                 string
+	Description           string
+	AssigneeID            pgtype.UUID
+	DueDate               pgtype.Date
+	Priority              string
+	ColumnID              pgtype.UUID
+	Archived              bool
+	Version               int32
+	CreatedBy             pgtype.UUID
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	EpicID                pgtype.UUID
+	SprintID              pgtype.UUID
+	Encrypted             bool
+	TitleEnc              []byte
+	DescriptionEnc        []byte
+	ContentRevision       int32
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
 }
 
 type WorkItemComment struct {
-	ID         pgtype.UUID
-	WorkItemID pgtype.UUID
-	AuthorID   pgtype.UUID
-	Body       string
-	CreatedAt  pgtype.Timestamptz
+	ID                    pgtype.UUID
+	WorkItemID            pgtype.UUID
+	AuthorID              pgtype.UUID
+	Body                  string
+	CreatedAt             pgtype.Timestamptz
+	Encrypted             bool
+	BodyEnc               []byte
+	ContentSignerDeviceID pgtype.UUID
 }

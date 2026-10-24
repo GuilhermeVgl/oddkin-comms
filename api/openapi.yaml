@@ -342,6 +342,10 @@ paths:
           description: Unknown or inaccessible project
         "409":
           description: Project is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/work-items/{workItemId}:
     parameters:
       - $ref: "#/components/parameters/WorkItemId"
@@ -373,6 +377,10 @@ paths:
           description: Unknown or inaccessible item
         "409":
           description: Version conflict, archived project, or open subtasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/work-items/{workItemId}/comments:
     parameters:
       - $ref: "#/components/parameters/WorkItemId"
@@ -422,6 +430,10 @@ paths:
           description: Unknown or inaccessible item
         "409":
           description: Project is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/projects/{projectId}/conversations:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -514,6 +526,10 @@ paths:
           description: Unknown or inaccessible conversation
         "409":
           description: Project is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/projects/{projectId}/epics:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -565,6 +581,10 @@ paths:
           description: Unknown or inaccessible project
         "409":
           description: Project is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/epics/{epicId}:
     parameters:
       - name: epicId
@@ -599,6 +619,10 @@ paths:
           description: Unknown or inaccessible epic
         "409":
           description: Version conflict, archived project, or open tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /api/v1/sprints:
     get:
       operationId: listSprints
@@ -827,6 +851,10 @@ paths:
           description: Unknown or inaccessible message
         "409":
           description: Message was deleted or project archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
     delete:
       operationId: deleteMessage
       summary: Delete your own message, or any channel message as project manager
@@ -1697,6 +1725,99 @@ paths:
           description: Not an authorized reader
         "404":
           description: Unknown or inaccessible key domain
+    post:
+      operationId: grantKeyEnvelopes
+      summary: Give authorized devices that lack it an envelope for an existing generation (history)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantEnvelopesRequest"
+      responses:
+        "200":
+          description: Envelopes stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyDomain"
+        "400":
+          description: Envelope signature, recipient or size is invalid
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible key domain
+        "409":
+          description: Unknown generation or the device already holds it
+  /api/v1/devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    get:
+      operationId: getDevice
+      summary: Public keys and certificate of any non-pending device of the organization
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectoryDevice"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown device
+  /api/v1/key-domains/{keyDomainId}/recipients:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    get:
+      operationId: listKeyRecipients
+      summary: Which devices hold an envelope for which generation
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Recipients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyRecipient"
+        "401":
+          description: No active session
+        "403":
+          description: Not an authorized reader
+        "404":
+          description: Unknown or inaccessible key domain
+  /api/v1/key-domains/{keyDomainId}/authorized-devices:
+    parameters:
+      - $ref: "#/components/parameters/KeyDomainId"
+    get:
+      operationId: listAuthorizedDevices
+      summary: Exactly the devices that must hold the domain key, with certificates
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectoryDevice"
+        "401":
+          description: No active session
+        "403":
+          description: Not an authorized reader
+        "404":
+          description: Unknown or inaccessible key domain
   /api/v1/health/live:
     get:
       operationId: getLiveness
@@ -1937,9 +2058,17 @@ components:
           version,
           createdAt,
           updatedAt,
+          encrypted,
+          contentRevision,
         ]
       additionalProperties: false
       properties:
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        contentAuthorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         kind: { type: string, enum: [task, subtask] }
@@ -1957,9 +2086,16 @@ components:
         updatedAt: { type: string, format: date-time }
     CreateWorkItemRequest:
       type: object
-      required: [kind, title]
+      required: [kind]
       additionalProperties: false
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Client-chosen ID, required with encrypted content because the envelope is bound to it
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
         kind: { type: string, enum: [task, subtask] }
         parentId: { type: string, format: uuid }
         title: { type: string, minLength: 1, maxLength: 200 }
@@ -1973,6 +2109,12 @@ components:
       required: [version]
       additionalProperties: false
       properties:
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision:
+          type: integer
+          description: Revision the encrypted fields are bound to; the current one plus one
         version: { type: integer }
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: string, maxLength: 50000 }
@@ -1990,18 +2132,24 @@ components:
         clearSprint: { type: boolean }
     WorkItemComment:
       type: object
-      required: [id, authorEmail, body, createdAt]
+      required: [id, authorEmail, body, createdAt, encrypted]
       additionalProperties: false
       properties:
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        authorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         authorEmail: { type: string }
         body: { type: string }
         createdAt: { type: string, format: date-time }
     CreateCommentRequest:
       type: object
-      required: [body]
       additionalProperties: false
       properties:
+        id: { type: string, format: uuid }
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
         body: { type: string, minLength: 1, maxLength: 10000 }
     Conversation:
       type: object
@@ -2021,9 +2169,27 @@ components:
         mine: { type: boolean }
     Message:
       type: object
-      required: [id, seq, authorEmail, body, createdAt, deleted, reactions]
+      required:
+        [
+          id,
+          seq,
+          authorEmail,
+          body,
+          createdAt,
+          deleted,
+          reactions,
+          encrypted,
+          contentRevision,
+          clientMutationId,
+        ]
       additionalProperties: false
       properties:
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        clientMutationId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
         replyToId: { type: string, format: uuid }
         editedAt: { type: string, format: date-time }
         deleted: { type: boolean }
@@ -2037,9 +2203,11 @@ components:
         createdAt: { type: string, format: date-time }
     SendMessageRequest:
       type: object
-      required: [body, clientMutationId]
+      required: [clientMutationId]
       additionalProperties: false
       properties:
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
         body: { type: string, minLength: 1, maxLength: 10000 }
         clientMutationId: { type: string, format: uuid }
         replyToId: { type: string, format: uuid }
@@ -2049,9 +2217,25 @@ components:
           items: { type: string, format: uuid }
     Epic:
       type: object
-      required: [id, projectId, title, description, done, version]
+      required:
+        [
+          id,
+          projectId,
+          title,
+          description,
+          done,
+          version,
+          encrypted,
+          contentRevision,
+        ]
       additionalProperties: false
       properties:
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        encrypted: { type: boolean }
+        contentRevision: { type: integer }
+        contentAuthorId: { type: string, format: uuid }
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         title: { type: string }
@@ -2060,9 +2244,12 @@ components:
         version: { type: integer }
     CreateEpicRequest:
       type: object
-      required: [title]
       additionalProperties: false
       properties:
+        id: { type: string, format: uuid }
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: string, maxLength: 50000 }
     UpdateEpicRequest:
@@ -2070,6 +2257,10 @@ components:
       required: [version]
       additionalProperties: false
       properties:
+        titleEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision: { type: integer }
         version: { type: integer }
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: string, maxLength: 50000 }
@@ -2150,9 +2341,11 @@ components:
         accountId: { type: string, format: uuid }
     EditMessageRequest:
       type: object
-      required: [body]
       additionalProperties: false
       properties:
+        bodyEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+        contentRevision: { type: integer }
         body: { type: string, minLength: 1, maxLength: 10000 }
     ToggleReactionRequest:
       type: object
@@ -2398,9 +2591,11 @@ components:
           signPublicKey,
           boxPublicKey,
           certificate,
+          state,
         ]
       additionalProperties: false
       properties:
+        state: { type: string, enum: [active, revoked] }
         deviceId: { type: string, format: uuid }
         accountId: { type: string, format: uuid }
         email: { type: string }
@@ -2457,3 +2652,49 @@ components:
         signerDeviceId: { type: string, format: uuid }
         sealed: { $ref: "#/components/schemas/Base64Url" }
         signature: { $ref: "#/components/schemas/Base64Url" }
+    EncryptedBlob:
+      type: string
+      description: Unpadded base64url of a content envelope (header, ciphertext and signature)
+      maxLength: 400000
+    ApiError:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+            [
+              encryption_required,
+              stale_generation,
+              rotation_required,
+              domain_unavailable,
+              bad_revision,
+              bad_envelope,
+              id_required,
+            ]
+    KeyRecipient:
+      type: object
+      required: [generation, deviceId]
+      additionalProperties: false
+      properties:
+        generation: { type: integer }
+        deviceId: { type: string, format: uuid }
+    GrantEnvelopesRequest:
+      type: object
+      required: [generation, signerDeviceId, envelopes]
+      additionalProperties: false
+      properties:
+        generation: { type: integer, minimum: 1 }
+        signerDeviceId: { type: string, format: uuid }
+        envelopes:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [recipientDeviceId, sealed, signature]
+            additionalProperties: false
+            properties:
+              recipientDeviceId: { type: string, format: uuid }
+              sealed: { $ref: "#/components/schemas/Base64Url" }
+              signature: { $ref: "#/components/schemas/Base64Url" }

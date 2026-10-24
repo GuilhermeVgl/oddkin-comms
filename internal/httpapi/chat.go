@@ -98,19 +98,69 @@ func toReactions(rows []sqlc.ListReactionsRow, messageID pgtype.UUID) []gen.Reac
 	return summaries
 }
 
-func buildMessage(id pgtype.UUID, seq int64, authorEmail, body string, createdAt time.Time, reply pgtype.UUID, edited, deleted pgtype.Timestamptz, reactions []gen.ReactionSummary) gen.Message {
-	message := gen.Message{
-		Id: fromPG(id), Seq: seq, AuthorEmail: authorEmail, Body: body, CreatedAt: createdAt,
-		Deleted: deleted.Valid, Reactions: reactions,
+// messageView is the common shape of a message row, whichever query produced it.
+type messageView struct {
+	ID                         pgtype.UUID
+	Seq                        int64
+	AuthorEmail, Body          string
+	CreatedAt                  time.Time
+	ReplyTo                    pgtype.UUID
+	EditedAt, DeletedAt        pgtype.Timestamptz
+	Encrypted                  bool
+	BodyEnc                    []byte
+	Revision                   int32
+	Signer, Author, MutationID pgtype.UUID
+}
+
+func viewOf(m sqlc.Message, authorEmail string) messageView {
+	return messageView{
+		ID: m.ID, Seq: m.Seq, AuthorEmail: authorEmail, Body: m.Body, CreatedAt: m.CreatedAt.Time, ReplyTo: m.ReplyToID,
+		EditedAt: m.EditedAt, DeletedAt: m.DeletedAt, Encrypted: m.Encrypted, BodyEnc: m.BodyEnc, Revision: m.ContentRevision,
+		Signer: m.ContentSignerDeviceID, Author: m.AuthorID, MutationID: m.ClientMutationID,
 	}
-	if reply.Valid {
-		replyID := fromPG(reply)
+}
+
+func buildMessage(m messageView, reactions []gen.ReactionSummary) gen.Message {
+	message := gen.Message{
+		Id: fromPG(m.ID), Seq: m.Seq, AuthorEmail: m.AuthorEmail, Body: m.Body, CreatedAt: m.CreatedAt,
+		Deleted: m.DeletedAt.Valid, Reactions: reactions, Encrypted: m.Encrypted, ContentRevision: int(m.Revision),
+		ClientMutationId: fromPG(m.MutationID),
+	}
+	if m.ReplyTo.Valid {
+		replyID := fromPG(m.ReplyTo)
 		message.ReplyToId = &replyID
 	}
-	if edited.Valid {
-		message.EditedAt = &edited.Time
+	if m.EditedAt.Valid {
+		message.EditedAt = &m.EditedAt.Time
+	}
+	if m.Encrypted && !m.DeletedAt.Valid {
+		message.BodyEnc = blob(m.BodyEnc)
+		if m.Author.Valid {
+			author := fromPG(m.Author)
+			message.AuthorId = &author
+		}
+		if m.Signer.Valid {
+			signer := fromPG(m.Signer)
+			message.SignerDeviceId = &signer
+		}
 	}
 	return message
+}
+
+// channelDomainFailure applies the encryption rules of a channel message write.
+// DMs have no key domain yet, so they stay plaintext (ADR 0016).
+func channelDomainFailure(ctx context.Context, q *sqlc.Queries, conversation sqlc.Conversation, encrypted bool, account pgtype.UUID, signerID *pgtype.UUID) (*encContext, *encFailure, error) {
+	if conversation.Kind == "dm" {
+		if encrypted {
+			return nil, &encFailure{http.StatusConflict, gen.ApiErrorCodeDomainUnavailable}, nil
+		}
+		return nil, nil, nil
+	}
+	if encrypted {
+		return prepareEncrypted(ctx, q, account, conversation.ProjectID, "chat", signerID)
+	}
+	fail, err := requirePlaintextAllowed(ctx, q, conversation.ProjectID, "chat")
+	return nil, fail, err
 }
 
 func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params gen.ListMessagesParams) {
@@ -153,7 +203,11 @@ func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, con
 	}
 	messages := make([]gen.Message, 0, len(rows))
 	for _, row := range rows {
-		messages = append(messages, buildMessage(row.ID, row.Seq, row.AuthorEmail, row.Body, row.CreatedAt.Time, row.ReplyToID, row.EditedAt, row.DeletedAt, toReactions(reactions, row.ID)))
+		messages = append(messages, buildMessage(messageView{
+			ID: row.ID, Seq: row.Seq, AuthorEmail: row.AuthorEmail, Body: row.Body, CreatedAt: row.CreatedAt.Time, ReplyTo: row.ReplyToID,
+			EditedAt: row.EditedAt, DeletedAt: row.DeletedAt, Encrypted: row.Encrypted, BodyEnc: row.BodyEnc, Revision: row.ContentRevision,
+			Signer: row.ContentSignerDeviceID, Author: row.AuthorID, MutationID: row.ClientMutationID,
+		}, toReactions(reactions, row.ID)))
 	}
 	writeJSON(w, http.StatusOK, messages)
 }
@@ -164,7 +218,12 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 		return
 	}
 	var payload gen.SendMessageRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encrypted := payload.BodyEnc != nil
+	if encrypted && (payload.SignerDeviceId == nil || payload.Body != nil) || !encrypted && payload.Body == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -206,10 +265,34 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		message, err = q.CreateMessage(ctx, sqlc.CreateMessageParams{
-			ConversationID: conversation.ID, Seq: seq, AuthorID: session.AccountID, Body: payload.Body,
-			ClientMutationID: mutationID, ReplyToID: optionalUUID(payload.ReplyToId),
-		})
+		var signerID *pgtype.UUID
+		if payload.SignerDeviceId != nil {
+			signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+		}
+		writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
+		if domainErr == nil && fail == nil && encrypted {
+			fail = writer.verify(session.AccountID, messageResource(mutationID), 1, *payload.BodyEnc)
+		}
+		if domainErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		if encrypted {
+			bodyEnc, _ := unb64(*payload.BodyEnc, 0)
+			message, err = q.CreateEncryptedMessage(ctx, sqlc.CreateEncryptedMessageParams{
+				ConversationID: conversation.ID, Seq: seq, AuthorID: session.AccountID, ClientMutationID: mutationID,
+				ReplyToID: optionalUUID(payload.ReplyToId), Encrypted: true, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
+			})
+		} else {
+			message, err = q.CreateMessage(ctx, sqlc.CreateMessageParams{
+				ConversationID: conversation.ID, Seq: seq, AuthorID: session.AccountID, Body: *payload.Body,
+				ClientMutationID: mutationID, ReplyToID: optionalUUID(payload.ReplyToId),
+			})
+		}
 		if isConstraintViolation(err) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -235,7 +318,7 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, status, buildMessage(message.ID, message.Seq, session.EmailNormalized, message.Body, message.CreatedAt.Time, message.ReplyToID, message.EditedAt, message.DeletedAt, toReactions(reactions, message.ID)))
+	writeJSON(w, status, buildMessage(viewOf(message, session.EmailNormalized), toReactions(reactions, message.ID)))
 }
 
 // messageAccess locks the message and resolves the caller's rights in its conversation.
@@ -268,7 +351,12 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		return
 	}
 	var payload gen.EditMessageRequest
-	if !decodeJSONBody(w, r, &payload) {
+	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
+		return
+	}
+	encrypted := payload.BodyEnc != nil
+	if encrypted && (payload.SignerDeviceId == nil || payload.ContentRevision == nil || payload.Body != nil) || !encrypted && payload.Body == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -292,7 +380,45 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	edited, err := q.EditMessage(ctx, sqlc.EditMessageParams{ID: message.ID, Body: payload.Body})
+	conversation, err := q.GetConversation(ctx, message.ConversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	var signerID *pgtype.UUID
+	if payload.SignerDeviceId != nil {
+		signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+	}
+	writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
+	if domainErr == nil && fail == nil && encrypted {
+		revision := int32(*payload.ContentRevision)
+		if revision != message.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		} else {
+			fail = writer.verify(session.AccountID, messageResource(message.ClientMutationID), revision, *payload.BodyEnc)
+		}
+	}
+	if domainErr != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if fail != nil {
+		fail.write(w)
+		return
+	}
+	var edited sqlc.Message
+	if encrypted {
+		bodyEnc, _ := unb64(*payload.BodyEnc, 0)
+		edited, err = q.EditEncryptedMessage(ctx, sqlc.EditEncryptedMessageParams{
+			ID: message.ID, BodyEnc: bodyEnc, ContentRevision: int32(*payload.ContentRevision), ContentSignerDeviceID: writer.signer.ID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+	} else {
+		edited, err = q.EditMessage(ctx, sqlc.EditMessageParams{ID: message.ID, Body: *payload.Body})
+	}
 	if isConstraintViolation(err) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -313,7 +439,7 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildMessage(edited.ID, edited.Seq, session.EmailNormalized, edited.Body, edited.CreatedAt.Time, edited.ReplyToID, edited.EditedAt, edited.DeletedAt, toReactions(reactions, edited.ID)))
+	writeJSON(w, http.StatusOK, buildMessage(viewOf(edited, session.EmailNormalized), toReactions(reactions, edited.ID)))
 }
 
 func (h *healthHandler) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {

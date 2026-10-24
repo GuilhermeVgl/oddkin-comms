@@ -81,23 +81,29 @@ type ContentMetadata struct {
 	Revision       uint64
 }
 
+const contentHeaderLength = 2 + 4 + 24
+
+// ContentSignedBytes is the exact byte string the author's device signs for a
+// content envelope: label, header, authenticated context and ciphertext.
+func ContentSignedBytes(m ContentMetadata, header, ciphertext []byte) []byte {
+	aad := lengthPrefixed([]byte("oddkin/v1/content"), []byte(m.OrganizationID), []byte(m.DomainID), []byte(m.ResourceID), []byte(m.AuthorID), []byte(uitoa(m.Revision)))
+	return lengthPrefixed([]byte("oddkin/v1/content-sig"), header, aad, ciphertext)
+}
+
 // VerifyContentEnvelope checks the author's signature of a content envelope
 // (header || ciphertext || signature) for the given context, without being
 // able to read it. It lets the server refuse records not signed by their
 // claimed author's device.
 func VerifyContentEnvelope(signerPublicKey ed25519.PublicKey, m ContentMetadata, envelope []byte) bool {
-	const header = 2 + 4 + 24
-	if len(signerPublicKey) != ed25519.PublicKeySize || len(envelope) < header+16+ed25519.SignatureSize {
+	if len(signerPublicKey) != ed25519.PublicKeySize || len(envelope) < contentHeaderLength+16+ed25519.SignatureSize {
 		return false
 	}
 	if envelope[0] != 1 || envelope[1] != 1 {
 		return false
 	}
-	aad := lengthPrefixed([]byte("oddkin/v1/content"), []byte(m.OrganizationID), []byte(m.DomainID), []byte(m.ResourceID), []byte(m.AuthorID), []byte(uitoa(m.Revision)))
 	body := envelope[:len(envelope)-ed25519.SignatureSize]
 	signature := envelope[len(envelope)-ed25519.SignatureSize:]
-	signed := lengthPrefixed([]byte("oddkin/v1/content-sig"), body[:header], aad, body[header:])
-	return ed25519.Verify(signerPublicKey, signed, signature)
+	return ed25519.Verify(signerPublicKey, ContentSignedBytes(m, body[:contentHeaderLength], body[contentHeaderLength:]), signature)
 }
 
 // EnvelopeGeneration returns the key generation declared in a content

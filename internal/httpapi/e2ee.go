@@ -524,22 +524,11 @@ func (h *healthHandler) GetProjectDirectory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	directory := make([]gen.DirectoryDevice, 0, len(devices)+len(recovery))
-	add := func(id, account pgtype.UUID, email, kind string, sign, box, certificate []byte, authorizer pgtype.UUID) {
-		entry := gen.DirectoryDevice{
-			DeviceId: fromPG(id), AccountId: fromPG(account), Email: email, Kind: gen.DirectoryDeviceKind(kind),
-			SignPublicKey: b64(sign), BoxPublicKey: b64(box), Certificate: b64(certificate),
-		}
-		if authorizer.Valid {
-			parent := fromPG(authorizer)
-			entry.AuthorizerDeviceId = &parent
-		}
-		directory = append(directory, entry)
-	}
 	for _, device := range devices {
-		add(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID)
+		directory = append(directory, directoryEntry(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
 	}
 	for _, device := range recovery {
-		add(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID)
+		directory = append(directory, directoryEntry(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
 	}
 	writeJSON(w, http.StatusOK, directory)
 }
@@ -775,4 +764,226 @@ func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Reques
 		})
 	}
 	writeJSON(w, http.StatusOK, envelopes)
+}
+
+func directoryEntry(id, account pgtype.UUID, email, kind, state string, sign, box, certificate []byte, authorizer pgtype.UUID) gen.DirectoryDevice {
+	entry := gen.DirectoryDevice{
+		DeviceId: fromPG(id), AccountId: fromPG(account), Email: email, Kind: gen.DirectoryDeviceKind(kind), State: gen.DirectoryDeviceState(state),
+		SignPublicKey: b64(sign), BoxPublicKey: b64(box), Certificate: b64(certificate),
+	}
+	if authorizer.Valid {
+		parent := fromPG(authorizer)
+		entry.AuthorizerDeviceId = &parent
+	}
+	return entry
+}
+
+// GetDevice returns the public record of any activated device of the
+// organization, including revoked ones: clients need the key of a former
+// device to verify what it signed, and to walk certificate chains.
+func (h *healthHandler) GetDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+	if !ok {
+		return
+	}
+	device, err := q.GetDevice(ctx, pgUUID(uuidFrom(deviceId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (device.OrganizationID != organizationID || len(device.Certificate) == 0)) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	owner, err := q.GetAccountByID(ctx, device.AccountID)
+	email := ""
+	if err == nil {
+		email = owner.EmailNormalized
+	}
+	writeJSON(w, http.StatusOK, directoryEntry(device.ID, device.AccountID, email, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
+}
+
+// domainForReader loads a domain and answers 404/403 for non-readers.
+func (h *healthHandler) domainForReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id gen.KeyDomainId, account pgtype.UUID) (sqlc.KeyDomain, bool) {
+	domain, err := q.GetKeyDomain(ctx, pgUUID(uuidFrom(id)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return domain, false
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return domain, false
+	}
+	access, ok := loadAccess(ctx, w, q, domain.ProjectID, account)
+	if !ok {
+		return domain, false
+	}
+	if !access.access.Can(readPermission(domain.Kind)) {
+		w.WriteHeader(http.StatusForbidden)
+		return domain, false
+	}
+	return domain, true
+}
+
+func (h *healthHandler) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	domain, ok := h.domainForReader(ctx, w, q, keyDomainId, session.AccountID)
+	if !ok {
+		return
+	}
+	rows, err := q.ListAllEnvelopeRecipients(ctx, domain.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	recipients := make([]gen.KeyRecipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, gen.KeyRecipient{Generation: int(row.Generation), DeviceId: fromPG(row.RecipientDeviceID)})
+	}
+	writeJSON(w, http.StatusOK, recipients)
+}
+
+func (h *healthHandler) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	domain, ok := h.domainForReader(ctx, w, q, keyDomainId, session.AccountID)
+	if !ok {
+		return
+	}
+	readers, err := projectRecipients(ctx, q, domain.ProjectID, readPermission(domain.Kind))
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	devices, err := q.ListActiveDevicesForAccounts(ctx, readers)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	recovery, err := q.ListActiveRecoveryDevices(ctx, domain.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	result := make([]gen.DirectoryDevice, 0, len(devices)+len(recovery))
+	for _, device := range devices {
+		result = append(result, directoryEntry(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
+	}
+	for _, device := range recovery {
+		result = append(result, directoryEntry(device.ID, device.AccountID, device.EmailNormalized, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GrantKeyEnvelopes gives authorized devices that lack one an envelope for an
+// existing generation, which is how a new member receives the history.
+func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	var payload gen.GrantEnvelopesRequest
+	if !decodeJSONBodyLimit(w, r, &payload, 2<<20) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	if _, err = q.LockKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId))); errors.Is(err, pgx.ErrNoRows) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	domain, ok := h.domainForReader(ctx, w, q, keyDomainId, session.AccountID)
+	if !ok {
+		return
+	}
+	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if payload.Generation < 1 || int32(payload.Generation) > domain.CurrentGeneration {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	authorized, err := authorizedDevices(ctx, q, domain)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	holders, err := q.ListEnvelopeRecipients(ctx, sqlc.ListEnvelopeRecipientsParams{DomainID: domain.ID, Generation: int32(payload.Generation)})
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	for _, envelope := range payload.Envelopes {
+		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		if !slices.Contains(authorized, recipient) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if slices.Contains(holders, recipient) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		sealed, validSealed := unb64(envelope.Sealed, 0)
+		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
+		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
+			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
+				RecipientDeviceID: uuidString(recipient), DomainID: uuidString(domain.ID), Generation: uint32(payload.Generation), Sealed: sealed,
+			}, signature) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if err = q.InsertKeyEnvelope(ctx, sqlc.InsertKeyEnvelopeParams{
+			DomainID: domain.ID, Generation: int32(payload.Generation), RecipientDeviceID: recipient,
+			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
+		}); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		holders = append(holders, recipient)
+	}
+	if err = refreshDomain(ctx, q, domain); err == nil {
+		domain, err = q.GetKeyDomain(ctx, domain.ID)
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }

@@ -140,10 +140,11 @@ LIMIT 1;
 -- name: CreateWorkItemComment :one
 INSERT INTO work_item_comment (work_item_id, author_id, body)
 VALUES ($1, $2, $3)
-RETURNING id, work_item_id, author_id, body, created_at;
+RETURNING *;
 
 -- name: ListWorkItemComments :many
-SELECT c.id, c.work_item_id, c.author_id, a.email_normalized AS author_email, c.body, c.created_at
+SELECT c.id, c.work_item_id, c.author_id, a.email_normalized AS author_email, c.body, c.created_at,
+       c.encrypted, c.body_enc, c.content_signer_device_id
 FROM work_item_comment AS c
 LEFT JOIN account AS a ON a.id = c.author_id
 WHERE c.work_item_id = $1
@@ -179,7 +180,8 @@ FROM message
 WHERE conversation_id = $1 AND author_id = $2 AND client_mutation_id = $3;
 
 -- name: ListMessages :many
-SELECT m.id, m.seq, m.body, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, COALESCE(a.email_normalized, '')::text AS author_email
+SELECT m.id, m.seq, m.body, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.encrypted, m.body_enc, m.content_revision,
+       m.content_signer_device_id, m.author_id, m.client_mutation_id, COALESCE(a.email_normalized, '')::text AS author_email
 FROM message AS m
 LEFT JOIN account AS a ON a.id = m.author_id
 WHERE m.conversation_id = $1 AND m.seq > $2
@@ -339,7 +341,7 @@ UPDATE message SET body = $2, edited_at = now() WHERE id = $1 AND deleted_at IS 
 RETURNING *;
 
 -- name: DeleteMessage :exec
-UPDATE message SET body = '', deleted_at = now() WHERE id = $1;
+UPDATE message SET body = '', body_enc = NULL, deleted_at = now() WHERE id = $1;
 
 -- name: DeleteMessageReactions :exec
 DELETE FROM message_reaction WHERE message_id = $1;
@@ -665,3 +667,54 @@ ORDER BY generation, recipient_device_id;
 
 -- name: ListKeyDomainsForOrganization :many
 SELECT * FROM key_domain WHERE organization_id = $1 ORDER BY created_at, id;
+
+-- name: GetKeyDomainByProjectKind :one
+SELECT * FROM key_domain WHERE project_id = $1 AND kind = $2;
+
+-- name: ListAllEnvelopeRecipients :many
+SELECT generation, recipient_device_id FROM key_envelope WHERE domain_id = $1 ORDER BY generation, recipient_device_id;
+
+-- name: CreateEncryptedWorkItem :one
+INSERT INTO work_item (id, project_id, kind, parent_id, title, description, assignee_id, due_date, priority, column_id, created_by,
+                       encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id)
+VALUES ($1, $2, $3, $4, '', '', $5, $6, $7, $8, $9, true, $10, $11, 1, $9, $12)
+RETURNING *;
+
+-- name: SetWorkItemContent :execrows
+UPDATE work_item
+SET encrypted = true, title = '', description = '', title_enc = $2, description_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6
+WHERE id = $1 AND content_revision = $4 - 1;
+
+-- name: CreateEncryptedEpic :one
+INSERT INTO epic (id, project_id, title, description, created_by, encrypted, title_enc, description_enc,
+                  content_revision, content_author_id, content_signer_device_id)
+VALUES ($1, $2, '', '', $3, true, $4, $5, 1, $3, $6)
+RETURNING *;
+
+-- name: SetEpicContent :execrows
+UPDATE epic
+SET encrypted = true, title = '', description = '', title_enc = $2, description_enc = $3,
+    content_revision = $4, content_author_id = $5, content_signer_device_id = $6
+WHERE id = $1 AND content_revision = $4 - 1;
+
+-- name: CreateEncryptedComment :one
+INSERT INTO work_item_comment (id, work_item_id, author_id, body, encrypted, body_enc, content_signer_device_id)
+VALUES ($1, $2, $3, '', true, $4, $5)
+RETURNING *;
+
+-- name: CreateEncryptedMessage :one
+INSERT INTO message (conversation_id, seq, author_id, body, client_mutation_id, reply_to_id, encrypted, body_enc,
+                     content_revision, content_signer_device_id)
+VALUES ($1, $2, $3, '', $4, $5, $6, $7, 1, $8)
+RETURNING *;
+
+-- name: EditEncryptedMessage :one
+UPDATE message
+SET body = '', encrypted = true, body_enc = $2, content_revision = $3, content_signer_device_id = $4,
+    edited_at = CASE WHEN message.encrypted THEN now() ELSE message.edited_at END
+WHERE id = $1 AND deleted_at IS NULL AND content_revision = $3 - 1
+RETURNING *;
+
+-- name: GetEpic :one
+SELECT * FROM epic WHERE id = $1;

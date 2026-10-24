@@ -15,6 +15,39 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ApiErrorCode.
+const (
+	ApiErrorCodeBadEnvelope        ApiErrorCode = "bad_envelope"
+	ApiErrorCodeBadRevision        ApiErrorCode = "bad_revision"
+	ApiErrorCodeDomainUnavailable  ApiErrorCode = "domain_unavailable"
+	ApiErrorCodeEncryptionRequired ApiErrorCode = "encryption_required"
+	ApiErrorCodeIdRequired         ApiErrorCode = "id_required"
+	ApiErrorCodeRotationRequired   ApiErrorCode = "rotation_required"
+	ApiErrorCodeStaleGeneration    ApiErrorCode = "stale_generation"
+)
+
+// Valid indicates whether the value is a known member of the ApiErrorCode enum.
+func (e ApiErrorCode) Valid() bool {
+	switch e {
+	case ApiErrorCodeBadEnvelope:
+		return true
+	case ApiErrorCodeBadRevision:
+		return true
+	case ApiErrorCodeDomainUnavailable:
+		return true
+	case ApiErrorCodeEncryptionRequired:
+		return true
+	case ApiErrorCodeIdRequired:
+		return true
+	case ApiErrorCodeRotationRequired:
+		return true
+	case ApiErrorCodeStaleGeneration:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BoardColumnCategory.
 const (
 	Done       BoardColumnCategory = "done"
@@ -315,6 +348,24 @@ func (e DirectoryDeviceKind) Valid() bool {
 	}
 }
 
+// Defines values for DirectoryDeviceState.
+const (
+	DirectoryDeviceStateActive  DirectoryDeviceState = "active"
+	DirectoryDeviceStateRevoked DirectoryDeviceState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the DirectoryDeviceState enum.
+func (e DirectoryDeviceState) Valid() bool {
+	switch e {
+	case DirectoryDeviceStateActive:
+		return true
+	case DirectoryDeviceStateRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExternalPermission.
 const (
 	CallsJoin         ExternalPermission = "calls.join"
@@ -425,19 +476,19 @@ func (e KeyDomainKind) Valid() bool {
 
 // Defines values for KeyDomainState.
 const (
-	Ok               KeyDomainState = "ok"
-	PendingKeys      KeyDomainState = "pending_keys"
-	RotationRequired KeyDomainState = "rotation_required"
+	KeyDomainStateOk               KeyDomainState = "ok"
+	KeyDomainStatePendingKeys      KeyDomainState = "pending_keys"
+	KeyDomainStateRotationRequired KeyDomainState = "rotation_required"
 )
 
 // Valid indicates whether the value is a known member of the KeyDomainState enum.
 func (e KeyDomainState) Valid() bool {
 	switch e {
-	case Ok:
+	case KeyDomainStateOk:
 		return true
-	case PendingKeys:
+	case KeyDomainStatePendingKeys:
 		return true
-	case RotationRequired:
+	case KeyDomainStateRotationRequired:
 		return true
 	default:
 		return false
@@ -604,6 +655,14 @@ type AddProjectMemberRequest struct {
 	IsManager *bool               `json:"isManager,omitempty"`
 }
 
+// ApiError defines model for ApiError.
+type ApiError struct {
+	Code ApiErrorCode `json:"code"`
+}
+
+// ApiErrorCode defines model for ApiError.Code.
+type ApiErrorCode string
+
 // Attachment defines model for Attachment.
 type Attachment struct {
 	ContentType   string             `json:"contentType"`
@@ -729,13 +788,26 @@ type Conversation struct {
 
 // CreateCommentRequest defines model for CreateCommentRequest.
 type CreateCommentRequest struct {
-	Body string `json:"body"`
+	Body *string `json:"body,omitempty"`
+
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc        *EncryptedBlob      `json:"bodyEnc,omitempty"`
+	Id             *openapi_types.UUID `json:"id,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
 // CreateEpicRequest defines model for CreateEpicRequest.
 type CreateEpicRequest struct {
 	Description *string `json:"description,omitempty"`
-	Title       string  `json:"title"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob      `json:"descriptionEnc,omitempty"`
+	Id             *openapi_types.UUID `json:"id,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Title          *string             `json:"title,omitempty"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc *EncryptedBlob `json:"titleEnc,omitempty"`
 }
 
 // CreateInvitationRequest defines model for CreateInvitationRequest.
@@ -784,14 +856,24 @@ type CreateUploadRequestContextType string
 
 // CreateWorkItemRequest defines model for CreateWorkItemRequest.
 type CreateWorkItemRequest struct {
-	AssigneeId  *openapi_types.UUID            `json:"assigneeId,omitempty"`
-	ColumnId    *openapi_types.UUID            `json:"columnId,omitempty"`
-	Description *string                        `json:"description,omitempty"`
-	DueDate     *openapi_types.Date            `json:"dueDate,omitempty"`
-	Kind        CreateWorkItemRequestKind      `json:"kind"`
-	ParentId    *openapi_types.UUID            `json:"parentId,omitempty"`
-	Priority    *CreateWorkItemRequestPriority `json:"priority,omitempty"`
-	Title       string                         `json:"title"`
+	AssigneeId  *openapi_types.UUID `json:"assigneeId,omitempty"`
+	ColumnId    *openapi_types.UUID `json:"columnId,omitempty"`
+	Description *string             `json:"description,omitempty"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob      `json:"descriptionEnc,omitempty"`
+	DueDate        *openapi_types.Date `json:"dueDate,omitempty"`
+
+	// Id Client-chosen ID, required with encrypted content because the envelope is bound to it
+	Id             *openapi_types.UUID            `json:"id,omitempty"`
+	Kind           CreateWorkItemRequestKind      `json:"kind"`
+	ParentId       *openapi_types.UUID            `json:"parentId,omitempty"`
+	Priority       *CreateWorkItemRequestPriority `json:"priority,omitempty"`
+	SignerDeviceId *openapi_types.UUID            `json:"signerDeviceId,omitempty"`
+	Title          *string                        `json:"title,omitempty"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc *EncryptedBlob `json:"titleEnc,omitempty"`
 }
 
 // CreateWorkItemRequestKind defines model for CreateWorkItemRequest.Kind.
@@ -862,25 +944,47 @@ type DirectoryDevice struct {
 	Kind        DirectoryDeviceKind `json:"kind"`
 
 	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
-	SignPublicKey Base64Url `json:"signPublicKey"`
+	SignPublicKey Base64Url            `json:"signPublicKey"`
+	State         DirectoryDeviceState `json:"state"`
 }
 
 // DirectoryDeviceKind defines model for DirectoryDevice.Kind.
 type DirectoryDeviceKind string
 
+// DirectoryDeviceState defines model for DirectoryDevice.State.
+type DirectoryDeviceState string
+
 // EditMessageRequest defines model for EditMessageRequest.
 type EditMessageRequest struct {
-	Body string `json:"body"`
+	Body *string `json:"body,omitempty"`
+
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc         *EncryptedBlob      `json:"bodyEnc,omitempty"`
+	ContentRevision *int                `json:"contentRevision,omitempty"`
+	SignerDeviceId  *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
+
+// EncryptedBlob Unpadded base64url of a content envelope (header, ciphertext and signature)
+type EncryptedBlob = string
 
 // Epic defines model for Epic.
 type Epic struct {
-	Description string             `json:"description"`
-	Done        bool               `json:"done"`
-	Id          openapi_types.UUID `json:"id"`
-	ProjectId   openapi_types.UUID `json:"projectId"`
-	Title       string             `json:"title"`
-	Version     int                `json:"version"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentRevision int                 `json:"contentRevision"`
+	Description     string              `json:"description"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob      `json:"descriptionEnc,omitempty"`
+	Done           bool                `json:"done"`
+	Encrypted      bool                `json:"encrypted"`
+	Id             openapi_types.UUID  `json:"id"`
+	ProjectId      openapi_types.UUID  `json:"projectId"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Title          string              `json:"title"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc *EncryptedBlob `json:"titleEnc,omitempty"`
+	Version  int            `json:"version"`
 }
 
 // ExternalPermission defines model for ExternalPermission.
@@ -890,6 +994,21 @@ type ExternalPermission string
 type ExternalPolicy struct {
 	Permissions []ExternalPermission `json:"permissions"`
 	Version     int                  `json:"version"`
+}
+
+// GrantEnvelopesRequest defines model for GrantEnvelopesRequest.
+type GrantEnvelopesRequest struct {
+	Envelopes []struct {
+		RecipientDeviceId openapi_types.UUID `json:"recipientDeviceId"`
+
+		// Sealed Unpadded base64url (RFC 4648 section 5) of binary data
+		Sealed Base64Url `json:"sealed"`
+
+		// Signature Unpadded base64url (RFC 4648 section 5) of binary data
+		Signature Base64Url `json:"signature"`
+	} `json:"envelopes"`
+	Generation     int                `json:"generation"`
+	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
 }
 
 // Invitation defines model for Invitation.
@@ -944,6 +1063,12 @@ type KeyEnvelope struct {
 	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
 }
 
+// KeyRecipient defines model for KeyRecipient.
+type KeyRecipient struct {
+	DeviceId   openapi_types.UUID `json:"deviceId"`
+	Generation int                `json:"generation"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -953,14 +1078,22 @@ type LoginRequest struct {
 // Message defines model for Message.
 type Message struct {
 	AuthorEmail string              `json:"authorEmail"`
+	AuthorId    *openapi_types.UUID `json:"authorId,omitempty"`
 	Body        string              `json:"body"`
-	CreatedAt   time.Time           `json:"createdAt"`
-	Deleted     bool                `json:"deleted"`
-	EditedAt    *time.Time          `json:"editedAt,omitempty"`
-	Id          openapi_types.UUID  `json:"id"`
-	Reactions   []ReactionSummary   `json:"reactions"`
-	ReplyToId   *openapi_types.UUID `json:"replyToId,omitempty"`
-	Seq         int64               `json:"seq"`
+
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc          *EncryptedBlob      `json:"bodyEnc,omitempty"`
+	ClientMutationId openapi_types.UUID  `json:"clientMutationId"`
+	ContentRevision  int                 `json:"contentRevision"`
+	CreatedAt        time.Time           `json:"createdAt"`
+	Deleted          bool                `json:"deleted"`
+	EditedAt         *time.Time          `json:"editedAt,omitempty"`
+	Encrypted        bool                `json:"encrypted"`
+	Id               openapi_types.UUID  `json:"id"`
+	Reactions        []ReactionSummary   `json:"reactions"`
+	ReplyToId        *openapi_types.UUID `json:"replyToId,omitempty"`
+	Seq              int64               `json:"seq"`
+	SignerDeviceId   *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
 // Notification defines model for Notification.
@@ -1060,10 +1193,14 @@ type RegisterDeviceRequestKind string
 
 // SendMessageRequest defines model for SendMessageRequest.
 type SendMessageRequest struct {
-	Body             string                `json:"body"`
+	Body *string `json:"body,omitempty"`
+
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc          *EncryptedBlob        `json:"bodyEnc,omitempty"`
 	ClientMutationId openapi_types.UUID    `json:"clientMutationId"`
 	MentionIds       *[]openapi_types.UUID `json:"mentionIds,omitempty"`
 	ReplyToId        *openapi_types.UUID   `json:"replyToId,omitempty"`
+	SignerDeviceId   *openapi_types.UUID   `json:"signerDeviceId,omitempty"`
 }
 
 // SetTrustRootRequest defines model for SetTrustRootRequest.
@@ -1115,10 +1252,18 @@ type TrustRoot struct {
 
 // UpdateEpicRequest defines model for UpdateEpicRequest.
 type UpdateEpicRequest struct {
-	Description *string `json:"description,omitempty"`
-	Done        *bool   `json:"done,omitempty"`
-	Title       *string `json:"title,omitempty"`
-	Version     int     `json:"version"`
+	ContentRevision *int    `json:"contentRevision,omitempty"`
+	Description     *string `json:"description,omitempty"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob      `json:"descriptionEnc,omitempty"`
+	Done           *bool               `json:"done,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	Title          *string             `json:"title,omitempty"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc *EncryptedBlob `json:"titleEnc,omitempty"`
+	Version  int            `json:"version"`
 }
 
 // UpdateExternalPolicyRequest defines model for UpdateExternalPolicyRequest.
@@ -1129,21 +1274,31 @@ type UpdateExternalPolicyRequest struct {
 
 // UpdateWorkItemRequest defines model for UpdateWorkItemRequest.
 type UpdateWorkItemRequest struct {
-	Archived         *bool                          `json:"archived,omitempty"`
-	AssigneeId       *openapi_types.UUID            `json:"assigneeId,omitempty"`
-	ClearAssignee    *bool                          `json:"clearAssignee,omitempty"`
-	ClearDueDate     *bool                          `json:"clearDueDate,omitempty"`
-	ClearEpic        *bool                          `json:"clearEpic,omitempty"`
-	ClearSprint      *bool                          `json:"clearSprint,omitempty"`
-	ColumnId         *openapi_types.UUID            `json:"columnId,omitempty"`
-	CompleteSubtasks *bool                          `json:"completeSubtasks,omitempty"`
-	Description      *string                        `json:"description,omitempty"`
-	DueDate          *openapi_types.Date            `json:"dueDate,omitempty"`
-	EpicId           *openapi_types.UUID            `json:"epicId,omitempty"`
-	Priority         *UpdateWorkItemRequestPriority `json:"priority,omitempty"`
-	SprintId         *openapi_types.UUID            `json:"sprintId,omitempty"`
-	Title            *string                        `json:"title,omitempty"`
-	Version          int                            `json:"version"`
+	Archived         *bool               `json:"archived,omitempty"`
+	AssigneeId       *openapi_types.UUID `json:"assigneeId,omitempty"`
+	ClearAssignee    *bool               `json:"clearAssignee,omitempty"`
+	ClearDueDate     *bool               `json:"clearDueDate,omitempty"`
+	ClearEpic        *bool               `json:"clearEpic,omitempty"`
+	ClearSprint      *bool               `json:"clearSprint,omitempty"`
+	ColumnId         *openapi_types.UUID `json:"columnId,omitempty"`
+	CompleteSubtasks *bool               `json:"completeSubtasks,omitempty"`
+
+	// ContentRevision Revision the encrypted fields are bound to; the current one plus one
+	ContentRevision *int    `json:"contentRevision,omitempty"`
+	Description     *string `json:"description,omitempty"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob                 `json:"descriptionEnc,omitempty"`
+	DueDate        *openapi_types.Date            `json:"dueDate,omitempty"`
+	EpicId         *openapi_types.UUID            `json:"epicId,omitempty"`
+	Priority       *UpdateWorkItemRequestPriority `json:"priority,omitempty"`
+	SignerDeviceId *openapi_types.UUID            `json:"signerDeviceId,omitempty"`
+	SprintId       *openapi_types.UUID            `json:"sprintId,omitempty"`
+	Title          *string                        `json:"title,omitempty"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc *EncryptedBlob `json:"titleEnc,omitempty"`
+	Version  int            `json:"version"`
 }
 
 // UpdateWorkItemRequestPriority defines model for UpdateWorkItemRequest.Priority.
@@ -1158,21 +1313,31 @@ type Upload struct {
 
 // WorkItem defines model for WorkItem.
 type WorkItem struct {
-	AssigneeId  *openapi_types.UUID `json:"assigneeId,omitempty"`
-	ColumnId    openapi_types.UUID  `json:"columnId"`
-	CreatedAt   time.Time           `json:"createdAt"`
-	Description string              `json:"description"`
-	DueDate     *openapi_types.Date `json:"dueDate,omitempty"`
-	EpicId      *openapi_types.UUID `json:"epicId,omitempty"`
-	Id          openapi_types.UUID  `json:"id"`
-	Kind        WorkItemKind        `json:"kind"`
-	ParentId    *openapi_types.UUID `json:"parentId,omitempty"`
-	Priority    WorkItemPriority    `json:"priority"`
-	ProjectId   openapi_types.UUID  `json:"projectId"`
-	SprintId    *openapi_types.UUID `json:"sprintId,omitempty"`
-	Title       string              `json:"title"`
-	UpdatedAt   time.Time           `json:"updatedAt"`
-	Version     int                 `json:"version"`
+	AssigneeId      *openapi_types.UUID `json:"assigneeId,omitempty"`
+	ColumnId        openapi_types.UUID  `json:"columnId"`
+	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	ContentRevision int                 `json:"contentRevision"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	Description     string              `json:"description"`
+
+	// DescriptionEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	DescriptionEnc *EncryptedBlob      `json:"descriptionEnc,omitempty"`
+	DueDate        *openapi_types.Date `json:"dueDate,omitempty"`
+	Encrypted      bool                `json:"encrypted"`
+	EpicId         *openapi_types.UUID `json:"epicId,omitempty"`
+	Id             openapi_types.UUID  `json:"id"`
+	Kind           WorkItemKind        `json:"kind"`
+	ParentId       *openapi_types.UUID `json:"parentId,omitempty"`
+	Priority       WorkItemPriority    `json:"priority"`
+	ProjectId      openapi_types.UUID  `json:"projectId"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+	SprintId       *openapi_types.UUID `json:"sprintId,omitempty"`
+	Title          string              `json:"title"`
+
+	// TitleEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	TitleEnc  *EncryptedBlob `json:"titleEnc,omitempty"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	Version   int            `json:"version"`
 }
 
 // WorkItemKind defines model for WorkItem.Kind.
@@ -1183,10 +1348,16 @@ type WorkItemPriority string
 
 // WorkItemComment defines model for WorkItemComment.
 type WorkItemComment struct {
-	AuthorEmail string             `json:"authorEmail"`
-	Body        string             `json:"body"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	Id          openapi_types.UUID `json:"id"`
+	AuthorEmail string              `json:"authorEmail"`
+	AuthorId    *openapi_types.UUID `json:"authorId,omitempty"`
+	Body        string              `json:"body"`
+
+	// BodyEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	BodyEnc        *EncryptedBlob      `json:"bodyEnc,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	Encrypted      bool                `json:"encrypted"`
+	Id             openapi_types.UUID  `json:"id"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
 // CallId defines model for CallId.
@@ -1259,6 +1430,9 @@ type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
+
+// GrantKeyEnvelopesJSONRequestBody defines body for GrantKeyEnvelopes for application/json ContentType.
+type GrantKeyEnvelopesJSONRequestBody = GrantEnvelopesRequest
 
 // PublishKeyGenerationJSONRequestBody defines body for PublishKeyGeneration for application/json ContentType.
 type PublishKeyGenerationJSONRequestBody = PublishGenerationRequest
@@ -1379,6 +1553,9 @@ type ServerInterface interface {
 	// ListPendingDevices Devices waiting for trust-root approval (organization administrators)
 	// (GET /api/v1/devices/pending)
 	ListPendingDevices(w http.ResponseWriter, r *http.Request)
+	// GetDevice Public keys and certificate of any non-pending device of the organization
+	// (GET /api/v1/devices/{deviceId})
+	GetDevice(w http.ResponseWriter, r *http.Request, deviceId DeviceId)
 	// AuthorizeDevice Activate a device with a signed certificate
 	// (POST /api/v1/devices/{deviceId}/authorize)
 	AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId DeviceId)
@@ -1418,12 +1595,21 @@ type ServerInterface interface {
 	// AcceptInvitation Accept an organization invitation
 	// (POST /api/v1/invitations/accept)
 	AcceptInvitation(w http.ResponseWriter, r *http.Request)
+	// ListAuthorizedDevices Exactly the devices that must hold the domain key, with certificates
+	// (GET /api/v1/key-domains/{keyDomainId}/authorized-devices)
+	ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
 	// ListMyKeyEnvelopes Envelopes addressed to your active devices, every generation
 	// (GET /api/v1/key-domains/{keyDomainId}/envelopes)
 	ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// GrantKeyEnvelopes Give authorized devices that lack it an envelope for an existing generation (history)
+	// (POST /api/v1/key-domains/{keyDomainId}/envelopes)
+	GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
 	// PublishKeyGeneration Publish the next key generation with one signed envelope per authorized device
 	// (POST /api/v1/key-domains/{keyDomainId}/generations)
 	PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// ListKeyRecipients Which devices hold an envelope for which generation
+	// (GET /api/v1/key-domains/{keyDomainId}/recipients)
+	ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
 	// DeleteMessage Delete your own message, or any channel message as project manager
 	// (DELETE /api/v1/messages/{messageId})
 	DeleteMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
@@ -2107,6 +2293,32 @@ func (siw *ServerInterfaceWrapper) ListPendingDevices(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetDevice operation middleware
+func (siw *ServerInterfaceWrapper) GetDevice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deviceId" -------------
+	var deviceId DeviceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceId", r.PathValue("deviceId"), &deviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDevice(w, r, deviceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AuthorizeDevice operation middleware
 func (siw *ServerInterfaceWrapper) AuthorizeDevice(w http.ResponseWriter, r *http.Request) {
 
@@ -2325,6 +2537,32 @@ func (siw *ServerInterfaceWrapper) AcceptInvitation(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListAuthorizedDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAuthorizedDevices(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyKeyEnvelopes operation middleware
 func (siw *ServerInterfaceWrapper) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request) {
 
@@ -2351,6 +2589,32 @@ func (siw *ServerInterfaceWrapper) ListMyKeyEnvelopes(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GrantKeyEnvelopes operation middleware
+func (siw *ServerInterfaceWrapper) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantKeyEnvelopes(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PublishKeyGeneration operation middleware
 func (siw *ServerInterfaceWrapper) PublishKeyGeneration(w http.ResponseWriter, r *http.Request) {
 
@@ -2368,6 +2632,32 @@ func (siw *ServerInterfaceWrapper) PublishKeyGeneration(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PublishKeyGeneration(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListKeyRecipients operation middleware
+func (siw *ServerInterfaceWrapper) ListKeyRecipients(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyDomainId" -------------
+	var keyDomainId KeyDomainId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyDomainId", r.PathValue("keyDomainId"), &keyDomainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyDomainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKeyRecipients(w, r, keyDomainId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3446,6 +3736,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/key-domains", wrapper.CreateKeyDomain)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/generations", wrapper.PublishKeyGeneration)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/envelopes", wrapper.ListMyKeyEnvelopes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/envelopes", wrapper.GrantKeyEnvelopes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/devices/{deviceId}", wrapper.GetDevice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/recipients", wrapper.ListKeyRecipients)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/key-domains/{keyDomainId}/authorized-devices", wrapper.ListAuthorizedDevices)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/live", wrapper.GetLiveness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/health/ready", wrapper.GetReadiness)
 
