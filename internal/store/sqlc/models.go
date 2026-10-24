@@ -16,6 +16,27 @@ type Account struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
+type Attachment struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	ProjectID      pgtype.UUID
+	WorkItemID     pgtype.UUID
+	ConversationID pgtype.UUID
+	UploaderID     pgtype.UUID
+	State          string
+	ObjectKey      string
+	UploadID       string
+	Name           string
+	ContentType    string
+	DeclaredSize   int64
+	PartSize       int32
+	PartCount      int32
+	StoredSize     pgtype.Int8
+	ObjectRemoved  bool
+	CreatedAt      pgtype.Timestamptz
+	ReadyAt        pgtype.Timestamptz
+}
+
 type AuthSession struct {
 	ID         pgtype.UUID
 	AccountID  pgtype.UUID
@@ -25,6 +46,126 @@ type AuthSession struct {
 	LastSeenAt pgtype.Timestamptz
 	ExpiresAt  pgtype.Timestamptz
 	RevokedAt  pgtype.Timestamptz
+}
+
+type BoardColumn struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Name      string
+	Position  int32
+	Category  string
+}
+
+type Call struct {
+	ID             pgtype.UUID
+	ConversationID pgtype.UUID
+	StartedBy      pgtype.UUID
+	State          string
+	RoomName       string
+	ScreenSharerID pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+	EndedAt        pgtype.Timestamptz
+	EndedReason    pgtype.Text
+}
+
+type CallAdmission struct {
+	ID            pgtype.UUID
+	CallID        pgtype.UUID
+	AccountID     pgtype.UUID
+	SessionID     pgtype.UUID
+	State         string
+	ReservedUntil pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	JoinedAt      pgtype.Timestamptz
+	LeftAt        pgtype.Timestamptz
+}
+
+type CallInvitation struct {
+	CallID      pgtype.UUID
+	AccountID   pgtype.UUID
+	State       string
+	CreatedAt   pgtype.Timestamptz
+	RespondedAt pgtype.Timestamptz
+}
+
+type Conversation struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Name      string
+	LastSeq   int64
+	CreatedAt pgtype.Timestamptz
+	Kind      string
+	DmLow     pgtype.UUID
+	DmHigh    pgtype.UUID
+}
+
+type ConversationReadCursor struct {
+	AccountID      pgtype.UUID
+	ConversationID pgtype.UUID
+	LastSeq        int64
+}
+
+type Epic struct {
+	ID          pgtype.UUID
+	ProjectID   pgtype.UUID
+	Title       string
+	Description string
+	Done        bool
+	Version     int32
+	CreatedBy   pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+}
+
+type ExternalProjectPolicy struct {
+	ProjectID   pgtype.UUID
+	Permissions []string
+	Version     int32
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type InvitationDelivery struct {
+	InvitationID    pgtype.UUID
+	TokenCiphertext []byte
+	State           string
+	ProviderID      pgtype.Text
+	SentAt          pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type LivekitWebhookEvent struct {
+	EventID    string
+	ReceivedAt pgtype.Timestamptz
+}
+
+type Message struct {
+	ID               pgtype.UUID
+	ConversationID   pgtype.UUID
+	Seq              int64
+	AuthorID         pgtype.UUID
+	Body             string
+	ClientMutationID pgtype.UUID
+	CreatedAt        pgtype.Timestamptz
+	ReplyToID        pgtype.UUID
+	EditedAt         pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type MessageReaction struct {
+	MessageID pgtype.UUID
+	AccountID pgtype.UUID
+	Emoji     string
+	CreatedAt pgtype.Timestamptz
+}
+
+type Notification struct {
+	ID             pgtype.UUID
+	AccountID      pgtype.UUID
+	Kind           string
+	ResourceID     pgtype.UUID
+	ProjectID      pgtype.UUID
+	ConversationID pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+	ReadAt         pgtype.Timestamptz
 }
 
 type Organization struct {
@@ -43,6 +184,8 @@ type OrganizationInvitation struct {
 	ExpiresAt       pgtype.Timestamptz
 	ConsumedAt      pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
+	RequestedBy     pgtype.UUID
+	RevokedAt       pgtype.Timestamptz
 }
 
 type OrganizationMembership struct {
@@ -51,4 +194,93 @@ type OrganizationMembership struct {
 	MembershipKind string
 	IsAdmin        bool
 	CreatedAt      pgtype.Timestamptz
+}
+
+type Project struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Name           string
+	Description    string
+	Color          string
+	Icon           string
+	Archived       bool
+	Version        int32
+	CreatedBy      pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
+type ProjectMember struct {
+	ProjectID pgtype.UUID
+	AccountID pgtype.UUID
+	IsManager bool
+	CreatedAt pgtype.Timestamptz
+}
+
+type Sprint struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Name           string
+	Goal           string
+	StartsOn       pgtype.Date
+	EndsOn         pgtype.Date
+	State          string
+	ClosedAt       pgtype.Timestamptz
+	Version        int32
+	CreatedBy      pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
+type SprintItemHistory struct {
+	ID         pgtype.UUID
+	SprintID   pgtype.UUID
+	WorkItemID pgtype.UUID
+	Outcome    string
+	CreatedAt  pgtype.Timestamptz
+}
+
+type UserEvent struct {
+	AccountID          pgtype.UUID
+	Seq                int64
+	EventID            pgtype.UUID
+	Type               string
+	ResourceID         pgtype.UUID
+	ResourceVersion    int32
+	ProjectID          pgtype.UUID
+	ConversationID     pgtype.UUID
+	RequiredPermission pgtype.Text
+	OccurredAt         pgtype.Timestamptz
+}
+
+type UserEventCursor struct {
+	AccountID pgtype.UUID
+	LastSeq   int64
+}
+
+type WorkItem struct {
+	ID          pgtype.UUID
+	ProjectID   pgtype.UUID
+	Kind        string
+	ParentID    pgtype.UUID
+	ParentKind  pgtype.Text
+	Title       string
+	Description string
+	AssigneeID  pgtype.UUID
+	DueDate     pgtype.Date
+	Priority    string
+	ColumnID    pgtype.UUID
+	Archived    bool
+	Version     int32
+	CreatedBy   pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	EpicID      pgtype.UUID
+	SprintID    pgtype.UUID
+}
+
+type WorkItemComment struct {
+	ID         pgtype.UUID
+	WorkItemID pgtype.UUID
+	AuthorID   pgtype.UUID
+	Body       string
+	CreatedAt  pgtype.Timestamptz
 }

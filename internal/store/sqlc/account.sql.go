@@ -66,6 +66,34 @@ func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOr
 	return i, err
 }
 
+const ensureOrganizationMembership = `-- name: EnsureOrganizationMembership :one
+INSERT INTO organization_membership (organization_id, account_id, membership_kind, is_admin)
+VALUES ($1, $2, $3, false)
+ON CONFLICT (organization_id, account_id) DO UPDATE
+SET membership_kind = organization_membership.membership_kind
+WHERE organization_membership.membership_kind = EXCLUDED.membership_kind
+RETURNING organization_id, account_id, membership_kind, is_admin, created_at
+`
+
+type EnsureOrganizationMembershipParams struct {
+	OrganizationID pgtype.UUID
+	AccountID      pgtype.UUID
+	MembershipKind string
+}
+
+func (q *Queries) EnsureOrganizationMembership(ctx context.Context, arg EnsureOrganizationMembershipParams) (OrganizationMembership, error) {
+	row := q.db.QueryRow(ctx, ensureOrganizationMembership, arg.OrganizationID, arg.AccountID, arg.MembershipKind)
+	var i OrganizationMembership
+	err := row.Scan(
+		&i.OrganizationID,
+		&i.AccountID,
+		&i.MembershipKind,
+		&i.IsAdmin,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAccountByEmail = `-- name: GetAccountByEmail :one
 SELECT id, email_normalized, password_hash, active, created_at
 FROM account
@@ -82,5 +110,24 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, emailNormalized string)
 		&i.Active,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const getOrganizationMembershipForAccount = `-- name: GetOrganizationMembershipForAccount :one
+SELECT organization_id, membership_kind, is_admin
+FROM organization_membership
+WHERE account_id = $1
+`
+
+type GetOrganizationMembershipForAccountRow struct {
+	OrganizationID pgtype.UUID
+	MembershipKind string
+	IsAdmin        bool
+}
+
+func (q *Queries) GetOrganizationMembershipForAccount(ctx context.Context, accountID pgtype.UUID) (GetOrganizationMembershipForAccountRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationMembershipForAccount, accountID)
+	var i GetOrganizationMembershipForAccountRow
+	err := row.Scan(&i.OrganizationID, &i.MembershipKind, &i.IsAdmin)
 	return i, err
 }

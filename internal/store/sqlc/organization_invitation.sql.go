@@ -16,8 +16,8 @@ UPDATE organization_invitation
 SET consumed_at = clock_timestamp()
 WHERE token_hash = $1
   AND organization_invitation.email_normalized = $2
-  AND consumed_at IS NULL AND expires_at > clock_timestamp()
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at
+  AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp()
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at
 `
 
 type ClaimOrganizationInvitationParams struct {
@@ -37,8 +37,36 @@ func (q *Queries) ClaimOrganizationInvitation(ctx context.Context, arg ClaimOrga
 		&i.ExpiresAt,
 		&i.ConsumedAt,
 		&i.CreatedAt,
+		&i.RequestedBy,
+		&i.RevokedAt,
 	)
 	return i, err
+}
+
+const clearInvitationDeliveryToken = `-- name: ClearInvitationDeliveryToken :exec
+UPDATE invitation_delivery
+SET token_ciphertext = '\x00', updated_at = clock_timestamp()
+WHERE invitation_id = $1
+`
+
+func (q *Queries) ClearInvitationDeliveryToken(ctx context.Context, invitationID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearInvitationDeliveryToken, invitationID)
+	return err
+}
+
+const createInvitationDelivery = `-- name: CreateInvitationDelivery :exec
+INSERT INTO invitation_delivery (invitation_id, token_ciphertext)
+VALUES ($1, $2)
+`
+
+type CreateInvitationDeliveryParams struct {
+	InvitationID    pgtype.UUID
+	TokenCiphertext []byte
+}
+
+func (q *Queries) CreateInvitationDelivery(ctx context.Context, arg CreateInvitationDeliveryParams) error {
+	_, err := q.db.Exec(ctx, createInvitationDelivery, arg.InvitationID, arg.TokenCiphertext)
+	return err
 }
 
 const createOrganizationInvitation = `-- name: CreateOrganizationInvitation :one
@@ -55,7 +83,18 @@ type CreateOrganizationInvitationParams struct {
 	ExpiresAt       pgtype.Timestamptz
 }
 
-func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOrganizationInvitationParams) (OrganizationInvitation, error) {
+type CreateOrganizationInvitationRow struct {
+	ID              pgtype.UUID
+	OrganizationID  pgtype.UUID
+	EmailNormalized string
+	MembershipKind  string
+	TokenHash       []byte
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOrganizationInvitationParams) (CreateOrganizationInvitationRow, error) {
 	row := q.db.QueryRow(ctx, createOrganizationInvitation,
 		arg.OrganizationID,
 		arg.EmailNormalized,
@@ -63,7 +102,7 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		arg.TokenHash,
 		arg.ExpiresAt,
 	)
-	var i OrganizationInvitation
+	var i CreateOrganizationInvitationRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrganizationID,
@@ -75,4 +114,108 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getInvitationDelivery = `-- name: GetInvitationDelivery :one
+SELECT i.id, i.email_normalized, i.membership_kind, i.expires_at, d.token_ciphertext, d.state
+FROM organization_invitation AS i
+JOIN invitation_delivery AS d ON d.invitation_id = i.id
+WHERE i.id = $1 AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at > clock_timestamp()
+`
+
+type GetInvitationDeliveryRow struct {
+	ID              pgtype.UUID
+	EmailNormalized string
+	MembershipKind  string
+	ExpiresAt       pgtype.Timestamptz
+	TokenCiphertext []byte
+	State           string
+}
+
+func (q *Queries) GetInvitationDelivery(ctx context.Context, id pgtype.UUID) (GetInvitationDeliveryRow, error) {
+	row := q.db.QueryRow(ctx, getInvitationDelivery, id)
+	var i GetInvitationDeliveryRow
+	err := row.Scan(
+		&i.ID,
+		&i.EmailNormalized,
+		&i.MembershipKind,
+		&i.ExpiresAt,
+		&i.TokenCiphertext,
+		&i.State,
+	)
+	return i, err
+}
+
+const markInvitationDeliveryFailed = `-- name: MarkInvitationDeliveryFailed :execrows
+UPDATE invitation_delivery
+SET state = 'failed', updated_at = clock_timestamp()
+WHERE invitation_id = $1 AND state = 'pending'
+`
+
+func (q *Queries) MarkInvitationDeliveryFailed(ctx context.Context, invitationID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markInvitationDeliveryFailed, invitationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markInvitationDeliverySent = `-- name: MarkInvitationDeliverySent :execrows
+UPDATE invitation_delivery
+SET state = 'sent', provider_id = $2, sent_at = clock_timestamp(),
+    token_ciphertext = '\x00', updated_at = clock_timestamp()
+WHERE invitation_id = $1 AND state = 'pending'
+`
+
+type MarkInvitationDeliverySentParams struct {
+	InvitationID pgtype.UUID
+	ProviderID   pgtype.Text
+}
+
+func (q *Queries) MarkInvitationDeliverySent(ctx context.Context, arg MarkInvitationDeliverySentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markInvitationDeliverySent, arg.InvitationID, arg.ProviderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokePendingOrganizationInvitations = `-- name: RevokePendingOrganizationInvitations :execrows
+WITH revoked AS (
+    UPDATE organization_invitation
+    SET revoked_at = clock_timestamp()
+    WHERE organization_id = $1 AND email_normalized = $2
+      AND consumed_at IS NULL AND revoked_at IS NULL
+    RETURNING id
+)
+UPDATE invitation_delivery
+SET state = 'cancelled', token_ciphertext = '\x00', updated_at = clock_timestamp()
+WHERE invitation_id IN (SELECT id FROM revoked) AND state = 'pending'
+`
+
+type RevokePendingOrganizationInvitationsParams struct {
+	OrganizationID  pgtype.UUID
+	EmailNormalized string
+}
+
+func (q *Queries) RevokePendingOrganizationInvitations(ctx context.Context, arg RevokePendingOrganizationInvitationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePendingOrganizationInvitations, arg.OrganizationID, arg.EmailNormalized)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setInvitationRequester = `-- name: SetInvitationRequester :exec
+UPDATE organization_invitation SET requested_by = $2 WHERE id = $1
+`
+
+type SetInvitationRequesterParams struct {
+	ID          pgtype.UUID
+	RequestedBy pgtype.UUID
+}
+
+func (q *Queries) SetInvitationRequester(ctx context.Context, arg SetInvitationRequesterParams) error {
+	_, err := q.db.Exec(ctx, setInvitationRequester, arg.ID, arg.RequestedBy)
+	return err
 }

@@ -31,7 +31,7 @@ func TestMigrationsCanRunTwiceAndInstallRiver(t *testing.T) {
 		t.Fatal("could not configure test database pool")
 	}
 	defer pool.Close()
-	for _, table := range []string{"organization", "organization_invitation", "account", "organization_membership", "auth_session", "river_job", "goose_db_version"} {
+	for _, table := range []string{"organization", "organization_invitation", "invitation_delivery", "account", "organization_membership", "auth_session", "project", "project_member", "external_project_policy", "board_column", "work_item", "work_item_comment", "river_job", "goose_db_version"} {
 		var exists bool
 		err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists)
 		if err != nil || !exists {
@@ -98,7 +98,7 @@ func TestMigrationUpgradesExistingOrganizationDatabase(t *testing.T) {
 	if err := upgradePool.QueryRow(ctx, `SELECT timezone FROM organization WHERE id = $1`, orgID).Scan(&timezone); err != nil || timezone != "America/Campo_Grande" {
 		t.Fatalf("existing organization changed after upgrade: timezone=%q err=%v", timezone, err)
 	}
-	for _, table := range []string{"organization_invitation", "account", "organization_membership", "auth_session", "river_job"} {
+	for _, table := range []string{"organization_invitation", "invitation_delivery", "account", "organization_membership", "auth_session", "river_job"} {
 		var exists bool
 		if err := upgradePool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil || !exists {
 			t.Errorf("upgrade did not create %s: exists=%t err=%v", table, exists, err)

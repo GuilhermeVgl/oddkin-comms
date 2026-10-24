@@ -4,9 +4,11 @@ VALUES ($1, $2, $3, $4)
 RETURNING id, account_id, token_hash, csrf_hash, created_at, last_seen_at, expires_at, revoked_at;
 
 -- name: FindActiveSessionByTokenHash :one
-SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized
+SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized,
+       m.membership_kind, m.is_admin
 FROM auth_session AS s
 JOIN account AS a ON a.id = s.account_id
+JOIN organization_membership AS m ON m.account_id = a.id
 WHERE s.token_hash = $1
   AND s.revoked_at IS NULL
   AND s.expires_at > clock_timestamp()
