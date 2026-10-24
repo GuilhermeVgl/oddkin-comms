@@ -2119,6 +2119,135 @@ a:focus-visible {
   background-position: -116px -116px;
 }
 
+.overview-dashboard {
+  max-width: 1040px;
+}
+
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.overview-stats > div {
+  display: grid;
+  gap: 6px;
+  min-height: 128px;
+  padding: 18px;
+  border: 1px solid #d9d8d0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.overview-stats span,
+.overview-stats small {
+  color: #687168;
+  font-size: 0.76rem;
+}
+
+.overview-stats strong {
+  overflow: hidden;
+  color: #202321;
+  font-size: 1.1rem;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-dashboard__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+  gap: 14px;
+}
+
+.overview-card {
+  min-height: 270px;
+  padding: 21px;
+  border: 1px solid #d9d8d0;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.overview-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card h3 {
+  margin: 0;
+  color: #202321;
+  font-size: 1rem;
+}
+
+.overview-card h3 + p {
+  margin: 5px 0 0;
+  color: #687168;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.overview-card button {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border: 1px solid #63745a;
+  border-radius: 7px;
+  color: #fff;
+  background: #63745a;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.overview-project-list,
+.overview-task-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-project-list li,
+.overview-task-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 47px;
+  border-top: 1px solid #ecebe6;
+}
+
+.overview-project-list strong,
+.overview-task-list strong {
+  display: block;
+  overflow: hidden;
+  color: #202321;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-project-list span,
+.overview-task-list span,
+.overview-task-list time,
+.overview-card__footnote {
+  color: #687168;
+  font-size: 0.75rem;
+}
+
+.overview-task-list time {
+  flex: 0 0 auto;
+}
+
+.overview-card__footnote {
+  margin: 14px 0 0;
+}
+
 .workspace-view,
 .security-view {
   max-width: 1040px;
@@ -2239,5 +2368,10 @@ a:focus-visible {
 
   .overview-panel__art {
     display: none;
+  }
+
+  .overview-stats,
+  .overview-dashboard__grid {
+    grid-template-columns: 1fr;
   }
 }

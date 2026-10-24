@@ -22,6 +22,7 @@ import { DirectArea, NotificationsPanel } from "./Direct";
 import { E2EEProvider, useOptionalE2EE } from "./e2ee/E2EE";
 import { SecurityPanel } from "./e2ee/Security";
 import { EventsProvider } from "./events";
+import { OverviewArea } from "./Overview";
 import { SprintsArea } from "./Sprints";
 import "./styles.css";
 
@@ -522,29 +523,10 @@ function Workspace({
           </div>
         </header>
         {activeSection === "overview" ? (
-          <section className="overview-panel">
-            <div className="overview-panel__copy">
-              <span>Próximo passo</span>
-              <h2>Comece pelo primeiro projeto.</h2>
-              <p>
-                Todo trabalho bem feito começa com um mapa simples, uma equipe
-                por perto e um passo possível agora.
-              </p>
-              <button
-                onClick={() => setActiveSection("activities")}
-                type="button"
-              >
-                Abrir atividades
-              </button>
-            </div>
-            <div
-              aria-hidden="true"
-              className="explorer-pair overview-panel__art"
-            >
-              <span className="pixel-explorer pixel-explorer--bot" />
-              <span className="pixel-explorer pixel-explorer--scout" />
-            </div>
-          </section>
+          <OverviewArea
+            account={account}
+            onOpenActivities={() => setActiveSection("activities")}
+          />
         ) : null}
         {activeSection === "activities" ? (
           <ProjectsArea account={account} onCelebrate={setCelebration} />
