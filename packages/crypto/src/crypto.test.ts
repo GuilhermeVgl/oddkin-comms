@@ -142,6 +142,32 @@ describe("content envelopes", () => {
   });
 });
 
+describe("file streams", () => {
+  it("encrypts bounded chunks and detects a moved or modified stream", () => {
+    const key = c.generateDomainKey();
+    const writer = c.createFileEncryptor(key, context);
+    const first = writer.push(text("primeira parte "), false);
+    const last = writer.push(text("e a última"), true);
+    const reader = c.createFileDecryptor(key, writer.header, context);
+    expect(decode(reader.pull(first).plaintext)).toBe("primeira parte ");
+    const finished = reader.pull(last);
+    expect(decode(finished.plaintext)).toBe("e a última");
+    expect(finished.final).toBe(true);
+
+    const tampered = last.slice();
+    tampered[0] = (tampered[0] ?? 0) ^ 1;
+    const tamperedReader = c.createFileDecryptor(key, writer.header, context);
+    tamperedReader.pull(first);
+    expect(() => tamperedReader.pull(tampered)).toThrow(/decryption_failed/);
+
+    const movedReader = c.createFileDecryptor(key, writer.header, {
+      ...context,
+      resourceId: "another-file",
+    });
+    expect(() => movedReader.pull(first)).toThrow(/decryption_failed/);
+  });
+});
+
 describe("domain key envelopes", () => {
   function share() {
     const sender = c.generateDeviceKeys();

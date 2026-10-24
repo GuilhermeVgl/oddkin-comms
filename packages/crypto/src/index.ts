@@ -64,6 +64,16 @@ export type DeviceCertificateFields = {
 
 export type SealedDomainKey = { sealed: Uint8Array; signature: Uint8Array };
 
+export type FileEncryptor = {
+  /** Public stream header; it is bound into the signed file manifest. */
+  header: Uint8Array;
+  push(chunk: Uint8Array, final: boolean): Uint8Array;
+};
+
+export type FileDecryptor = {
+  pull(chunk: Uint8Array): { plaintext: Uint8Array; final: boolean };
+};
+
 export type CryptoOptions = {
   /** Replace the random source. Tests only: production uses libsodium's CSPRNG. */
   randomBytes?: (length: number) => Uint8Array;
@@ -128,6 +138,72 @@ export async function createCrypto(
 
   function generateDomainKey(): Uint8Array {
     return random(KEY_LENGTH);
+  }
+
+  /**
+   * Creates the sequential XChaCha20-Poly1305 stream used by a file worker.
+   * Every chunk is bound to the same record context. Callers persist the
+   * returned header in a signed manifest and send only the ciphertext chunks.
+   */
+  function createFileEncryptor(
+    key: Uint8Array,
+    context: ContentContext,
+  ): FileEncryptor {
+    if (key.length !== sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES)
+      throw new CryptoError("malformed");
+    const { state, header } =
+      sodium.crypto_secretstream_xchacha20poly1305_init_push(key);
+    const aad = contentAad(context);
+    let complete = false;
+    return {
+      header,
+      push(chunk, final) {
+        if (complete) throw new CryptoError("malformed");
+        complete = final;
+        return sodium.crypto_secretstream_xchacha20poly1305_push(
+          state,
+          chunk,
+          aad,
+          final
+            ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+            : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE,
+        );
+      },
+    };
+  }
+
+  /** Opens chunks in order and rejects moved, modified or truncated streams. */
+  function createFileDecryptor(
+    key: Uint8Array,
+    header: Uint8Array,
+    context: ContentContext,
+  ): FileDecryptor {
+    if (
+      key.length !== sodium.crypto_secretstream_xchacha20poly1305_KEYBYTES ||
+      header.length !== sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES
+    ) {
+      throw new CryptoError("malformed");
+    }
+    const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(
+      header,
+      key,
+    );
+    const aad = contentAad(context);
+    let complete = false;
+    return {
+      pull(chunk) {
+        if (complete) throw new CryptoError("malformed");
+        const opened = sodium.crypto_secretstream_xchacha20poly1305_pull(
+          state,
+          chunk,
+          aad,
+        );
+        if (opened === false) throw new CryptoError("decryption_failed");
+        complete =
+          opened.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL;
+        return { plaintext: opened.message, final: complete };
+      },
+    };
   }
 
   /** Signed by the trust root or an already authorized device of the same account. */
@@ -331,6 +407,8 @@ export async function createCrypto(
   return {
     generateDeviceKeys,
     generateDomainKey,
+    createFileEncryptor,
+    createFileDecryptor,
     signDeviceCertificate,
     verifyDeviceCertificate,
     fingerprint,
