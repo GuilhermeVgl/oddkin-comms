@@ -1,0 +1,20 @@
+{
+  "name": "@oddkin/crypto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "vectors": "node --experimental-strip-types scripts/generate-vectors.ts"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "0.8.4"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers": "0.8.2"
+  }
+}

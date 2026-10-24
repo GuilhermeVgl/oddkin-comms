@@ -8,13 +8,13 @@
   },
   "scripts": {
     "generate:api": "openapi-typescript api/openapi.yaml -o packages/api-client/src/openapi.gen.ts && prettier --write packages/api-client/src/openapi.gen.ts",
-    "typecheck": "corepack pnpm --filter @oddkin/api-client typecheck && corepack pnpm --filter @oddkin/web typecheck",
+    "typecheck": "corepack pnpm --filter @oddkin/api-client typecheck && corepack pnpm --filter @oddkin/crypto typecheck && corepack pnpm --filter @oddkin/web typecheck",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "coverage:check": "vitest run --coverage",
     "build": "corepack pnpm --filter @oddkin/web build",
-    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs vitest.config.ts playwright.config.ts .github/workflows apps/web packages/api-client tests/e2e scripts/*.mjs api/openapi.yaml compose.yaml infra/*.yaml README.md PRODUCT.md docs",
-    "lint": "eslint apps/web packages/api-client"
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs vitest.config.ts playwright.config.ts .github/workflows apps/web packages/api-client packages/crypto tests/e2e scripts/*.mjs api/openapi.yaml compose.yaml infra/*.yaml README.md PRODUCT.md docs",
+    "lint": "eslint apps/web packages/api-client packages/crypto"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

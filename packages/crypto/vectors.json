@@ -1,0 +1,36 @@
+{
+  "protocolVersion": 1,
+  "note": "Synthetic test vectors for the ODDKIN envelope protocol v1. Regenerate with UPDATE_VECTORS=1.",
+  "rootSignPublicKey": "YN27vklGmnZZv64LB7njGKfIxLFHvthU8anluOO0cQc",
+  "senderSignPublicKey": "XciEvma34Q7liCKclEyz0h-xOhWkwRwpP0MH7jBEFbw",
+  "deviceCertificate": {
+    "accountId": "00000000-0000-4000-8000-0000000000a1",
+    "deviceId": "00000000-0000-4000-8000-0000000000d1",
+    "signPublicKey": "FBvZ5gWOrxno41-kSS9mqxD77Ts6mYI51m1bkqOkZpc",
+    "boxPublicKey": "hSdSQ9R91we2Mv9_tUfZPQQFlfWpKbJTaHOWdbiIj2g",
+    "certificate": "Lfwgu1nA-4iwrzP06Mhv7o_SZPArJQDUZh0ubCry8luaHHlmLoAwi3f7WiP6CxH-h33rYU7mfJAWXTgwlcnjCw"
+  },
+  "contentEnvelope": {
+    "context": {
+      "organizationId": "00000000-0000-4000-8000-0000000000f1",
+      "domainId": "00000000-0000-4000-8000-0000000000e1",
+      "resourceId": "00000000-0000-4000-8000-0000000000b1",
+      "authorId": "00000000-0000-4000-8000-0000000000a1",
+      "revision": 7
+    },
+    "generation": 4,
+    "domainKey": "Ah336EeZ1Yu3Bd9MhzmEOjsttiZjZZNttKc6fRkAiUg",
+    "plaintext": "Título da atividade — ação",
+    "envelope": "AQEAAAAEVfOnjZMWGA3e5n65iy2tS580BpM-dmq91TuEz3lvvpZzx0Jg0yIVem-VKkAJWEvjM1ZaARkhseBi_dCjlqVmJSPthuYzW7sbW8QiPSa1EqLYLxLiLB--Y780Nnts91FZIzVQFbqUQ2FyCtN16A_6Cw7TKp9fnVF8vGZqsMx1TyuzChdW14QG"
+  },
+  "keyEnvelope": {
+    "domainId": "00000000-0000-4000-8000-0000000000e1",
+    "generation": 4,
+    "recipientDeviceId": "00000000-0000-4000-8000-0000000000d2",
+    "recipientBoxPublicKey": "vwG-eo55P6Fol-nFFcI1IahFzWIqwYYLkkMbANIlcWE",
+    "recipientBoxSecretKey": "iB4AszOwH12JwcDBxpd7QBX_Zv3yCaADewPkF1MTErc",
+    "domainKey": "Ah336EeZ1Yu3Bd9MhzmEOjsttiZjZZNttKc6fRkAiUg",
+    "sealed": "zC7uf7DEHL9NqFGTTQK80KeLGe_DMa1HMUDQpWwKInvjJQ4nyHt0SFNN1v7dJXwK9MhsiSk5uOeua7kEPMZ8Yp9H2Ix-KjQtn-a9096ElMoEknfx-4ND2WccP1gQnlFAMxbLnrCo806laPWrugwpLD5BmkLVl-zGIJYrQIBW1zLsEKfxPuCb9OTQpGkcHUaAixj8dfg",
+    "signature": "IHLw-MkyEmjBnRiARfMSid5_py2HcLPxtRwq99qFsRcBDFhgRrx9W6Li4K5nVjx7Grc5VV5nI_n-BpY_6OdQCQ"
+  }
+}
