@@ -110,9 +110,11 @@ function describe(error: unknown): string {
 export function ProjectsArea({
   account,
   onCelebrate,
+  view = "work",
 }: {
   account: CurrentAccount;
-  onCelebrate: (title: string) => void;
+  onCelebrate?: (title: string) => void;
+  view?: "work" | "chat" | "team";
 }) {
   const client = useMemo(() => createApiClient(""), []);
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -213,7 +215,7 @@ export function ProjectsArea({
             </button>
           ))}
         </div>
-        {account.isAdmin ? (
+        {account.isAdmin && view === "work" ? (
           <form className="inline-form" onSubmit={handleCreate}>
             <label className="visually-hidden" htmlFor="project-name">
               Nome do projeto
@@ -255,8 +257,9 @@ export function ProjectsArea({
           client={client}
           key={current.id}
           me={account.email}
-          onCelebrate={onCelebrate}
           project={current}
+          view={view}
+          {...(onCelebrate === undefined ? {} : { onCelebrate })}
         />
       ) : null}
     </section>
@@ -268,11 +271,13 @@ function ProjectView({
   project,
   me,
   onCelebrate,
+  view,
 }: {
   client: Client;
   project: Project;
   me: string;
-  onCelebrate: (title: string) => void;
+  onCelebrate?: (title: string) => void;
+  view: "work" | "chat" | "team";
 }) {
   const [columns, setColumns] = useState<BoardColumn[]>([]);
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -458,369 +463,385 @@ function ProjectView({
 
   return (
     <div className="project-view">
-      <section
-        aria-label="Criptografia do projeto"
-        className="project-encryption"
-      >
-        {encryptedProject ? (
-          <p>
-            Conteúdo deste projeto cifrado de ponta a ponta (atividades, épicos,
-            comentários e mensagens de canal).
-            {legacyCount > 0
-              ? ` Ainda há ${legacyCount} itens antigos em texto claro. `
-              : " "}
-            {legacyCount > 0 && unlocked ? (
-              <button
-                className="text-button"
-                onClick={() => void encryptLegacy()}
-                type="button"
-              >
-                Cifrar conteúdo antigo
-              </button>
-            ) : null}
-          </p>
-        ) : (
-          <p>
-            Este projeto ainda guarda o conteúdo em texto claro no servidor.{" "}
-            {unlocked ? (
-              <button
-                className="text-button"
-                onClick={() => void enableEncryption()}
-                type="button"
-              >
-                Ativar criptografia neste projeto
-              </button>
-            ) : (
-              "Desbloqueie a criptografia para ativá-la."
-            )}
-          </p>
-        )}
-        {encryptedProject && !unlocked ? (
-          <p className="form-message">
-            Desbloqueie a criptografia para ler e escrever.
-          </p>
-        ) : null}
-        <p aria-live="polite">{migration}</p>
-      </section>
-      <form
-        className="inline-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void run(async () => {
-            await createItem(client, csrfToken(), pc, project.id, {
-              kind: "task",
-              title,
-            });
-            setTitle("");
-          });
-        }}
-      >
-        <label className="visually-hidden" htmlFor="task-title">
-          Título da atividade
-        </label>
-        <input
-          id="task-title"
-          maxLength={200}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Nova atividade"
-          required
-          value={title}
-        />
-        <button type="submit">Adicionar</button>
-      </form>
-      <p aria-live="polite" className="form-message">
-        {message}
-      </p>
-
-      <section className="epics" aria-label="Épicos">
-        <h3>Épicos</h3>
-        {epics.length === 0 ? (
-          <p className="empty-note">Nenhum épico.</p>
-        ) : null}
-        <ul>
-          {epics.map((epic) => {
-            const linked = tasks.filter((task) => task.epicId === epic.id);
-            const finished = linked.filter(
-              (task) =>
-                columns.find((c) => c.id === task.columnId)?.category ===
-                "done",
-            ).length;
-            return (
-              <li key={epic.id}>
-                <strong>{epic.title}</strong>{" "}
-                <span>
-                  {finished}/{linked.length} atividades
-                  {epic.done ? " · concluído" : ""}
-                </span>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    void run(() =>
-                      updateEpic(client, csrfToken(), epic.id, {
-                        version: epic.version,
-                        done: !epic.done,
-                      }),
-                    )
-                  }
-                  type="button"
-                >
-                  {epic.done ? "Reabrir" : "Concluir"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <form
-          className="inline-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run(async () => {
-              await createEpicContent(
-                client,
-                csrfToken(),
-                pc,
-                project.id,
-                epicTitle,
-              );
-              setEpicTitle("");
-            });
-          }}
-        >
-          <label className="visually-hidden" htmlFor="epic-title">
-            Novo épico
-          </label>
-          <input
-            id="epic-title"
-            maxLength={200}
-            onChange={(event) => setEpicTitle(event.target.value)}
-            placeholder="Novo épico"
-            required
-            value={epicTitle}
-          />
-          <button type="submit">Criar épico</button>
-        </form>
-      </section>
-
-      <section className="activity-tools" aria-label="Visualização e filtros">
-        <div className="view-switch" role="group" aria-label="Visualização">
-          <button
-            aria-pressed={viewMode === "board"}
-            onClick={() => setViewMode("board")}
-            type="button"
+      {view === "work" ? (
+        <>
+          <section
+            aria-label="Criptografia do projeto"
+            className="project-encryption"
           >
-            Quadro
-          </button>
-          <button
-            aria-pressed={viewMode === "list"}
-            onClick={() => setViewMode("list")}
-            type="button"
-          >
-            Lista
-          </button>
-        </div>
-        <label className="activity-search" htmlFor="activity-search">
-          <span className="visually-hidden">
-            Buscar nas atividades carregadas
-          </span>
-          <input
-            id="activity-search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar atividades carregadas"
-            type="search"
-            value={query}
-          />
-        </label>
-        <label>
-          <span className="visually-hidden">Filtrar por prioridade</span>
-          <select
-            aria-label="Filtrar por prioridade"
-            onChange={(event) => setPriorityFilter(event.target.value)}
-            value={priorityFilter}
-          >
-            <option value="all">Todas prioridades</option>
-            {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="visually-hidden">Filtrar por coluna</span>
-          <select
-            aria-label="Filtrar por coluna"
-            onChange={(event) => setColumnFilter(event.target.value)}
-            value={columnFilter}
-          >
-            <option value="all">Todas colunas</option>
-            {columns.map((column) => (
-              <option key={column.id} value={column.id}>
-                {column.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p>
-          {visibleTasks.length} de {tasks.length} atividades carregadas
-        </p>
-      </section>
-
-      {viewMode === "board" ? (
-        <div className="board">
-          {columns.map((column) => {
-            const cards = visibleTasks.filter(
-              (task) => task.columnId === column.id,
-            );
-            return (
-              <section
-                aria-label={`${column.name}, ${cards.length} atividades`}
-                className="board-column"
-                key={column.id}
-              >
-                <h3>
-                  {column.name} <span>{cards.length}</span>
-                </h3>
-                {cards.length === 0 ? (
-                  <p className="empty-note">Vazio</p>
+            {encryptedProject ? (
+              <p>
+                Conteúdo deste projeto cifrado de ponta a ponta (atividades,
+                épicos, comentários e mensagens de canal).
+                {legacyCount > 0
+                  ? ` Ainda há ${legacyCount} itens antigos em texto claro. `
+                  : " "}
+                {legacyCount > 0 && unlocked ? (
+                  <button
+                    className="text-button"
+                    onClick={() => void encryptLegacy()}
+                    type="button"
+                  >
+                    Cifrar conteúdo antigo
+                  </button>
                 ) : null}
-                {cards.map((card) => {
-                  const subs = subtasksOf(card.id);
-                  const finished = subs.filter(
-                    (sub) =>
-                      columns.find((c) => c.id === sub.columnId)?.category ===
-                      "done",
-                  ).length;
-                  return (
-                    <article className="card" key={card.id}>
-                      <button
-                        className="card__title"
-                        onClick={() => setOpenId(card.id)}
-                        type="button"
-                      >
-                        {card.title}
-                      </button>
-                      <p className="card__meta">
-                        {PRIORITY_LABEL[card.priority]}
-                        {subs.length > 0
-                          ? ` · ${finished}/${subs.length} subtarefas`
-                          : ""}
-                      </p>
-                      <label
-                        className="visually-hidden"
-                        htmlFor={`move-${card.id}`}
-                      >
-                        Mover {card.title}
-                      </label>
-                      <select
-                        id={`move-${card.id}`}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          const justFinished =
-                            columns.find((column) => column.id === next)
-                              ?.category === "done" &&
-                            columns.find(
-                              (column) => column.id === card.columnId,
-                            )?.category !== "done";
-                          void run(async () => {
-                            await updateWorkItem(client, csrfToken(), card.id, {
-                              version: card.version,
-                              columnId: next,
-                              completeSubtasks: true,
-                            });
-                            if (justFinished)
-                              onCelebrate("Atividade concluída!");
-                          });
-                        }}
-                        value={card.columnId}
-                      >
-                        {columns.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.name}
-                          </option>
-                        ))}
-                      </select>
-                    </article>
-                  );
-                })}
-              </section>
-            );
-          })}
-        </div>
-      ) : (
-        <section className="activity-list" aria-label="Lista de atividades">
-          {visibleTasks.length === 0 ? (
-            <p className="empty-note">
-              Nenhuma atividade carregada corresponde aos filtros.
-            </p>
-          ) : null}
-          {visibleTasks.map((task) => {
-            const subs = subtasksOf(task.id);
-            const column = columns.find((entry) => entry.id === task.columnId);
-            return (
-              <article className="activity-list__item" key={task.id}>
-                <button onClick={() => setOpenId(task.id)} type="button">
-                  <strong>{task.title}</strong>
-                  <span>
-                    {column?.name ?? "Sem coluna"} ·{" "}
-                    {PRIORITY_LABEL[task.priority]}
-                    {subs.length > 0 ? ` · ${subs.length} subtarefas` : ""}
-                  </span>
-                </button>
-                <label
-                  className="visually-hidden"
-                  htmlFor={`list-move-${task.id}`}
-                >
-                  Mover {task.title}
-                </label>
-                <select
-                  id={`list-move-${task.id}`}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    void run(() =>
-                      updateWorkItem(client, csrfToken(), task.id, {
-                        version: task.version,
-                        columnId: next,
-                        completeSubtasks: true,
-                      }),
-                    );
-                  }}
-                  value={task.columnId}
-                >
-                  {columns.map((columnOption) => (
-                    <option key={columnOption.id} value={columnOption.id}>
-                      {columnOption.name}
-                    </option>
-                  ))}
-                </select>
-              </article>
-            );
-          })}
-        </section>
-      )}
+              </p>
+            ) : (
+              <p>
+                Este projeto ainda guarda o conteúdo em texto claro no servidor.{" "}
+                {unlocked ? (
+                  <button
+                    className="text-button"
+                    onClick={() => void enableEncryption()}
+                    type="button"
+                  >
+                    Ativar criptografia neste projeto
+                  </button>
+                ) : (
+                  "Desbloqueie a criptografia para ativá-la."
+                )}
+              </p>
+            )}
+            {encryptedProject && !unlocked ? (
+              <p className="form-message">
+                Desbloqueie a criptografia para ler e escrever.
+              </p>
+            ) : null}
+            <p aria-live="polite">{migration}</p>
+          </section>
+          <form
+            className="inline-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(async () => {
+                await createItem(client, csrfToken(), pc, project.id, {
+                  kind: "task",
+                  title,
+                });
+                setTitle("");
+              });
+            }}
+          >
+            <label className="visually-hidden" htmlFor="task-title">
+              Título da atividade
+            </label>
+            <input
+              id="task-title"
+              maxLength={200}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Nova atividade"
+              required
+              value={title}
+            />
+            <button type="submit">Adicionar</button>
+          </form>
+          <p aria-live="polite" className="form-message">
+            {message}
+          </p>
 
-      {open !== null ? (
-        <ItemDetail
+          <section className="epics" aria-label="Épicos">
+            <h3>Épicos</h3>
+            {epics.length === 0 ? (
+              <p className="empty-note">Nenhum épico.</p>
+            ) : null}
+            <ul>
+              {epics.map((epic) => {
+                const linked = tasks.filter((task) => task.epicId === epic.id);
+                const finished = linked.filter(
+                  (task) =>
+                    columns.find((c) => c.id === task.columnId)?.category ===
+                    "done",
+                ).length;
+                return (
+                  <li key={epic.id}>
+                    <strong>{epic.title}</strong>{" "}
+                    <span>
+                      {finished}/{linked.length} atividades
+                      {epic.done ? " · concluído" : ""}
+                    </span>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        void run(() =>
+                          updateEpic(client, csrfToken(), epic.id, {
+                            version: epic.version,
+                            done: !epic.done,
+                          }),
+                        )
+                      }
+                      type="button"
+                    >
+                      {epic.done ? "Reabrir" : "Concluir"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <form
+              className="inline-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void run(async () => {
+                  await createEpicContent(
+                    client,
+                    csrfToken(),
+                    pc,
+                    project.id,
+                    epicTitle,
+                  );
+                  setEpicTitle("");
+                });
+              }}
+            >
+              <label className="visually-hidden" htmlFor="epic-title">
+                Novo épico
+              </label>
+              <input
+                id="epic-title"
+                maxLength={200}
+                onChange={(event) => setEpicTitle(event.target.value)}
+                placeholder="Novo épico"
+                required
+                value={epicTitle}
+              />
+              <button type="submit">Criar épico</button>
+            </form>
+          </section>
+
+          <section
+            className="activity-tools"
+            aria-label="Visualização e filtros"
+          >
+            <div className="view-switch" role="group" aria-label="Visualização">
+              <button
+                aria-pressed={viewMode === "board"}
+                onClick={() => setViewMode("board")}
+                type="button"
+              >
+                Quadro
+              </button>
+              <button
+                aria-pressed={viewMode === "list"}
+                onClick={() => setViewMode("list")}
+                type="button"
+              >
+                Lista
+              </button>
+            </div>
+            <label className="activity-search" htmlFor="activity-search">
+              <span className="visually-hidden">
+                Buscar nas atividades carregadas
+              </span>
+              <input
+                id="activity-search"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar atividades carregadas"
+                type="search"
+                value={query}
+              />
+            </label>
+            <label>
+              <span className="visually-hidden">Filtrar por prioridade</span>
+              <select
+                aria-label="Filtrar por prioridade"
+                onChange={(event) => setPriorityFilter(event.target.value)}
+                value={priorityFilter}
+              >
+                <option value="all">Todas prioridades</option>
+                {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="visually-hidden">Filtrar por coluna</span>
+              <select
+                aria-label="Filtrar por coluna"
+                onChange={(event) => setColumnFilter(event.target.value)}
+                value={columnFilter}
+              >
+                <option value="all">Todas colunas</option>
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              {visibleTasks.length} de {tasks.length} atividades carregadas
+            </p>
+          </section>
+
+          {viewMode === "board" ? (
+            <div className="board">
+              {columns.map((column) => {
+                const cards = visibleTasks.filter(
+                  (task) => task.columnId === column.id,
+                );
+                return (
+                  <section
+                    aria-label={`${column.name}, ${cards.length} atividades`}
+                    className="board-column"
+                    key={column.id}
+                  >
+                    <h3>
+                      {column.name} <span>{cards.length}</span>
+                    </h3>
+                    {cards.length === 0 ? (
+                      <p className="empty-note">Vazio</p>
+                    ) : null}
+                    {cards.map((card) => {
+                      const subs = subtasksOf(card.id);
+                      const finished = subs.filter(
+                        (sub) =>
+                          columns.find((c) => c.id === sub.columnId)
+                            ?.category === "done",
+                      ).length;
+                      return (
+                        <article className="card" key={card.id}>
+                          <button
+                            className="card__title"
+                            onClick={() => setOpenId(card.id)}
+                            type="button"
+                          >
+                            {card.title}
+                          </button>
+                          <p className="card__meta">
+                            {PRIORITY_LABEL[card.priority]}
+                            {subs.length > 0
+                              ? ` · ${finished}/${subs.length} subtarefas`
+                              : ""}
+                          </p>
+                          <label
+                            className="visually-hidden"
+                            htmlFor={`move-${card.id}`}
+                          >
+                            Mover {card.title}
+                          </label>
+                          <select
+                            id={`move-${card.id}`}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              const justFinished =
+                                columns.find((column) => column.id === next)
+                                  ?.category === "done" &&
+                                columns.find(
+                                  (column) => column.id === card.columnId,
+                                )?.category !== "done";
+                              void run(async () => {
+                                await updateWorkItem(
+                                  client,
+                                  csrfToken(),
+                                  card.id,
+                                  {
+                                    version: card.version,
+                                    columnId: next,
+                                    completeSubtasks: true,
+                                  },
+                                );
+                                if (justFinished)
+                                  onCelebrate?.("Atividade concluída!");
+                              });
+                            }}
+                            value={card.columnId}
+                          >
+                            {columns.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name}
+                              </option>
+                            ))}
+                          </select>
+                        </article>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <section className="activity-list" aria-label="Lista de atividades">
+              {visibleTasks.length === 0 ? (
+                <p className="empty-note">
+                  Nenhuma atividade carregada corresponde aos filtros.
+                </p>
+              ) : null}
+              {visibleTasks.map((task) => {
+                const subs = subtasksOf(task.id);
+                const column = columns.find(
+                  (entry) => entry.id === task.columnId,
+                );
+                return (
+                  <article className="activity-list__item" key={task.id}>
+                    <button onClick={() => setOpenId(task.id)} type="button">
+                      <strong>{task.title}</strong>
+                      <span>
+                        {column?.name ?? "Sem coluna"} ·{" "}
+                        {PRIORITY_LABEL[task.priority]}
+                        {subs.length > 0 ? ` · ${subs.length} subtarefas` : ""}
+                      </span>
+                    </button>
+                    <label
+                      className="visually-hidden"
+                      htmlFor={`list-move-${task.id}`}
+                    >
+                      Mover {task.title}
+                    </label>
+                    <select
+                      id={`list-move-${task.id}`}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        void run(() =>
+                          updateWorkItem(client, csrfToken(), task.id, {
+                            version: task.version,
+                            columnId: next,
+                            completeSubtasks: true,
+                          }),
+                        );
+                      }}
+                      value={task.columnId}
+                    >
+                      {columns.map((columnOption) => (
+                        <option key={columnOption.id} value={columnOption.id}>
+                          {columnOption.name}
+                        </option>
+                      ))}
+                    </select>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+
+          {open !== null ? (
+            <ItemDetail
+              client={client}
+              columns={columns}
+              epics={epics}
+              item={open}
+              pc={pc}
+              status={contentStatus.get(open.id) ?? "plain"}
+              onClose={() => setOpenId(null)}
+              onRun={run}
+              subtasks={subtasksOf(open.id)}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {view === "chat" ? (
+        <ProjectChat
           client={client}
-          columns={columns}
-          epics={epics}
-          item={open}
-          pc={pc}
-          status={contentStatus.get(open.id) ?? "plain"}
-          onClose={() => setOpenId(null)}
-          onRun={run}
-          subtasks={subtasksOf(open.id)}
+          members={chatMembers}
+          me={me}
+          moderator={project.isManager}
+          projectId={project.id}
         />
       ) : null}
 
-      <ProjectChat
-        client={client}
-        members={chatMembers}
-        me={me}
-        moderator={project.isManager}
-        projectId={project.id}
-      />
-
-      {project.isManager ? (
+      {view === "team" && project.isManager ? (
         <ProjectSettings client={client} project={project} />
       ) : null}
     </div>
