@@ -32,3 +32,22 @@ test("signs in, restores the session and signs out", async ({ page }) => {
     page.getByRole("heading", { name: "Entre no seu espaço" }),
   ).toBeVisible();
 });
+
+test("administrator creates an organization invitation", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("E-mail").fill("admin@example.test");
+  await page.getByLabel("Senha").fill("synthetic-admin-password");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(
+    page.getByRole("heading", { name: "O espaço está pronto." }),
+  ).toBeVisible();
+
+  await page
+    .getByLabel("E-mail", { exact: true })
+    .fill("new-member@example.test");
+  await page.getByLabel("Tipo de acesso").selectOption("external");
+  await page.getByRole("button", { name: "Criar convite" }).click();
+  await expect(
+    page.getByText("Convite criado e enfileirado para entrega."),
+  ).toBeVisible();
+});

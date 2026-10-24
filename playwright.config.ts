@@ -23,7 +23,10 @@ export default defineConfig({
       command: "go run ./cmd/api",
       url: "http://127.0.0.1:8080/api/v1/health/live",
       reuseExistingServer: false,
-      env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
+      env: {
+        DATABASE_URL: process.env.TEST_DATABASE_URL,
+        INVITATION_DELIVERY_KEY: "synthetic-e2e-invite-key-0000001",
+      },
       timeout: 120_000,
     },
     {

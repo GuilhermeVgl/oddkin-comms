@@ -66,6 +66,13 @@ requireMinimumVersion(
   command("docker", ["version", "--format", "{{.Server.Version}}"]),
   readFileSync(".docker-version", "utf8").trim(),
 );
+try {
+  process.stdout.write(
+    `ripgrep: ${command("rg", ["--version"]).split("\n")[0]}\n`,
+  );
+} catch {
+  throw new Error("ripgrep (rg) is required by the gate scripts; install it");
+}
 const compose = command("docker", ["compose", "version", "--short"]).replace(
   /-desktop\.\d+$/,
   "",
