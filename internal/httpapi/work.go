@@ -873,6 +873,13 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	if err == nil {
 		err = notifyAssignment(ctx, q, updated, session.AccountID, item.AssigneeID)
 	}
+	if err == nil && updated.AssigneeID.Valid && updated.AssigneeID != item.AssigneeID {
+		// Whoever takes an activity follows it from then on.
+		err = q.FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: updated.ID, AccountID: updated.AssigneeID})
+	}
+	if err == nil && moving {
+		err = notifyFollowers(ctx, q, updated, session.AccountID)
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -1069,6 +1076,9 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	// Commenting follows the activity; announcing it is best effort, the comment is already saved.
+	_ = q.FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: item.ID, AccountID: session.AccountID})
+	_ = notifyFollowers(ctx, q, item, session.AccountID)
 	response := gen.WorkItemComment{Id: fromPG(comment.ID), AuthorEmail: session.EmailNormalized, Body: comment.Body, CreatedAt: comment.CreatedAt.Time, Encrypted: comment.Encrypted}
 	if comment.Encrypted {
 		response.BodyEnc = blob(comment.BodyEnc)

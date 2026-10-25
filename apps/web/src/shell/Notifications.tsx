@@ -13,6 +13,7 @@ const LABEL: Record<Notification["kind"], string> = {
   assignment: "Uma atividade foi atribuída a você",
   call_invite: "Você foi chamado para uma conversa por voz e vídeo",
   recovery_access: "A administração restaurou seu acesso ao histórico cifrado",
+  followed_update: "Uma atividade que você segue foi atualizada",
   direct_message: "Nova mensagem direta",
 };
 
@@ -21,6 +22,7 @@ const ICON: Record<Notification["kind"], IconName> = {
   assignment: "board",
   call_invite: "video",
   recovery_access: "key",
+  followed_update: "eye",
   direct_message: "chat",
 };
 
@@ -44,6 +46,7 @@ export function NotificationsMenu({
     if (item.projectId !== undefined) setCurrentProjectId(item.projectId);
     switch (item.kind) {
       case "assignment":
+      case "followed_update":
         go(`work/${item.resourceId}`);
         break;
       case "mention":

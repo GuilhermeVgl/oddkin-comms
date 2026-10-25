@@ -106,7 +106,7 @@ func (h *healthHandler) ListNotifications(w http.ResponseWriter, r *http.Request
 	notifications := make([]gen.Notification, 0, len(rows))
 	for _, row := range rows {
 		permission := work.ChatRead
-		if row.Kind == "assignment" {
+		if row.Kind == "assignment" || row.Kind == "followed_update" {
 			permission = work.WorkRead
 		}
 		visible, authErr := canReceive(ctx, q, session.AccountID, row.ProjectID, row.ConversationID, permission)
@@ -413,4 +413,29 @@ func notifyAssignment(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, 
 		return nil
 	}
 	return notifyAccount(ctx, q, item.AssigneeID, "assignment", item.ID, item.ProjectID, pgtype.UUID{})
+}
+
+// notifyFollowers tells everyone following an activity, except the person who
+// acted, that it changed. Someone who lost access to the project is skipped.
+func notifyFollowers(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, actor pgtype.UUID) error {
+	followers, err := q.ListWorkItemFollowers(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	for _, follower := range followers {
+		if follower == actor {
+			continue
+		}
+		allowed, accessErr := canReceive(ctx, q, follower, item.ProjectID, pgtype.UUID{}, work.WorkRead)
+		if accessErr != nil {
+			return accessErr
+		}
+		if !allowed {
+			continue
+		}
+		if err = notifyAccount(ctx, q, follower, "followed_update", item.ID, item.ProjectID, pgtype.UUID{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

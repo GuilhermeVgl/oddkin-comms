@@ -1,5 +1,7 @@
 import {
+  getFollowing,
   listComments,
+  setFollowing,
   type WorkItem,
   type WorkItemComment,
 } from "@oddkin/api-client";
@@ -54,6 +56,7 @@ export function Drawer({
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [comment, setComment] = useState("");
   const [subtask, setSubtask] = useState("");
+  const [following, setFollowingState] = useState(false);
   const more = useMenu();
   const status = state.status.get(item.id) ?? "plain";
   const readable = status === "plain" || status === "ok";
@@ -74,6 +77,16 @@ export function Drawer({
   }, [item.id, item.version, item.title, item.description]);
 
   useEffect(() => close.current?.focus(), [item.id]);
+
+  useEffect(() => {
+    let alive = true;
+    getFollowing(client, item.id)
+      .then((value) => alive && setFollowingState(value))
+      .catch(() => alive && setFollowingState(false));
+    return () => {
+      alive = false;
+    };
+  }, [client, item.id]);
 
   const load = useCallback(async () => {
     try {
@@ -227,6 +240,31 @@ export function Drawer({
             {item.id.slice(0, 8).toUpperCase()}
           </span>
           <span className="grow" />
+          <button
+            aria-pressed={following}
+            className="btn sm"
+            onClick={() => {
+              const next = !following;
+              setFollowingState(next);
+              setFollowing(client, csrfToken(), item.id, next)
+                .then(() =>
+                  toast(
+                    next
+                      ? "Você receberá eventos deste item dentro do app."
+                      : "Você deixou de seguir.",
+                    { icon: "bell" },
+                  ),
+                )
+                .catch(() => {
+                  setFollowingState(!next);
+                  toast("Não foi possível alterar agora.", { kind: "err" });
+                });
+            }}
+            type="button"
+          >
+            <Icon name="bell" size="sm" />
+            {following ? "Seguindo" : "Seguir"}
+          </button>
           <button
             aria-label="Mais ações"
             className="iconbtn"

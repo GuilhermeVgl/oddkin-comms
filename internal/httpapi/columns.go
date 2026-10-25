@@ -11,6 +11,7 @@ import (
 
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
 	sqlc "github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -313,6 +314,75 @@ func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Reque
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *healthHandler) followAccess(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId, write bool) (sqlc.WorkItem, pgtype.UUID, bool) {
+	var (
+		session sqlc.FindActiveSessionByTokenHashRow
+		ok      bool
+	)
+	if write {
+		session, ok = h.mutator(w, r)
+	} else {
+		session, ok = h.reader(w, r)
+	}
+	if !ok {
+		return sqlc.WorkItem{}, pgtype.UUID{}, false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	item, access, ok := h.workItemAccess(ctx, w, sqlc.New(h.auth.pool), workItemId, session.AccountID)
+	if !ok {
+		return sqlc.WorkItem{}, pgtype.UUID{}, false
+	}
+	if !access.access.Can(work.WorkRead) {
+		w.WriteHeader(http.StatusForbidden)
+		return sqlc.WorkItem{}, pgtype.UUID{}, false
+	}
+	return item, session.AccountID, true
+}
+
+func (h *healthHandler) GetFollowing(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	item, account, ok := h.followAccess(w, r, workItemId, false)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	following, err := sqlc.New(h.auth.pool).IsFollowingWorkItem(ctx, sqlc.IsFollowingWorkItemParams{WorkItemID: item.ID, AccountID: account})
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.Following{Following: following})
+}
+
+func (h *healthHandler) FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	item, account, ok := h.followAccess(w, r, workItemId, true)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := sqlc.New(h.auth.pool).FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: item.ID, AccountID: account}); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *healthHandler) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	item, account, ok := h.followAccess(w, r, workItemId, true)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := sqlc.New(h.auth.pool).UnfollowWorkItem(ctx, sqlc.UnfollowWorkItemParams{WorkItemID: item.ID, AccountID: account}); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}

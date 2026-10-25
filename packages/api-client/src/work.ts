@@ -234,6 +234,37 @@ export async function removeProjectMember(
     throw new ApiStatusError(response.status, "removeProjectMember");
 }
 
+export async function getFollowing(
+  client: Client,
+  workItemId: string,
+): Promise<boolean> {
+  const { data, response } = await client.GET(
+    "/api/v1/work-items/{workItemId}/followers/me",
+    { params: { path: { workItemId } } },
+  );
+  return ensure("getFollowing", response, data, 200).following;
+}
+
+export async function setFollowing(
+  client: Client,
+  token: string,
+  workItemId: string,
+  following: boolean,
+): Promise<void> {
+  const options = {
+    params: { path: { workItemId } },
+    headers: csrf(token),
+  };
+  const { response } = following
+    ? await client.PUT("/api/v1/work-items/{workItemId}/followers/me", options)
+    : await client.DELETE(
+        "/api/v1/work-items/{workItemId}/followers/me",
+        options,
+      );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setFollowing");
+}
+
 export async function getExternalPolicy(
   client: Client,
   projectId: string,

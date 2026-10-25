@@ -239,6 +239,51 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		t.Fatalf("order: %v", got)
 	}
 
+	// Following: whoever can read an activity can follow it, and followers hear about moves.
+	following := "/api/v1/work-items/" + moved[0].Id + "/followers/me"
+	var state struct{ Following bool }
+	if code := outsider.do(http.MethodPut, following, "", nil); code != http.StatusNotFound {
+		t.Fatalf("outsider follows: %d", code)
+	}
+	if code := external.do(http.MethodGet, following, "", &state); code != http.StatusOK || state.Following {
+		t.Fatalf("external before following: %d %v", code, state)
+	}
+	if code := external.do(http.MethodPut, following, "", nil); code != http.StatusNoContent {
+		t.Fatalf("external follows: %d", code)
+	}
+	if code := external.do(http.MethodGet, following, "", &state); code != http.StatusOK || !state.Following {
+		t.Fatalf("external after following: %d %v", code, state)
+	}
+	if code := member.do(http.MethodPut, following, "", nil); code != http.StatusNoContent {
+		t.Fatalf("member follows: %d", code)
+	}
+	if code := admin.do(http.MethodPatch, "/api/v1/work-items/"+moved[0].Id, fmt.Sprintf(`{"version":%d,"columnId":%q}`, moved[0].Version, todo.Id), nil); code != http.StatusOK {
+		t.Fatalf("move: %d", code)
+	}
+	countUpdates := func(who *workClient) int {
+		var list []struct{ Kind string }
+		who.do(http.MethodGet, "/api/v1/notifications", "", &list)
+		total := 0
+		for _, entry := range list {
+			if entry.Kind == "followed_update" {
+				total++
+			}
+		}
+		return total
+	}
+	if countUpdates(member) != 1 || countUpdates(external) != 1 {
+		t.Fatalf("followers must hear about the move: member=%d external=%d", countUpdates(member), countUpdates(external))
+	}
+	if countUpdates(admin) != 0 {
+		t.Fatal("the person who moved it is not told")
+	}
+	if code := external.do(http.MethodDelete, following, "", nil); code != http.StatusNoContent {
+		t.Fatalf("unfollow: %d", code)
+	}
+	if code := external.do(http.MethodGet, following, "", &state); code != http.StatusOK || state.Following {
+		t.Fatalf("after unfollowing: %d %v", code, state)
+	}
+
 	// Removing a member ends their access at once and frees their assignments.
 	var members []struct {
 		AccountId string

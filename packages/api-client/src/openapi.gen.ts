@@ -337,6 +337,27 @@ export interface paths {
     patch: operations["updateWorkItem"];
     trace?: never;
   };
+  "/api/v1/work-items/{workItemId}/followers/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    /** Whether the caller follows the activity */
+    get: operations["getFollowing"];
+    /** Follow the activity; moves and comments are announced inside the app */
+    put: operations["followWorkItem"];
+    post?: never;
+    /** Stop following the activity */
+    delete: operations["unfollowWorkItem"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-items/{workItemId}/comments": {
     parameters: {
       query?: never;
@@ -1644,6 +1665,9 @@ export interface components {
       token: string;
       password: string;
     };
+    Following: {
+      following: boolean;
+    };
     BoardColumn: {
       /** Format: uuid */
       id: string;
@@ -1961,7 +1985,8 @@ export interface components {
         | "assignment"
         | "direct_message"
         | "call_invite"
-        | "recovery_access";
+        | "recovery_access"
+        | "followed_update";
       /** Format: uuid */
       resourceId: string;
       /** Format: uuid */
@@ -3476,6 +3501,131 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ApiError"];
         };
+      };
+    };
+  };
+  getFollowing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Following state */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Following"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The profile cannot read activities */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  followWorkItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Following */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or permission rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  unfollowWorkItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Not following */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

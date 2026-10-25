@@ -417,3 +417,9 @@ type WorkItemComment struct {
 	BodyEnc               []byte
 	ContentSignerDeviceID pgtype.UUID
 }
+
+type WorkItemFollower struct {
+	WorkItemID pgtype.UUID
+	AccountID  pgtype.UUID
+	CreatedAt  pgtype.Timestamptz
+}

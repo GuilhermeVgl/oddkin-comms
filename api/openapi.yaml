@@ -584,6 +584,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/work-items/{workItemId}/followers/me:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    get:
+      operationId: getFollowing
+      summary: Whether the caller follows the activity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Following state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Following"
+        "401":
+          description: No active session
+        "403":
+          description: The profile cannot read activities
+        "404":
+          description: Unknown or inaccessible activity
+    put:
+      operationId: followWorkItem
+      summary: Follow the activity; moves and comments are announced inside the app
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Following
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or permission rejected
+        "404":
+          description: Unknown or inaccessible activity
+    delete:
+      operationId: unfollowWorkItem
+      summary: Stop following the activity
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Not following
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown or inaccessible activity
   /api/v1/work-items/{workItemId}/comments:
     parameters:
       - $ref: "#/components/parameters/WorkItemId"
@@ -2618,6 +2667,12 @@ components:
       properties:
         token: { type: string, minLength: 43, maxLength: 43 }
         password: { type: string, minLength: 12, maxLength: 1024 }
+    Following:
+      type: object
+      required: [following]
+      additionalProperties: false
+      properties:
+        following: { type: boolean }
     BoardColumn:
       type: object
       required: [id, name, position, category]
@@ -2999,6 +3054,7 @@ components:
                 direct_message,
                 call_invite,
                 recovery_access,
+                followed_update,
               ],
           }
         resourceId: { type: string, format: uuid }

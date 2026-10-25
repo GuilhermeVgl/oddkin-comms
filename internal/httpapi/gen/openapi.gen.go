@@ -548,6 +548,7 @@ const (
 	Assignment     NotificationKind = "assignment"
 	CallInvite     NotificationKind = "call_invite"
 	DirectMessage  NotificationKind = "direct_message"
+	FollowedUpdate NotificationKind = "followed_update"
 	Mention        NotificationKind = "mention"
 	RecoveryAccess NotificationKind = "recovery_access"
 )
@@ -560,6 +561,8 @@ func (e NotificationKind) Valid() bool {
 	case CallInvite:
 		return true
 	case DirectMessage:
+		return true
+	case FollowedUpdate:
 		return true
 	case Mention:
 		return true
@@ -1141,6 +1144,11 @@ type ExternalPermission string
 type ExternalPolicy struct {
 	Permissions []ExternalPermission `json:"permissions"`
 	Version     int                  `json:"version"`
+}
+
+// Following defines model for Following.
+type Following struct {
+	Following bool `json:"following"`
 }
 
 // GrantEnvelopesRequest defines model for GrantEnvelopesRequest.
@@ -2083,6 +2091,15 @@ type ServerInterface interface {
 	// CreateWorkItemComment Add a comment
 	// (POST /api/v1/work-items/{workItemId}/comments)
 	CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// UnfollowWorkItem Stop following the activity
+	// (DELETE /api/v1/work-items/{workItemId}/followers/me)
+	UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// GetFollowing Whether the caller follows the activity
+	// (GET /api/v1/work-items/{workItemId}/followers/me)
+	GetFollowing(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// FollowWorkItem Follow the activity; moves and comments are announced inside the app
+	// (PUT /api/v1/work-items/{workItemId}/followers/me)
+	FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -4447,6 +4464,84 @@ func (siw *ServerInterfaceWrapper) CreateWorkItemComment(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// UnfollowWorkItem operation middleware
+func (siw *ServerInterfaceWrapper) UnfollowWorkItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnfollowWorkItem(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFollowing operation middleware
+func (siw *ServerInterfaceWrapper) GetFollowing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFollowing(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FollowWorkItem operation middleware
+func (siw *ServerInterfaceWrapper) FollowWorkItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FollowWorkItem(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4592,6 +4687,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.ListWorkItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.CreateWorkItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/work-items/{workItemId}", wrapper.UpdateWorkItem)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.UnfollowWorkItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.GetFollowing)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.FollowWorkItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.ListWorkItemComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.CreateWorkItemComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.ListConversations)
