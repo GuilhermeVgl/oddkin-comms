@@ -13,7 +13,6 @@ import (
 
 	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/installation"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,11 +33,14 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if databaseURL == "" {
 		return errors.New("DATABASE_URL is required")
 	}
-	// One process owns the schema: it migrates under an advisory lock, then
-	// creates the first administrator when asked to. Set AUTO_MIGRATE=false to
-	// run `go run ./cmd/migrate` by hand instead.
+	// The migration step also creates the first administrator, so there is no
+	// separate bootstrap. Set AUTO_MIGRATE=false to run `go run ./cmd/migrate` by hand.
 	if os.Getenv("AUTO_MIGRATE") != "false" {
-		if err := migration.Run(ctx, databaseURL); err != nil {
+		admin, err := migration.AdminFromEnv()
+		if err != nil {
+			return err
+		}
+		if err := migration.RunWithAdmin(ctx, databaseURL, admin); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
 		logger.Info("migrations applied")
@@ -48,9 +50,6 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return errors.New("DATABASE_URL is invalid")
 	}
 	defer pool.Close()
-	if err := bootstrapAdministrator(ctx, logger, pool); err != nil {
-		return err
-	}
 
 	address := os.Getenv("HTTP_ADDR")
 	if address == "" {
@@ -124,32 +123,6 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		return nil
 	}
-}
-
-// bootstrapAdministrator creates the first administrator from the environment
-// the first time the installation starts; later starts leave it alone.
-func bootstrapAdministrator(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
-	email, password := os.Getenv("ODDKIN_ADMIN_EMAIL"), os.Getenv("ODDKIN_ADMIN_PASSWORD")
-	if email == "" && password == "" {
-		return nil
-	}
-	if email == "" || password == "" {
-		return errors.New("ODDKIN_ADMIN_EMAIL and ODDKIN_ADMIN_PASSWORD are required together")
-	}
-	timezone := os.Getenv("ODDKIN_TIMEZONE")
-	if timezone == "" {
-		timezone = "UTC"
-	}
-	err := installation.Bootstrap(ctx, pool, email, password, timezone)
-	switch {
-	case err == nil:
-		logger.Info("installation bootstrap completed")
-	case errors.Is(err, installation.ErrAlreadyInitialized):
-		// Nothing to do: the administrator already exists.
-	default:
-		return fmt.Errorf("installation bootstrap failed: %w", err)
-	}
-	return nil
 }
 
 // ensureBucket is for local development against MinIO, where the bucket does

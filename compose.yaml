@@ -1,6 +1,6 @@
 # Local development. Five pieces, each with a reason to exist:
 #   postgres  the database (and the job queue: River lives in it)
-#   api       one Go process: HTTP, migrations, first administrator, background jobs
+#   api       one Go process: HTTP, migrations (which also create the first administrator), background jobs
 #   livekit   audio and video for calls (single node, no Redis)
 #   storage   MinIO, a local stand-in for the Cloudflare R2 bucket
 #   web       Vite with hot reload

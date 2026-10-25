@@ -21,7 +21,7 @@ Cinco serviços no Compose de desenvolvimento:
 | `web`      | Vite com hot reload                                                                |
 
 - **Migrations**: a API as aplica ao iniciar, sob o mesmo lock consultivo do `cmd/migrate`, que continua existindo como utilitário. `AUTO_MIGRATE=false` desliga. Com uma única instância da API não há corrida de migração; antes de escalar para várias réplicas, volte a migrar fora da API.
-- **Primeiro administrador**: criado pela API quando `ODDKIN_ADMIN_EMAIL` e `ODDKIN_ADMIN_PASSWORD` estão definidos e a instalação está vazia. Idempotente.
+- **Primeiro administrador**: criado ao fim da própria etapa de migração (`migration.RunWithAdmin`, também usada pelo `cmd/migrate`) quando `ODDKIN_ADMIN_EMAIL` e `ODDKIN_ADMIN_PASSWORD` estão definidos e a instalação está vazia. Idempotente.
 - **Jobs**: workers River rodam dentro da API. Jobs de e-mail só são registrados quando a Resend está configurada; sem isso ficam na fila.
 - **Redis**: removido. O LiveKit roda em nó único e não precisa dele.
 - **E-mail**: sempre a API real da Resend, com chaves no `.env`. O simulador local foi removido.

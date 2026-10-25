@@ -14,7 +14,12 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := migration.Run(ctx, os.Getenv("DATABASE_URL")); err != nil {
+	admin, err := migration.AdminFromEnv()
+	if err != nil {
+		logger.Error("migration failed", "error", err)
+		os.Exit(1)
+	}
+	if err := migration.RunWithAdmin(ctx, os.Getenv("DATABASE_URL"), admin); err != nil {
 		logger.Error("migration failed", "error", err)
 		os.Exit(1)
 	}
