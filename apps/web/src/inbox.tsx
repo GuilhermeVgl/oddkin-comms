@@ -28,6 +28,7 @@ export type Channel = {
   projectId: string;
   name: string;
   unread: number;
+  archived: boolean;
 };
 
 type InboxValue = {
@@ -78,6 +79,7 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
                 projectId: state.project.id,
                 name: named.name,
                 unread: Number(named.unread),
+                archived: named.archived === true,
               };
             }),
           );

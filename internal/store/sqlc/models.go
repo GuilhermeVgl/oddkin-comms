@@ -125,6 +125,8 @@ type Conversation struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	Archived              bool
+	Position              int32
 }
 
 type ConversationReadCursor struct {

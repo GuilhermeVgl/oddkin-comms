@@ -4,6 +4,7 @@ import {
   getExternalPolicy,
   removeProjectMember,
   setProjectAppearance,
+  setProjectArchived,
   updateExternalPolicy,
   ApiStatusError,
   type CurrentAccount,
@@ -210,6 +211,43 @@ function EditProjectDialog({
           </div>
         </div>
         <div className="dft">
+          <button
+            className="btn danger"
+            onClick={() => {
+              onClose();
+              void confirmDialog({
+                title: `Arquivar ${project.name}?`,
+                body: (
+                  <p className="muted">
+                    O projeto some das listas e fica somente leitura: sem novas
+                    atividades, mensagens, arquivos ou chamadas. Um gestor pode
+                    restaurá-lo.
+                  </p>
+                ),
+                ok: "Arquivar",
+                danger: true,
+              }).then((ok) => {
+                if (ok !== true) return;
+                void run(async () => {
+                  await setProjectArchived(
+                    client,
+                    csrfToken(),
+                    project.id,
+                    true,
+                  );
+                  return true;
+                }).then(
+                  (done) =>
+                    done !== undefined &&
+                    toast("Projeto arquivado.", { icon: "check" }),
+                );
+              });
+            }}
+            type="button"
+          >
+            Arquivar projeto
+          </button>
+          <span className="grow" />
           <button className="btn" onClick={onClose} type="button">
             Cancelar
           </button>

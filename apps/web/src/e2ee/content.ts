@@ -9,6 +9,7 @@ import {
   listMessages,
   sendMessageRaw,
   updateConversationContent,
+  createChannel,
   updateEpicRaw,
   updateProjectContent,
   updateSprintContent,
@@ -628,6 +629,27 @@ export async function encryptChannel(
     signerDeviceId: name.signerDeviceId,
     contentRevision: revision,
   });
+}
+
+/** Creates a channel; with a key for chat the name is encrypted under an id chosen here. */
+export async function createChannelNamed(
+  client: Client,
+  token: string,
+  projectId: string,
+  pc: ProjectCrypto | null,
+  name: string,
+): Promise<void> {
+  if (pc !== null && pc.canWrite("chat")) {
+    const id = crypto.randomUUID();
+    const sealed = pc.encrypt("chat", resources.channel(id), 1, name);
+    await createChannel(client, token, projectId, {
+      id,
+      nameEnc: sealed.envelope,
+      signerDeviceId: sealed.signerDeviceId,
+    });
+    return;
+  }
+  await createChannel(client, token, projectId, { name });
 }
 
 export async function decryptSprints(

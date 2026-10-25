@@ -131,7 +131,7 @@ type projectFields struct {
 	ID                                     pgtype.UUID
 	Name, Description, Color, Icon         string
 	Version, ContentRevision               int32
-	Manager, Encrypted                     bool
+	Manager, Encrypted, Archived           bool
 	NameEnc, DescriptionEnc                []byte
 	ContentAuthorID, ContentSignerDeviceID pgtype.UUID
 	Permissions                            []string
@@ -140,7 +140,7 @@ type projectFields struct {
 func toProject(f projectFields) gen.Project {
 	project := gen.Project{
 		Id: fromPG(f.ID), Name: f.Name, Description: f.Description, Color: f.Color, Icon: f.Icon, Version: int(f.Version),
-		IsManager: f.Manager, Encrypted: f.Encrypted, ContentRevision: int(f.ContentRevision),
+		IsManager: f.Manager, Encrypted: f.Encrypted, Archived: &f.Archived, ContentRevision: int(f.ContentRevision),
 		Permissions: f.Permissions,
 	}
 	if f.Encrypted {
@@ -162,19 +162,19 @@ func fieldsOf(p sqlc.Project, access work.Access) projectFields {
 	return projectFields{
 		Permissions: access.Permissions(),
 		ID:          p.ID, Name: p.Name, Description: p.Description, Color: p.Color, Icon: p.Icon, Version: p.Version, Manager: manager,
-		Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
+		Archived: p.Archived, Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
 		ContentAuthorID: p.ContentAuthorID, ContentSignerDeviceID: p.ContentSignerDeviceID,
 	}
 }
 
-func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
+func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request, params gen.ListProjectsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	rows, err := sqlc.New(h.auth.pool).ListProjectsForAccount(ctx, session.AccountID)
+	rows, err := sqlc.New(h.auth.pool).ListProjectsForAccount(ctx, sqlc.ListProjectsForAccountParams{AccountID: session.AccountID, IncludeArchived: params.IncludeArchived != nil && *params.IncludeArchived})
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -183,7 +183,7 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		projects = append(projects, toProject(projectFields{
 			ID: row.ID, Name: row.Name, Description: row.Description, Color: row.Color, Icon: row.Icon, Version: row.Version, Manager: row.IsManager,
-			Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
+			Archived: row.Archived, Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
 			ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
 			Permissions: work.Access{Kind: row.MembershipKind, Manager: row.IsManager, External: row.ExternalPermissions}.Permissions(),
 		}))

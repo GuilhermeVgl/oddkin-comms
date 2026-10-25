@@ -163,9 +163,14 @@ paths:
   /api/v1/projects:
     get:
       operationId: listProjects
-      summary: List projects the account belongs to
+      summary: List projects the account belongs to; archived ones only on request
       security:
         - sessionCookie: []
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          schema: { type: boolean }
       responses:
         "200":
           description: Projects
@@ -734,6 +739,112 @@ paths:
           description: No active session
         "403":
           description: Profile does not allow reading chat
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: createChannel
+      summary: Create a channel; the name is encrypted when the project is (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          description: Invalid name
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived or the encryption state does not allow this write
+  /api/v1/projects/{projectId}/conversations/order:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: reorderChannels
+      summary: Set the order of every channel of the project (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderRequest"
+      responses:
+        "204":
+          description: Reordered
+        "400":
+          description: The list must contain every channel exactly once
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
+  /api/v1/conversations/{conversationId}/archive:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setChannelArchived
+      summary: Archive or restore a channel; archived channels are read-only (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible channel
+        "409":
+          description: Project is archived
+  /api/v1/projects/{projectId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: setProjectArchived
+      summary: Archive or restore a project (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
         "404":
           description: Unknown or inaccessible project
   /api/v1/conversations/{conversationId}/messages:
@@ -2618,6 +2729,7 @@ components:
         ]
       additionalProperties: false
       properties:
+        archived: { type: boolean }
         nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         signerDeviceId: { type: string, format: uuid }
@@ -2733,6 +2845,29 @@ components:
       additionalProperties: false
       properties:
         color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$" }
+    CreateChannelRequest:
+      type: object
+      additionalProperties: false
+      description: Plain `name`, or an encrypted name with a client-chosen id
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        id: { type: string, format: uuid }
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+    ReorderRequest:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          items: { type: string, format: uuid }
+    ArchiveRequest:
+      type: object
+      required: [archived]
+      additionalProperties: false
+      properties:
+        archived: { type: boolean }
     BoardColumn:
       type: object
       required: [id, name, position, category]
@@ -2880,6 +3015,7 @@ components:
         encrypted: { type: boolean }
         contentRevision: { type: integer }
         contentAuthorId: { type: string, format: uuid }
+        archived: { type: boolean }
         id: { type: string, format: uuid }
         name: { type: string }
         unread: { type: integer, format: int64 }

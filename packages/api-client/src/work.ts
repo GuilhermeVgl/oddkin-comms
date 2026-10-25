@@ -946,3 +946,66 @@ export async function getStorageUsage(client: Client): Promise<StorageUsage> {
   const { data, response } = await client.GET("/api/v1/storage/usage");
   return ensure("getStorageUsage", response, data, 200);
 }
+
+export async function createChannel(
+  client: Client,
+  token: string,
+  projectId: string,
+  body: Schemas["CreateChannelRequest"],
+): Promise<Conversation> {
+  const { data, response } = await client.POST(
+    "/api/v1/projects/{projectId}/conversations",
+    { params: { path: { projectId } }, body, headers: csrf(token) },
+  );
+  return ensure("createChannel", response, data, 201);
+}
+
+export async function reorderChannels(
+  client: Client,
+  token: string,
+  projectId: string,
+  ids: string[],
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/conversations/order",
+    { params: { path: { projectId } }, body: { ids }, headers: csrf(token) },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "reorderChannels");
+}
+
+export async function setChannelArchived(
+  client: Client,
+  token: string,
+  conversationId: string,
+  archived: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/conversations/{conversationId}/archive",
+    {
+      params: { path: { conversationId } },
+      body: { archived },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setChannelArchived");
+}
+
+export async function setProjectArchived(
+  client: Client,
+  token: string,
+  projectId: string,
+  archived: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/archive",
+    {
+      params: { path: { projectId } },
+      body: { archived },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setProjectArchived");
+}

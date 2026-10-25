@@ -386,8 +386,9 @@ func (q *Queries) CreateCall(ctx context.Context, arg CreateCallParams) (Call, e
 }
 
 const createConversation = `-- name: CreateConversation :one
-INSERT INTO conversation (project_id, name) VALUES ($1, $2)
-RETURNING id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id
+INSERT INTO conversation (project_id, name, position)
+VALUES ($1, $2, (SELECT COALESCE(max(position) + 1, 0) FROM conversation WHERE project_id = $1 AND kind = 'channel'))
+RETURNING id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, archived, position
 `
 
 type CreateConversationParams struct {
@@ -412,6 +413,8 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.Archived,
+		&i.Position,
 	)
 	return i, err
 }
@@ -516,6 +519,49 @@ func (q *Queries) CreateEncryptedComment(ctx context.Context, arg CreateEncrypte
 		&i.Encrypted,
 		&i.BodyEnc,
 		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
+const createEncryptedConversation = `-- name: CreateEncryptedConversation :one
+INSERT INTO conversation (id, project_id, name, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, position)
+VALUES ($1, $2, '', true, $3, 1, $4, $5, (SELECT COALESCE(max(position) + 1, 0) FROM conversation WHERE project_id = $2 AND kind = 'channel'))
+RETURNING id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, archived, position
+`
+
+type CreateEncryptedConversationParams struct {
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	NameEnc               []byte
+	ContentAuthorID       pgtype.UUID
+	ContentSignerDeviceID pgtype.UUID
+}
+
+func (q *Queries) CreateEncryptedConversation(ctx context.Context, arg CreateEncryptedConversationParams) (Conversation, error) {
+	row := q.db.QueryRow(ctx, createEncryptedConversation,
+		arg.ID,
+		arg.ProjectID,
+		arg.NameEnc,
+		arg.ContentAuthorID,
+		arg.ContentSignerDeviceID,
+	)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.LastSeq,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DmLow,
+		&i.DmHigh,
+		&i.Encrypted,
+		&i.NameEnc,
+		&i.ContentRevision,
+		&i.ContentAuthorID,
+		&i.ContentSignerDeviceID,
+		&i.Archived,
+		&i.Position,
 	)
 	return i, err
 }
@@ -1538,7 +1584,7 @@ func (q *Queries) GetCallInvitation(ctx context.Context, arg GetCallInvitationPa
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id
+SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, archived, position
 FROM conversation
 WHERE id = $1
 `
@@ -1560,12 +1606,14 @@ func (q *Queries) GetConversation(ctx context.Context, id pgtype.UUID) (Conversa
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.Archived,
+		&i.Position,
 	)
 	return i, err
 }
 
 const getConversationForUpdate = `-- name: GetConversationForUpdate :one
-SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id FROM conversation WHERE id = $1 FOR UPDATE
+SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, archived, position FROM conversation WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetConversationForUpdate(ctx context.Context, id pgtype.UUID) (Conversation, error) {
@@ -1585,6 +1633,8 @@ func (q *Queries) GetConversationForUpdate(ctx context.Context, id pgtype.UUID) 
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.Archived,
+		&i.Position,
 	)
 	return i, err
 }
@@ -2674,6 +2724,30 @@ func (q *Queries) ListCallParticipants(ctx context.Context, callID pgtype.UUID) 
 	return items, nil
 }
 
+const listChannelIDs = `-- name: ListChannelIDs :many
+SELECT id FROM conversation WHERE project_id = $1 AND kind = 'channel' ORDER BY position, created_at, id
+`
+
+func (q *Queries) ListChannelIDs(ctx context.Context, projectID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listChannelIDs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConversationAttachments = `-- name: ListConversationAttachments :many
 SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, COALESCE(u.email_normalized, '')::text AS uploader_email
 FROM attachment AS a
@@ -2753,11 +2827,11 @@ func (q *Queries) ListConversationAttachments(ctx context.Context, conversationI
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT c.id, c.project_id, c.name, c.last_seq, c.created_at, c.kind, c.dm_low, c.dm_high, c.encrypted, c.name_enc, c.content_revision, c.content_author_id, c.content_signer_device_id, GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
+SELECT c.id, c.project_id, c.name, c.last_seq, c.created_at, c.kind, c.dm_low, c.dm_high, c.encrypted, c.name_enc, c.content_revision, c.content_author_id, c.content_signer_device_id, c.archived, c.position, GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
 FROM conversation AS c
 LEFT JOIN conversation_read_cursor AS r ON r.conversation_id = c.id AND r.account_id = $1
 WHERE c.project_id = $2 AND c.kind = 'channel'
-ORDER BY c.created_at, c.id
+ORDER BY c.position, c.created_at, c.id
 `
 
 type ListConversationsParams struct {
@@ -2779,6 +2853,8 @@ type ListConversationsRow struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	Archived              bool
+	Position              int32
 	Unread                int64
 }
 
@@ -2805,6 +2881,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.ContentRevision,
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
+			&i.Archived,
+			&i.Position,
 			&i.Unread,
 		); err != nil {
 			return nil, err
@@ -3509,9 +3587,14 @@ FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
 JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
 LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
-WHERE pm.account_id = $1 AND NOT p.archived
+WHERE pm.account_id = $1 AND (NOT p.archived OR $2::boolean)
 ORDER BY p.created_at, p.id
 `
+
+type ListProjectsForAccountParams struct {
+	AccountID       pgtype.UUID
+	IncludeArchived bool
+}
 
 type ListProjectsForAccountRow struct {
 	ID                    pgtype.UUID
@@ -3535,8 +3618,8 @@ type ListProjectsForAccountRow struct {
 	ExternalPermissions   []string
 }
 
-func (q *Queries) ListProjectsForAccount(ctx context.Context, accountID pgtype.UUID) ([]ListProjectsForAccountRow, error) {
-	rows, err := q.db.Query(ctx, listProjectsForAccount, accountID)
+func (q *Queries) ListProjectsForAccount(ctx context.Context, arg ListProjectsForAccountParams) ([]ListProjectsForAccountRow, error) {
+	rows, err := q.db.Query(ctx, listProjectsForAccount, arg.AccountID, arg.IncludeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -4110,7 +4193,7 @@ func (q *Queries) LockCall(ctx context.Context, id pgtype.UUID) (Call, error) {
 }
 
 const lockConversation = `-- name: LockConversation :one
-SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id
+SELECT id, project_id, name, last_seq, created_at, kind, dm_low, dm_high, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, archived, position
 FROM conversation
 WHERE id = $1
 FOR UPDATE
@@ -4133,6 +4216,8 @@ func (q *Queries) LockConversation(ctx context.Context, id pgtype.UUID) (Convers
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.Archived,
+		&i.Position,
 	)
 	return i, err
 }
@@ -4632,6 +4717,23 @@ func (q *Queries) SetCommentContent(ctx context.Context, arg SetCommentContentPa
 	return result.RowsAffected(), nil
 }
 
+const setConversationArchived = `-- name: SetConversationArchived :execrows
+UPDATE conversation SET archived = $2 WHERE id = $1 AND kind = 'channel'
+`
+
+type SetConversationArchivedParams struct {
+	ID       pgtype.UUID
+	Archived bool
+}
+
+func (q *Queries) SetConversationArchived(ctx context.Context, arg SetConversationArchivedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setConversationArchived, arg.ID, arg.Archived)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setConversationContent = `-- name: SetConversationContent :execrows
 UPDATE conversation
 SET encrypted = true, name = '', name_enc = $2, content_revision = $3, content_author_id = $4, content_signer_device_id = $5
@@ -4658,6 +4760,21 @@ func (q *Queries) SetConversationContent(ctx context.Context, arg SetConversatio
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setConversationPosition = `-- name: SetConversationPosition :exec
+UPDATE conversation SET position = $3 WHERE id = $1 AND project_id = $2 AND kind = 'channel'
+`
+
+type SetConversationPositionParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Position  int32
+}
+
+func (q *Queries) SetConversationPosition(ctx context.Context, arg SetConversationPositionParams) error {
+	_, err := q.db.Exec(ctx, setConversationPosition, arg.ID, arg.ProjectID, arg.Position)
+	return err
 }
 
 const setEpicContent = `-- name: SetEpicContent :execrows
@@ -4702,6 +4819,20 @@ type SetKeyDomainStateParams struct {
 
 func (q *Queries) SetKeyDomainState(ctx context.Context, arg SetKeyDomainStateParams) error {
 	_, err := q.db.Exec(ctx, setKeyDomainState, arg.ID, arg.State)
+	return err
+}
+
+const setProjectArchived = `-- name: SetProjectArchived :exec
+UPDATE project SET archived = $2, version = version + 1 WHERE id = $1
+`
+
+type SetProjectArchivedParams struct {
+	ID       pgtype.UUID
+	Archived bool
+}
+
+func (q *Queries) SetProjectArchived(ctx context.Context, arg SetProjectArchivedParams) error {
+	_, err := q.db.Exec(ctx, setProjectArchived, arg.ID, arg.Archived)
 	return err
 }
 

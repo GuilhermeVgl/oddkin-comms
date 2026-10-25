@@ -762,6 +762,11 @@ type ApiError struct {
 // ApiErrorCode defines model for ApiError.Code.
 type ApiErrorCode string
 
+// ArchiveRequest defines model for ArchiveRequest.
+type ArchiveRequest struct {
+	Archived bool `json:"archived"`
+}
+
 // Attachment defines model for Attachment.
 type Attachment struct {
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
@@ -893,6 +898,7 @@ type CompleteUploadRequest struct {
 
 // Conversation defines model for Conversation.
 type Conversation struct {
+	Archived        *bool               `json:"archived,omitempty"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
 	ContentRevision int                 `json:"contentRevision"`
 	Encrypted       bool                `json:"encrypted"`
@@ -913,6 +919,16 @@ type CreateBoardColumnRequest struct {
 
 // CreateBoardColumnRequestCategory defines model for CreateBoardColumnRequest.Category.
 type CreateBoardColumnRequestCategory string
+
+// CreateChannelRequest Plain `name`, or an encrypted name with a client-chosen id
+type CreateChannelRequest struct {
+	Id   *openapi_types.UUID `json:"id,omitempty"`
+	Name *string             `json:"name,omitempty"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+}
 
 // CreateCommentRequest defines model for CreateCommentRequest.
 type CreateCommentRequest struct {
@@ -1301,6 +1317,7 @@ type PresignedUrl struct {
 
 // Project defines model for Project.
 type Project struct {
+	Archived        *bool               `json:"archived,omitempty"`
 	Color           string              `json:"color"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
 	ContentRevision int                 `json:"contentRevision"`
@@ -1407,6 +1424,11 @@ type RegisterDeviceRequestKind string
 // ReorderBoardColumnsRequest defines model for ReorderBoardColumnsRequest.
 type ReorderBoardColumnsRequest struct {
 	ColumnIds []openapi_types.UUID `json:"columnIds"`
+}
+
+// ReorderRequest defines model for ReorderRequest.
+type ReorderRequest struct {
+	Ids []openapi_types.UUID `json:"ids"`
 }
 
 // SendMessageRequest defines model for SendMessageRequest.
@@ -1673,6 +1695,11 @@ type ListMessagesParams struct {
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListProjectsParams defines parameters for ListProjects.
+type ListProjectsParams struct {
+	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
+}
+
 // DeleteBoardColumnParams defines parameters for DeleteBoardColumn.
 type DeleteBoardColumnParams struct {
 	// MoveTo Destination column; required when the column holds activities
@@ -1702,6 +1729,9 @@ type EncryptCommentJSONRequestBody = EncryptCommentRequest
 
 // UpdateConversationJSONRequestBody defines body for UpdateConversation for application/json ContentType.
 type UpdateConversationJSONRequestBody = UpdateConversationRequest
+
+// SetChannelArchivedJSONRequestBody defines body for SetChannelArchived for application/json ContentType.
+type SetChannelArchivedJSONRequestBody = ArchiveRequest
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
@@ -1754,6 +1784,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // SetProjectAppearanceJSONRequestBody defines body for SetProjectAppearance for application/json ContentType.
 type SetProjectAppearanceJSONRequestBody = ProjectAppearanceRequest
 
+// SetProjectArchivedJSONRequestBody defines body for SetProjectArchived for application/json ContentType.
+type SetProjectArchivedJSONRequestBody = ArchiveRequest
+
 // CreateBoardColumnJSONRequestBody defines body for CreateBoardColumn for application/json ContentType.
 type CreateBoardColumnJSONRequestBody = CreateBoardColumnRequest
 
@@ -1762,6 +1795,12 @@ type ReorderBoardColumnsJSONRequestBody = ReorderBoardColumnsRequest
 
 // UpdateBoardColumnJSONRequestBody defines body for UpdateBoardColumn for application/json ContentType.
 type UpdateBoardColumnJSONRequestBody = UpdateBoardColumnRequest
+
+// CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
+type CreateChannelJSONRequestBody = CreateChannelRequest
+
+// ReorderChannelsJSONRequestBody defines body for ReorderChannels for application/json ContentType.
+type ReorderChannelsJSONRequestBody = ReorderRequest
 
 // CreateEpicJSONRequestBody defines body for CreateEpic for application/json ContentType.
 type CreateEpicJSONRequestBody = CreateEpicRequest
@@ -1873,6 +1912,9 @@ type ServerInterface interface {
 	// UpdateConversation Encrypt the name of a channel (project managers)
 	// (PATCH /api/v1/conversations/{conversationId})
 	UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// SetChannelArchived Archive or restore a channel; archived channels are read-only (project managers)
+	// (PUT /api/v1/conversations/{conversationId}/archive)
+	SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// ListConversationAttachments Ready attachments of a channel or DM
 	// (GET /api/v1/conversations/{conversationId}/attachments)
 	ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
@@ -1987,9 +2029,9 @@ type ServerInterface interface {
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/v1/notifications/{notificationId}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID)
-	// ListProjects List projects the account belongs to
+	// ListProjects List projects the account belongs to; archived ones only on request
 	// (GET /api/v1/projects)
-	ListProjects(w http.ResponseWriter, r *http.Request)
+	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
 	// CreateProject Create a project with the default board (organization administrators)
 	// (POST /api/v1/projects)
 	CreateProject(w http.ResponseWriter, r *http.Request)
@@ -2002,6 +2044,9 @@ type ServerInterface interface {
 	// SetProjectAppearance Choose the project's colour (project managers)
 	// (PUT /api/v1/projects/{projectId}/appearance)
 	SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// SetProjectArchived Archive or restore a project (project managers)
+	// (PUT /api/v1/projects/{projectId}/archive)
+	SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListBoardColumns List board columns
 	// (GET /api/v1/projects/{projectId}/columns)
 	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2020,6 +2065,12 @@ type ServerInterface interface {
 	// ListConversations List the project channels
 	// (GET /api/v1/projects/{projectId}/conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateChannel Create a channel; the name is encrypted when the project is (project managers)
+	// (POST /api/v1/projects/{projectId}/conversations)
+	CreateChannel(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ReorderChannels Set the order of every channel of the project (project managers)
+	// (PUT /api/v1/projects/{projectId}/conversations/order)
+	ReorderChannels(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// GetProjectDirectory Active device keys of the project members and of the recovery identity
 	// (GET /api/v1/projects/{projectId}/directory)
 	GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2668,6 +2719,32 @@ func (siw *ServerInterfaceWrapper) UpdateConversation(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateConversation(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetChannelArchived operation middleware
+func (siw *ServerInterfaceWrapper) SetChannelArchived(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChannelArchived(w, r, conversationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3493,8 +3570,27 @@ func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r
 // ListProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectsParams
+
+	// ------------- Optional query parameter "includeArchived" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeArchived", r.URL.Query(), &params.IncludeArchived, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeArchived"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeArchived", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListProjects(w, r)
+		siw.Handler.ListProjects(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3587,6 +3683,32 @@ func (siw *ServerInterfaceWrapper) SetProjectAppearance(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetProjectAppearance(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectArchived operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectArchived(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectArchived(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3777,6 +3899,58 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListConversations(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateChannel operation middleware
+func (siw *ServerInterfaceWrapper) CreateChannel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateChannel(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderChannels operation middleware
+func (siw *ServerInterfaceWrapper) ReorderChannels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderChannels(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4756,6 +4930,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.ListWorkItemComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.CreateWorkItemComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.ListConversations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.CreateChannel)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations/order", wrapper.ReorderChannels)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/archive", wrapper.SetChannelArchived)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/archive", wrapper.SetProjectArchived)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.ListMessages)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/epics", wrapper.ListEpics)
