@@ -18,7 +18,7 @@ import (
 type S3Config struct {
 	Endpoint string
 	// PublicEndpoint is the address browsers use for presigned URLs when it
-	// differs from Endpoint (local MinIO behind Docker). Empty means Endpoint.
+	// differs from Endpoint (local S3Mock behind Docker). Empty means Endpoint.
 	PublicEndpoint  string
 	Bucket          string
 	AccessKeyID     string
@@ -61,7 +61,7 @@ func NewS3(config S3Config) (Store, error) {
 }
 
 // EnsureBucket creates the bucket when it does not exist. Meant for the local
-// MinIO that stands in for R2.
+// S3Mock that stands in for R2.
 func (s *s3Store) EnsureBucket(ctx context.Context) error {
 	if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket}); err == nil {
 		return nil
