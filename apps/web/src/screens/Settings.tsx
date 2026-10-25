@@ -899,7 +899,7 @@ function Storage({ isAdmin }: { isAdmin: boolean }) {
     ["Tamanho máximo por arquivo", "500.000.000 bytes"],
     ["Transferências ativas por usuário", "1 (2 partes em paralelo)"],
     ["Sessão de upload abandonada", "expira em 24 h"],
-    ["Objetos desligados", "eliminação física após 30 dias"],
+    ["Objetos desligados", "eliminação física 30 dias após apagar"],
     ["URL de download", "60 s, objeto opaco, bucket privado"],
   ];
   const blocks = 25;

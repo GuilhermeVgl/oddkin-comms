@@ -496,7 +496,7 @@ SELECT * FROM attachment WHERE id = $1 FOR UPDATE;
 UPDATE attachment SET state = 'ready', stored_size = $2, ready_at = now() WHERE id = $1 AND state = 'uploading';
 
 -- name: MarkAttachmentReleased :exec
-UPDATE attachment SET state = $2, object_removed = false WHERE id = $1 AND state IN ('uploading', 'ready');
+UPDATE attachment SET state = $2, object_removed = false, released_at = now() WHERE id = $1 AND state IN ('uploading', 'ready');
 
 -- name: MarkAttachmentObjectRemoved :exec
 UPDATE attachment SET object_removed = true WHERE id = $1;
@@ -522,7 +522,8 @@ RETURNING id;
 
 -- name: ListPendingRelease :many
 SELECT * FROM attachment
-WHERE state IN ('aborted', 'deleted') AND NOT object_removed
+WHERE NOT object_removed
+  AND (state = 'aborted' OR (state = 'deleted' AND released_at < now() - interval '30 days'))
 ORDER BY created_at
 LIMIT 100;
 

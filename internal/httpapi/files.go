@@ -543,8 +543,7 @@ func (h *healthHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	attachment.State = "deleted"
-	h.releaseObject(ctx, q, attachment)
+	// The object stays 30 days (see ReleaseStorage) so a database restore still finds it.
 	w.WriteHeader(http.StatusNoContent)
 }
 

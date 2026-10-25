@@ -39,6 +39,7 @@ type Attachment struct {
 	NameEnc               []byte
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	ReleasedAt            pgtype.Timestamptz
 }
 
 type AuthSession struct {

@@ -41,6 +41,16 @@ func startWorkers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, 
 		config.Workers = workers
 		queues["email"] = river.QueueConfig{MaxWorkers: 2}
 	}
+	retention, err := jobs.RetentionFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	jobs.AddRetentionWorker(workers, pool, retention)
+	config.PeriodicJobs = append(config.PeriodicJobs, river.NewPeriodicJob(
+		river.PeriodicInterval(24*time.Hour),
+		func() (river.JobArgs, *river.InsertOpts) { return jobs.RetentionArgs{}, nil },
+		&river.PeriodicJobOpts{RunOnStart: true},
+	))
 	if store != nil {
 		jobs.AddStorageWorker(workers, pool, store)
 		config.PeriodicJobs = append(config.PeriodicJobs, river.NewPeriodicJob(
