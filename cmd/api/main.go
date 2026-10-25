@@ -72,7 +72,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 	handler, err := httpapi.NewAppHandlerWithConfig(pool, httpapi.AppConfig{
-		InvitationDeliveryKey: deliveryKey, ObjectStore: store, StorageQuotaBytes: quota, LiveKit: livekit,
+		AccessLog: logger, InvitationDeliveryKey: deliveryKey, ObjectStore: store, StorageQuotaBytes: quota, LiveKit: livekit,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize API authentication: %w", err)
