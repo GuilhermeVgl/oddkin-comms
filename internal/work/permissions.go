@@ -48,6 +48,18 @@ func (a Access) Can(permission string) bool {
 	return slices.Contains(a.External, permission)
 }
 
+// Permissions lists everything the account may do in the project, sorted.
+// Internal members hold every permission; externals hold what the policy grants.
+func (a Access) Permissions() []string {
+	source := a.External
+	if a.Kind == "internal" {
+		source = knownPermissions
+	}
+	granted := slices.Clone(source)
+	slices.Sort(granted)
+	return granted
+}
+
 // ValidatePolicy returns the sorted, de-duplicated permission set or explains
 // why the configuration is invalid.
 func ValidatePolicy(permissions []string) ([]string, error) {

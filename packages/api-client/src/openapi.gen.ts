@@ -196,11 +196,52 @@ export interface paths {
     /** List board columns */
     get: operations["listBoardColumns"];
     put?: never;
+    /** Add a column at the end of the board (project managers) */
+    post: operations["createBoardColumn"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/columns/order": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Set the order of every column (project managers) */
+    put: operations["reorderBoardColumns"];
     post?: never;
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/columns/{columnId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+        columnId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a column, moving its activities to another one in the same transaction (project managers) */
+    delete: operations["deleteBoardColumn"];
+    options?: never;
+    head?: never;
+    /** Rename a column or change its category (project managers) */
+    patch: operations["updateBoardColumn"];
     trace?: never;
   };
   "/api/v1/projects/{projectId}/work-items": {
@@ -1494,6 +1535,8 @@ export interface components {
       icon: string;
       version: number;
       isManager: boolean;
+      /** @description What the caller may do in this project; the server enforces it regardless */
+      permissions: string[];
     };
     CreateProjectRequest: {
       name: string;
@@ -1546,6 +1589,19 @@ export interface components {
       position: number;
       /** @enum {string} */
       category: "todo" | "in_progress" | "done";
+    };
+    CreateBoardColumnRequest: {
+      name: string;
+      /** @enum {string} */
+      category: "todo" | "in_progress" | "done";
+    };
+    UpdateBoardColumnRequest: {
+      name?: string;
+      /** @enum {string} */
+      category?: "todo" | "in_progress" | "done";
+    };
+    ReorderBoardColumnsRequest: {
+      columnIds: string[];
     };
     WorkItem: {
       titleEnc?: components["schemas"]["EncryptedBlob"];
@@ -2834,6 +2890,221 @@ export interface operations {
         content?: never;
       };
       /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createBoardColumn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateBoardColumnRequest"];
+      };
+    };
+    responses: {
+      /** @description Created column */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BoardColumn"];
+        };
+      };
+      /** @description Invalid name or category */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reorderBoardColumns: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReorderBoardColumnsRequest"];
+      };
+    };
+    responses: {
+      /** @description Columns in their new order */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BoardColumn"][];
+        };
+      };
+      /** @description The list is not exactly the project's columns */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  deleteBoardColumn: {
+    parameters: {
+      query?: {
+        /** @description Destination column; required when the column holds activities */
+        moveTo?: string;
+      };
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+        columnId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid destination, or the board would lose its open or done column */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible column */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateBoardColumn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+        columnId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateBoardColumnRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated column */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BoardColumn"];
+        };
+      };
+      /** @description Invalid name, or the board would lose its open or done column */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible column */
       404: {
         headers: {
           [name: string]: unknown;

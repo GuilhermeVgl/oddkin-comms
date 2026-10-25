@@ -67,6 +67,73 @@ export async function listBoardColumns(
   return ensure("listBoardColumns", response, data, 200);
 }
 
+export async function createBoardColumn(
+  client: Client,
+  token: string,
+  projectId: string,
+  body: Schemas["CreateBoardColumnRequest"],
+): Promise<BoardColumn> {
+  const { data, response } = await client.POST(
+    "/api/v1/projects/{projectId}/columns",
+    { params: { path: { projectId } }, body, headers: csrf(token) },
+  );
+  return ensure("createBoardColumn", response, data, 201);
+}
+
+export async function updateBoardColumn(
+  client: Client,
+  token: string,
+  projectId: string,
+  columnId: string,
+  body: Schemas["UpdateBoardColumnRequest"],
+): Promise<BoardColumn> {
+  const { data, response } = await client.PATCH(
+    "/api/v1/projects/{projectId}/columns/{columnId}",
+    { params: { path: { projectId, columnId } }, body, headers: csrf(token) },
+  );
+  return ensure("updateBoardColumn", response, data, 200);
+}
+
+/** Deletes a column; its activities move to `moveTo` in the same transaction. */
+export async function deleteBoardColumn(
+  client: Client,
+  token: string,
+  projectId: string,
+  columnId: string,
+  moveTo?: string,
+): Promise<void> {
+  const { response } = await client.DELETE(
+    "/api/v1/projects/{projectId}/columns/{columnId}",
+    {
+      params: {
+        path: { projectId, columnId },
+        query: moveTo === undefined ? {} : { moveTo },
+      },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204) {
+    throw new ApiStatusError(response.status, "deleteBoardColumn");
+  }
+}
+
+export async function reorderBoardColumns(
+  client: Client,
+  token: string,
+  projectId: string,
+  columnIds: string[],
+): Promise<BoardColumn[]> {
+  const { data, response } = await client.PUT(
+    "/api/v1/projects/{projectId}/columns/order",
+    {
+      params: { path: { projectId } },
+      body: { columnIds },
+      headers: csrf(token),
+    },
+  );
+  return ensure("reorderBoardColumns", response, data, 200);
+}
+
 export async function listWorkItems(
   client: Client,
   projectId: string,

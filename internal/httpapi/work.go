@@ -134,12 +134,14 @@ type projectFields struct {
 	Manager, Encrypted                     bool
 	NameEnc, DescriptionEnc                []byte
 	ContentAuthorID, ContentSignerDeviceID pgtype.UUID
+	Permissions                            []string
 }
 
 func toProject(f projectFields) gen.Project {
 	project := gen.Project{
 		Id: fromPG(f.ID), Name: f.Name, Description: f.Description, Color: f.Color, Icon: f.Icon, Version: int(f.Version),
 		IsManager: f.Manager, Encrypted: f.Encrypted, ContentRevision: int(f.ContentRevision),
+		Permissions: f.Permissions,
 	}
 	if f.Encrypted {
 		project.NameEnc, project.DescriptionEnc = blob(f.NameEnc), blob(f.DescriptionEnc)
@@ -155,9 +157,11 @@ func toProject(f projectFields) gen.Project {
 	return project
 }
 
-func fieldsOf(p sqlc.Project, manager bool) projectFields {
+func fieldsOf(p sqlc.Project, access work.Access) projectFields {
+	manager := access.Manager
 	return projectFields{
-		ID: p.ID, Name: p.Name, Description: p.Description, Color: p.Color, Icon: p.Icon, Version: p.Version, Manager: manager,
+		Permissions: access.Permissions(),
+		ID:          p.ID, Name: p.Name, Description: p.Description, Color: p.Color, Icon: p.Icon, Version: p.Version, Manager: manager,
 		Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
 		ContentAuthorID: p.ContentAuthorID, ContentSignerDeviceID: p.ContentSignerDeviceID,
 	}
@@ -181,6 +185,7 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 			ID: row.ID, Name: row.Name, Description: row.Description, Color: row.Color, Icon: row.Icon, Version: row.Version, Manager: row.IsManager,
 			Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
 			ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+			Permissions: work.Access{Kind: row.MembershipKind, Manager: row.IsManager, External: row.ExternalPermissions}.Permissions(),
 		}))
 	}
 	writeJSON(w, http.StatusOK, projects)
@@ -253,7 +258,7 @@ func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toProject(fieldsOf(project, true)))
+	writeJSON(w, http.StatusCreated, toProject(fieldsOf(project, work.Access{Kind: "internal", Manager: true})))
 }
 
 func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
@@ -273,7 +278,7 @@ func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, proje
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusOK, toProject(fieldsOf(project, access.access.Manager)))
+	writeJSON(w, http.StatusOK, toProject(fieldsOf(project, access.access)))
 }
 
 func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {

@@ -303,6 +303,32 @@ paths:
   /api/v1/projects/{projectId}/columns:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: createBoardColumn
+      summary: Add a column at the end of the board (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBoardColumnRequest"
+      responses:
+        "201":
+          description: Created column
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardColumn"
+        "400":
+          description: Invalid name or category
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
     get:
       operationId: listBoardColumns
       summary: List board columns
@@ -321,6 +347,92 @@ paths:
           description: No active session
         "404":
           description: Unknown or inaccessible project
+  /api/v1/projects/{projectId}/columns/order:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: reorderBoardColumns
+      summary: Set the order of every column (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderBoardColumnsRequest"
+      responses:
+        "200":
+          description: Columns in their new order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BoardColumn"
+        "400":
+          description: The list is not exactly the project's columns
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+  /api/v1/projects/{projectId}/columns/{columnId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: columnId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateBoardColumn
+      summary: Rename a column or change its category (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBoardColumnRequest"
+      responses:
+        "200":
+          description: Updated column
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardColumn"
+        "400":
+          description: Invalid name, or the board would lose its open or done column
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible column
+    delete:
+      operationId: deleteBoardColumn
+      summary: Delete a column, moving its activities to another one in the same transaction (project managers)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: moveTo
+          in: query
+          required: false
+          description: Destination column; required when the column holds activities
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Missing or invalid destination, or the board would lose its open or done column
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible column
   /api/v1/projects/{projectId}/work-items:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -2346,6 +2458,7 @@ components:
           isManager,
           encrypted,
           contentRevision,
+          permissions,
         ]
       additionalProperties: false
       properties:
@@ -2362,6 +2475,10 @@ components:
         icon: { type: string }
         version: { type: integer }
         isManager: { type: boolean }
+        permissions:
+          type: array
+          description: What the caller may do in this project; the server enforces it regardless
+          items: { type: string }
     CreateProjectRequest:
       type: object
       required: [name]
@@ -2434,6 +2551,27 @@ components:
         name: { type: string }
         position: { type: integer }
         category: { type: string, enum: [todo, in_progress, done] }
+    CreateBoardColumnRequest:
+      type: object
+      required: [name, category]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        category: { type: string, enum: [todo, in_progress, done] }
+    UpdateBoardColumnRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        category: { type: string, enum: [todo, in_progress, done] }
+    ReorderBoardColumnsRequest:
+      type: object
+      required: [columnIds]
+      additionalProperties: false
+      properties:
+        columnIds:
+          type: array
+          items: { type: string, format: uuid }
     WorkItem:
       type: object
       required:
@@ -2847,7 +2985,8 @@ components:
               etag: { type: string, minLength: 1, maxLength: 256 }
     Attachment:
       type: object
-      required: [id, name, contentType, size, uploaderEmail, createdAt, encrypted]
+      required:
+        [id, name, contentType, size, uploaderEmail, createdAt, encrypted]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }

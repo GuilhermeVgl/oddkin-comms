@@ -22,6 +22,30 @@ FROM board_column
 WHERE project_id = $1
 ORDER BY position, id;
 
+-- name: LockProject :exec
+SELECT id FROM project WHERE id = $1 FOR UPDATE;
+
+-- name: UpdateBoardColumn :one
+UPDATE board_column
+SET name = COALESCE(sqlc.narg('name')::text, name),
+    category = COALESCE(sqlc.narg('category')::text, category)
+WHERE id = $1 AND project_id = $2
+RETURNING id, project_id, name, position, category;
+
+-- name: SetBoardColumnPosition :exec
+UPDATE board_column SET position = $3 WHERE id = $1 AND project_id = $2;
+
+-- name: CountWorkItemsInColumn :one
+SELECT count(*)::integer FROM work_item WHERE column_id = $1 AND project_id = $2;
+
+-- name: MoveWorkItemsBetweenColumns :exec
+UPDATE work_item
+SET column_id = $3, version = version + 1, updated_at = now()
+WHERE column_id = $1 AND project_id = $2;
+
+-- name: DeleteBoardColumn :execrows
+DELETE FROM board_column WHERE id = $1 AND project_id = $2;
+
 -- name: NextBoardColumnPosition :one
 SELECT COALESCE(max(position) + 1, 0)::integer AS position
 FROM board_column
@@ -37,9 +61,12 @@ LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
 WHERE p.id = $1;
 
 -- name: ListProjectsForAccount :many
-SELECT p.*, pm.is_manager
+SELECT p.*, pm.is_manager, om.membership_kind,
+       COALESCE(ep.permissions, ARRAY[]::text[])::text[] AS external_permissions
 FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
+JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
+LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
 WHERE pm.account_id = $1 AND NOT p.archived
 ORDER BY p.created_at, p.id;
 

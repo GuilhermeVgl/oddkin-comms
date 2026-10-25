@@ -226,6 +226,22 @@ func (q *Queries) CountOpenEpicTasks(ctx context.Context, epicID pgtype.UUID) (i
 	return column_1, err
 }
 
+const countWorkItemsInColumn = `-- name: CountWorkItemsInColumn :one
+SELECT count(*)::integer FROM work_item WHERE column_id = $1 AND project_id = $2
+`
+
+type CountWorkItemsInColumnParams struct {
+	ColumnID  pgtype.UUID
+	ProjectID pgtype.UUID
+}
+
+func (q *Queries) CountWorkItemsInColumn(ctx context.Context, arg CountWorkItemsInColumnParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countWorkItemsInColumn, arg.ColumnID, arg.ProjectID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createAttachment = `-- name: CreateAttachment :one
 INSERT INTO attachment (id, organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
                         name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count)
@@ -1062,6 +1078,23 @@ func (q *Queries) CreateWorkItemComment(ctx context.Context, arg CreateWorkItemC
 		&i.ContentSignerDeviceID,
 	)
 	return i, err
+}
+
+const deleteBoardColumn = `-- name: DeleteBoardColumn :execrows
+DELETE FROM board_column WHERE id = $1 AND project_id = $2
+`
+
+type DeleteBoardColumnParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+}
+
+func (q *Queries) DeleteBoardColumn(ctx context.Context, arg DeleteBoardColumnParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBoardColumn, arg.ID, arg.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteMessage = `-- name: DeleteMessage :exec
@@ -3459,9 +3492,12 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 }
 
 const listProjectsForAccount = `-- name: ListProjectsForAccount :many
-SELECT p.id, p.organization_id, p.name, p.description, p.color, p.icon, p.archived, p.version, p.created_by, p.created_at, p.encrypted, p.name_enc, p.description_enc, p.content_revision, p.content_author_id, p.content_signer_device_id, pm.is_manager
+SELECT p.id, p.organization_id, p.name, p.description, p.color, p.icon, p.archived, p.version, p.created_by, p.created_at, p.encrypted, p.name_enc, p.description_enc, p.content_revision, p.content_author_id, p.content_signer_device_id, pm.is_manager, om.membership_kind,
+       COALESCE(ep.permissions, ARRAY[]::text[])::text[] AS external_permissions
 FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
+JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
+LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
 WHERE pm.account_id = $1 AND NOT p.archived
 ORDER BY p.created_at, p.id
 `
@@ -3484,6 +3520,8 @@ type ListProjectsForAccountRow struct {
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
 	IsManager             bool
+	MembershipKind        string
+	ExternalPermissions   []string
 }
 
 func (q *Queries) ListProjectsForAccount(ctx context.Context, accountID pgtype.UUID) ([]ListProjectsForAccountRow, error) {
@@ -3513,6 +3551,8 @@ func (q *Queries) ListProjectsForAccount(ctx context.Context, accountID pgtype.U
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
 			&i.IsManager,
+			&i.MembershipKind,
+			&i.ExternalPermissions,
 		); err != nil {
 			return nil, err
 		}
@@ -4115,6 +4155,15 @@ func (q *Queries) LockOrganization(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const lockProject = `-- name: LockProject :exec
+SELECT id FROM project WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockProject(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, lockProject, id)
+	return err
+}
+
 const markAllNotificationsRead = `-- name: MarkAllNotificationsRead :exec
 UPDATE notification SET read_at = now() WHERE account_id = $1 AND read_at IS NULL
 `
@@ -4230,6 +4279,23 @@ type MoveWorkItemToColumnParams struct {
 
 func (q *Queries) MoveWorkItemToColumn(ctx context.Context, arg MoveWorkItemToColumnParams) error {
 	_, err := q.db.Exec(ctx, moveWorkItemToColumn, arg.ID, arg.ColumnID)
+	return err
+}
+
+const moveWorkItemsBetweenColumns = `-- name: MoveWorkItemsBetweenColumns :exec
+UPDATE work_item
+SET column_id = $3, version = version + 1, updated_at = now()
+WHERE column_id = $1 AND project_id = $2
+`
+
+type MoveWorkItemsBetweenColumnsParams struct {
+	ColumnID   pgtype.UUID
+	ProjectID  pgtype.UUID
+	ColumnID_2 pgtype.UUID
+}
+
+func (q *Queries) MoveWorkItemsBetweenColumns(ctx context.Context, arg MoveWorkItemsBetweenColumnsParams) error {
+	_, err := q.db.Exec(ctx, moveWorkItemsBetweenColumns, arg.ColumnID, arg.ProjectID, arg.ColumnID_2)
 	return err
 }
 
@@ -4481,6 +4547,21 @@ type SetAttachmentUploadIDParams struct {
 
 func (q *Queries) SetAttachmentUploadID(ctx context.Context, arg SetAttachmentUploadIDParams) error {
 	_, err := q.db.Exec(ctx, setAttachmentUploadID, arg.ID, arg.UploadID)
+	return err
+}
+
+const setBoardColumnPosition = `-- name: SetBoardColumnPosition :exec
+UPDATE board_column SET position = $3 WHERE id = $1 AND project_id = $2
+`
+
+type SetBoardColumnPositionParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Position  int32
+}
+
+func (q *Queries) SetBoardColumnPosition(ctx context.Context, arg SetBoardColumnPositionParams) error {
+	_, err := q.db.Exec(ctx, setBoardColumnPosition, arg.ID, arg.ProjectID, arg.Position)
 	return err
 }
 
@@ -4767,6 +4848,39 @@ func (q *Queries) StartSprint(ctx context.Context, id pgtype.UUID) (Sprint, erro
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+	)
+	return i, err
+}
+
+const updateBoardColumn = `-- name: UpdateBoardColumn :one
+UPDATE board_column
+SET name = COALESCE($3::text, name),
+    category = COALESCE($4::text, category)
+WHERE id = $1 AND project_id = $2
+RETURNING id, project_id, name, position, category
+`
+
+type UpdateBoardColumnParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Name      pgtype.Text
+	Category  pgtype.Text
+}
+
+func (q *Queries) UpdateBoardColumn(ctx context.Context, arg UpdateBoardColumnParams) (BoardColumn, error) {
+	row := q.db.QueryRow(ctx, updateBoardColumn,
+		arg.ID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Category,
+	)
+	var i BoardColumn
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.Category,
 	)
 	return i, err
 }

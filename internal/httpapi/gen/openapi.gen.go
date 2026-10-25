@@ -50,19 +50,19 @@ func (e ApiErrorCode) Valid() bool {
 
 // Defines values for BoardColumnCategory.
 const (
-	Done       BoardColumnCategory = "done"
-	InProgress BoardColumnCategory = "in_progress"
-	Todo       BoardColumnCategory = "todo"
+	BoardColumnCategoryDone       BoardColumnCategory = "done"
+	BoardColumnCategoryInProgress BoardColumnCategory = "in_progress"
+	BoardColumnCategoryTodo       BoardColumnCategory = "todo"
 )
 
 // Valid indicates whether the value is a known member of the BoardColumnCategory enum.
 func (e BoardColumnCategory) Valid() bool {
 	switch e {
-	case Done:
+	case BoardColumnCategoryDone:
 		return true
-	case InProgress:
+	case BoardColumnCategoryInProgress:
 		return true
-	case Todo:
+	case BoardColumnCategoryTodo:
 		return true
 	default:
 		return false
@@ -192,6 +192,27 @@ func (e CloseSprintRequestDecisionsDestination) Valid() bool {
 	case Backlog:
 		return true
 	case Next:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateBoardColumnRequestCategory.
+const (
+	CreateBoardColumnRequestCategoryDone       CreateBoardColumnRequestCategory = "done"
+	CreateBoardColumnRequestCategoryInProgress CreateBoardColumnRequestCategory = "in_progress"
+	CreateBoardColumnRequestCategoryTodo       CreateBoardColumnRequestCategory = "todo"
+)
+
+// Valid indicates whether the value is a known member of the CreateBoardColumnRequestCategory enum.
+func (e CreateBoardColumnRequestCategory) Valid() bool {
+	switch e {
+	case CreateBoardColumnRequestCategoryDone:
+		return true
+	case CreateBoardColumnRequestCategoryInProgress:
+		return true
+	case CreateBoardColumnRequestCategoryTodo:
 		return true
 	default:
 		return false
@@ -630,6 +651,27 @@ func (e SprintState) Valid() bool {
 	}
 }
 
+// Defines values for UpdateBoardColumnRequestCategory.
+const (
+	UpdateBoardColumnRequestCategoryDone       UpdateBoardColumnRequestCategory = "done"
+	UpdateBoardColumnRequestCategoryInProgress UpdateBoardColumnRequestCategory = "in_progress"
+	UpdateBoardColumnRequestCategoryTodo       UpdateBoardColumnRequestCategory = "todo"
+)
+
+// Valid indicates whether the value is a known member of the UpdateBoardColumnRequestCategory enum.
+func (e UpdateBoardColumnRequestCategory) Valid() bool {
+	switch e {
+	case UpdateBoardColumnRequestCategoryDone:
+		return true
+	case UpdateBoardColumnRequestCategoryInProgress:
+		return true
+	case UpdateBoardColumnRequestCategoryTodo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateWorkItemRequestPriority.
 const (
 	UpdateWorkItemRequestPriorityHigh   UpdateWorkItemRequestPriority = "high"
@@ -859,6 +901,15 @@ type Conversation struct {
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 	Unread         int64               `json:"unread"`
 }
+
+// CreateBoardColumnRequest defines model for CreateBoardColumnRequest.
+type CreateBoardColumnRequest struct {
+	Category CreateBoardColumnRequestCategory `json:"category"`
+	Name     string                           `json:"name"`
+}
+
+// CreateBoardColumnRequestCategory defines model for CreateBoardColumnRequest.Category.
+type CreateBoardColumnRequestCategory string
 
 // CreateCommentRequest defines model for CreateCommentRequest.
 type CreateCommentRequest struct {
@@ -1245,7 +1296,10 @@ type Project struct {
 	Name           string             `json:"name"`
 
 	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
-	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	NameEnc *EncryptedBlob `json:"nameEnc,omitempty"`
+
+	// Permissions What the caller may do in this project; the server enforces it regardless
+	Permissions    []string            `json:"permissions"`
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 	Version        int                 `json:"version"`
 }
@@ -1326,6 +1380,11 @@ type RegisterDeviceRequest struct {
 // RegisterDeviceRequestKind defines model for RegisterDeviceRequest.Kind.
 type RegisterDeviceRequestKind string
 
+// ReorderBoardColumnsRequest defines model for ReorderBoardColumnsRequest.
+type ReorderBoardColumnsRequest struct {
+	ColumnIds []openapi_types.UUID `json:"columnIds"`
+}
+
 // SendMessageRequest defines model for SendMessageRequest.
 type SendMessageRequest struct {
 	Body *string `json:"body,omitempty"`
@@ -1394,6 +1453,15 @@ type TrustRoot struct {
 	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
 	SignPublicKey Base64Url `json:"signPublicKey"`
 }
+
+// UpdateBoardColumnRequest defines model for UpdateBoardColumnRequest.
+type UpdateBoardColumnRequest struct {
+	Category *UpdateBoardColumnRequestCategory `json:"category,omitempty"`
+	Name     *string                           `json:"name,omitempty"`
+}
+
+// UpdateBoardColumnRequestCategory defines model for UpdateBoardColumnRequest.Category.
+type UpdateBoardColumnRequestCategory string
 
 // UpdateConversationRequest defines model for UpdateConversationRequest.
 type UpdateConversationRequest struct {
@@ -1573,6 +1641,12 @@ type ListMessagesParams struct {
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// DeleteBoardColumnParams defines parameters for DeleteBoardColumn.
+type DeleteBoardColumnParams struct {
+	// MoveTo Destination column; required when the column holds activities
+	MoveTo *openapi_types.UUID `form:"moveTo,omitempty" json:"moveTo,omitempty"`
+}
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -1638,6 +1712,15 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
+
+// CreateBoardColumnJSONRequestBody defines body for CreateBoardColumn for application/json ContentType.
+type CreateBoardColumnJSONRequestBody = CreateBoardColumnRequest
+
+// ReorderBoardColumnsJSONRequestBody defines body for ReorderBoardColumns for application/json ContentType.
+type ReorderBoardColumnsJSONRequestBody = ReorderBoardColumnsRequest
+
+// UpdateBoardColumnJSONRequestBody defines body for UpdateBoardColumn for application/json ContentType.
+type UpdateBoardColumnJSONRequestBody = UpdateBoardColumnRequest
 
 // CreateEpicJSONRequestBody defines body for CreateEpic for application/json ContentType.
 type CreateEpicJSONRequestBody = CreateEpicRequest
@@ -1872,6 +1955,18 @@ type ServerInterface interface {
 	// ListBoardColumns List board columns
 	// (GET /api/v1/projects/{projectId}/columns)
 	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateBoardColumn Add a column at the end of the board (project managers)
+	// (POST /api/v1/projects/{projectId}/columns)
+	CreateBoardColumn(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ReorderBoardColumns Set the order of every column (project managers)
+	// (PUT /api/v1/projects/{projectId}/columns/order)
+	ReorderBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// DeleteBoardColumn Delete a column, moving its activities to another one in the same transaction (project managers)
+	// (DELETE /api/v1/projects/{projectId}/columns/{columnId})
+	DeleteBoardColumn(w http.ResponseWriter, r *http.Request, projectId ProjectId, columnId openapi_types.UUID, params DeleteBoardColumnParams)
+	// UpdateBoardColumn Rename a column or change its category (project managers)
+	// (PATCH /api/v1/projects/{projectId}/columns/{columnId})
+	UpdateBoardColumn(w http.ResponseWriter, r *http.Request, projectId ProjectId, columnId openapi_types.UUID)
 	// ListConversations List the project channels
 	// (GET /api/v1/projects/{projectId}/conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -3408,6 +3503,144 @@ func (siw *ServerInterfaceWrapper) ListBoardColumns(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// CreateBoardColumn operation middleware
+func (siw *ServerInterfaceWrapper) CreateBoardColumn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBoardColumn(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderBoardColumns operation middleware
+func (siw *ServerInterfaceWrapper) ReorderBoardColumns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderBoardColumns(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteBoardColumn operation middleware
+func (siw *ServerInterfaceWrapper) DeleteBoardColumn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "columnId" -------------
+	var columnId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "columnId", r.PathValue("columnId"), &columnId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "columnId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteBoardColumnParams
+
+	// ------------- Optional query parameter "moveTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "moveTo", r.URL.Query(), &params.MoveTo, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "moveTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "moveTo", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteBoardColumn(w, r, projectId, columnId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateBoardColumn operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBoardColumn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "columnId" -------------
+	var columnId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "columnId", r.PathValue("columnId"), &columnId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "columnId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBoardColumn(w, r, projectId, columnId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListConversations operation middleware
 func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *http.Request) {
 
@@ -4260,6 +4493,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.GetExternalPolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.UpdateExternalPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns", wrapper.ListBoardColumns)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns", wrapper.CreateBoardColumn)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns/order", wrapper.ReorderBoardColumns)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns/{columnId}", wrapper.DeleteBoardColumn)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns/{columnId}", wrapper.UpdateBoardColumn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.ListWorkItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/work-items", wrapper.CreateWorkItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/work-items/{workItemId}", wrapper.UpdateWorkItem)

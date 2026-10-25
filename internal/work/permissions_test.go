@@ -62,3 +62,19 @@ func TestValidatePolicyAllowsChatOnlyProfiles(t *testing.T) {
 		t.Fatalf("chat-only profile must be valid: %v", err)
 	}
 }
+
+func TestAccessPermissionsListWhatTheCallerMayDo(t *testing.T) {
+	internal := Access{Kind: "internal"}.Permissions()
+	if len(internal) != len(knownPermissions) {
+		t.Fatalf("an internal member holds every permission, got %v", internal)
+	}
+	external := Access{Kind: "external", External: []string{WorkRead, ChatRead}}
+	if got := external.Permissions(); len(got) != 2 || got[0] != ChatRead || got[1] != WorkRead {
+		t.Fatalf("externals hold what the policy grants, sorted: %v", got)
+	}
+	// The returned list is a copy: callers cannot change the policy through it.
+	external.Permissions()[0] = "x"
+	if external.External[0] != WorkRead {
+		t.Fatal("Permissions must not alias the policy")
+	}
+}
