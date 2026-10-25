@@ -220,6 +220,20 @@ export async function addMember(
     throw new ApiStatusError(response.status, "addMember");
 }
 
+export async function removeProjectMember(
+  client: Client,
+  token: string,
+  projectId: string,
+  accountId: string,
+): Promise<void> {
+  const { response } = await client.DELETE(
+    "/api/v1/projects/{projectId}/members/{accountId}",
+    { params: { path: { projectId, accountId } }, headers: csrf(token) },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "removeProjectMember");
+}
+
 export async function getExternalPolicy(
   client: Client,
   projectId: string,

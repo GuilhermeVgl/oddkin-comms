@@ -243,3 +243,78 @@ func (h *healthHandler) ReorderBoardColumns(w http.ResponseWriter, r *http.Reque
 		return http.StatusOK, response, nil
 	})
 }
+
+// RemoveProjectMember ends a person's access at once. The same transaction
+// marks every key domain of the project for rotation, so what is written after
+// this cannot be read by the person who left, and tells open clients to reload.
+func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := h.auth.pool.Begin(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+	if !ok {
+		return
+	}
+	if !access.access.Manager {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if access.archived {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err = q.LockProject(ctx, pgUUID(projectId)); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	target := pgUUID(uuidFrom(accountId))
+	targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if targetAccess.access.Manager {
+		managers, countErr := q.CountProjectManagers(ctx, pgUUID(projectId))
+		if countErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if managers <= 1 {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+	}
+	// The person is still a recipient here, so their clients hear about it too.
+	recipients, err := projectRecipients(ctx, q, pgUUID(projectId), "")
+	if err == nil {
+		_, err = q.RemoveProjectMember(ctx, sqlc.RemoveProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target})
+	}
+	if err == nil {
+		err = emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)})
+	}
+	if err == nil {
+		err = refreshProjectDomains(ctx, q, pgUUID(projectId))
+	}
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

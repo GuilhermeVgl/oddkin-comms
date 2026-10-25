@@ -253,6 +253,29 @@ paths:
           description: Unknown or inaccessible project
         "409":
           description: Project is archived
+  /api/v1/projects/{projectId}/members/{accountId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: accountId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: removeProjectMember
+      summary: Remove a member; access ends at once and the project keys are rotated (managers)
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Member removed
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown project, or the account is not a member
+        "409":
+          description: The last manager cannot be removed, or the project is archived
   /api/v1/projects/{projectId}/external-policy:
     parameters:
       - $ref: "#/components/parameters/ProjectId"

@@ -73,6 +73,12 @@ ORDER BY p.created_at, p.id;
 -- name: GetProject :one
 SELECT * FROM project WHERE id = $1;
 
+-- name: RemoveProjectMember :execrows
+DELETE FROM project_member WHERE project_id = $1 AND account_id = $2;
+
+-- name: CountProjectManagers :one
+SELECT count(*)::integer FROM project_member WHERE project_id = $1 AND is_manager;
+
 -- name: ListProjectMembers :many
 SELECT pm.account_id, a.email_normalized, om.membership_kind, pm.is_manager
 FROM project_member AS pm

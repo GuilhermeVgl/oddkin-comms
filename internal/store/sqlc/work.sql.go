@@ -226,6 +226,17 @@ func (q *Queries) CountOpenEpicTasks(ctx context.Context, epicID pgtype.UUID) (i
 	return column_1, err
 }
 
+const countProjectManagers = `-- name: CountProjectManagers :one
+SELECT count(*)::integer FROM project_member WHERE project_id = $1 AND is_manager
+`
+
+func (q *Queries) CountProjectManagers(ctx context.Context, projectID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countProjectManagers, projectID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countWorkItemsInColumn = `-- name: CountWorkItemsInColumn :one
 SELECT count(*)::integer FROM work_item WHERE column_id = $1 AND project_id = $2
 `
@@ -4446,6 +4457,23 @@ type ReleaseScreenShareParams struct {
 func (q *Queries) ReleaseScreenShare(ctx context.Context, arg ReleaseScreenShareParams) error {
 	_, err := q.db.Exec(ctx, releaseScreenShare, arg.ID, arg.ScreenSharerID)
 	return err
+}
+
+const removeProjectMember = `-- name: RemoveProjectMember :execrows
+DELETE FROM project_member WHERE project_id = $1 AND account_id = $2
+`
+
+type RemoveProjectMemberParams struct {
+	ProjectID pgtype.UUID
+	AccountID pgtype.UUID
+}
+
+func (q *Queries) RemoveProjectMember(ctx context.Context, arg RemoveProjectMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeProjectMember, arg.ProjectID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const removeReaction = `-- name: RemoveReaction :execrows

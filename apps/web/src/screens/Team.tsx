@@ -2,6 +2,7 @@ import {
   addMember,
   createInvitation,
   getExternalPolicy,
+  removeProjectMember,
   updateExternalPolicy,
   ApiStatusError,
   type CurrentAccount,
@@ -9,6 +10,7 @@ import {
   type MembershipKind,
 } from "@oddkin/api-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { confirmDialog } from "../design/confirm";
 import { Icon, type IconName } from "../design/icons";
 import { Modal } from "../design/Modal";
 import { nameOf } from "../design/people";
@@ -271,6 +273,44 @@ export function Team({ account }: { account: CurrentAccount }) {
     });
   }
 
+  async function remove(accountId: string, email: string) {
+    if (current === null) return;
+    const ok = await confirmDialog({
+      title: `Remover ${nameOf(email)} do projeto?`,
+      body: (
+        <p className="muted">
+          O acesso é bloqueado e as conexões abertas são encerradas na hora.
+          Cópias que a pessoa já tem não podem ser apagadas à distância. As
+          chaves do projeto serão rotacionadas e as atividades dela ficam sem
+          responsável.
+        </p>
+      ),
+      ok: "Remover",
+      danger: true,
+    });
+    if (ok !== true) return;
+    try {
+      await removeProjectMember(
+        client,
+        csrfToken(),
+        current.project.id,
+        accountId,
+      );
+      toast(
+        `${nameOf(email)} removida. Mídia e escritas futuras usam nova chave.`,
+        { icon: "lock" },
+      );
+      await reload();
+    } catch (error) {
+      toast(
+        error instanceof ApiStatusError && error.status === 409
+          ? "O projeto precisa de ao menos uma pessoa gestora."
+          : describeError(error),
+        { kind: "err" },
+      );
+    }
+  }
+
   async function save() {
     if (policy === null || current === null) return;
     const reduced = policy.permissions.some(
@@ -384,6 +424,19 @@ export function Team({ account }: { account: CurrentAccount }) {
                       {member.email}
                     </span>
                   </div>
+                  {manager &&
+                  member.accountId !== account.id &&
+                  !member.isManager ? (
+                    <button
+                      className="btn sm ghost"
+                      onClick={() =>
+                        void remove(member.accountId, member.email)
+                      }
+                      type="button"
+                    >
+                      Remover
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </section>

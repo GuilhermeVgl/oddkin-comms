@@ -1997,6 +1997,9 @@ type ServerInterface interface {
 	// AddProjectMember Add an existing organization member to the project (managers)
 	// (POST /api/v1/projects/{projectId}/members)
 	AddProjectMember(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// RemoveProjectMember Remove a member; access ends at once and the project keys are rotated (managers)
+	// (DELETE /api/v1/projects/{projectId}/members/{accountId})
+	RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId ProjectId, accountId openapi_types.UUID)
 	// ListWorkItems List non-archived tasks and subtasks
 	// (GET /api/v1/projects/{projectId}/work-items)
 	ListWorkItems(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -3901,6 +3904,41 @@ func (siw *ServerInterfaceWrapper) AddProjectMember(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveProjectMember(w, r, projectId, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkItems operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkItems(w http.ResponseWriter, r *http.Request) {
 
@@ -4490,6 +4528,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.UpdateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.ListProjectMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.AddProjectMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{projectId}/members/{accountId}", wrapper.RemoveProjectMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.GetExternalPolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.UpdateExternalPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns", wrapper.ListBoardColumns)

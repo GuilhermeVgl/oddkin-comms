@@ -238,4 +238,52 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 	if got := []string{reordered[0].Id, reordered[1].Id, reordered[2].Id, reordered[3].Id}; !slices.Equal(got, []string{doing.Id, todo.Id, review.Id, done.Id}) {
 		t.Fatalf("order: %v", got)
 	}
+
+	// Removing a member ends their access at once and frees their assignments.
+	var members []struct {
+		AccountId string
+		Email     string
+	}
+	if code := admin.do(http.MethodGet, base+"/members", "", &members); code != http.StatusOK {
+		t.Fatalf("members: %d", code)
+	}
+	idOf := map[string]string{}
+	for _, entry := range members {
+		idOf[entry.Email] = entry.AccountId
+	}
+	var assigned item
+	if code := admin.do(http.MethodPost, base+"/work-items", fmt.Sprintf(`{"kind":"task","title":"Do membro","assigneeId":%q}`, idOf["col-member@example.test"]), &assigned); code != http.StatusCreated {
+		t.Fatalf("assigned item: %d", code)
+	}
+	removal := base + "/members/" + idOf["col-member@example.test"]
+	for _, caller := range []struct {
+		who  *workClient
+		want int
+	}{{member, http.StatusForbidden}, {external, http.StatusForbidden}, {outsider, http.StatusNotFound}} {
+		if code := caller.who.do(http.MethodDelete, removal, "", nil); code != caller.want {
+			t.Fatalf("remove as non-manager: %d want %d", code, caller.want)
+		}
+	}
+	if code := admin.do(http.MethodDelete, base+"/members/"+idOf["col-outsider@example.test"], "", nil); code != http.StatusNotFound {
+		t.Fatalf("remove someone who is not a member: %d", code)
+	}
+	if code := admin.do(http.MethodDelete, base+"/members/"+idOf["col-admin@example.test"], "", nil); code != http.StatusConflict {
+		t.Fatalf("remove the last manager: %d", code)
+	}
+	if code := admin.do(http.MethodDelete, removal, "", nil); code != http.StatusNoContent {
+		t.Fatalf("remove member: %d", code)
+	}
+	if code := member.do(http.MethodGet, base, "", nil); code != http.StatusNotFound {
+		t.Fatalf("a removed member must lose access at once: %d", code)
+	}
+	var freed []struct {
+		Id         string
+		AssigneeId *string
+	}
+	admin.do(http.MethodGet, base+"/work-items", "", &freed)
+	for _, entry := range freed {
+		if entry.Id == assigned.Id && entry.AssigneeId != nil {
+			t.Fatalf("assignment must be released: %v", *entry.AssigneeId)
+		}
+	}
 }
