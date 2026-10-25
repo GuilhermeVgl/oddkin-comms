@@ -573,6 +573,24 @@ func (e NotificationKind) Valid() bool {
 	}
 }
 
+// Defines values for OrganizationPersonMembershipKind.
+const (
+	OrganizationPersonMembershipKindExternal OrganizationPersonMembershipKind = "external"
+	OrganizationPersonMembershipKindInternal OrganizationPersonMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationPersonMembershipKind enum.
+func (e OrganizationPersonMembershipKind) Valid() bool {
+	switch e {
+	case OrganizationPersonMembershipKindExternal:
+		return true
+	case OrganizationPersonMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProjectMemberMembershipKind.
 const (
 	ProjectMemberMembershipKindExternal ProjectMemberMembershipKind = "external"
@@ -781,6 +799,15 @@ type Attachment struct {
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 	Size           int64               `json:"size"`
 	UploaderEmail  string              `json:"uploaderEmail"`
+}
+
+// AuthSession defines model for AuthSession.
+type AuthSession struct {
+	CreatedAt  time.Time          `json:"createdAt"`
+	Current    bool               `json:"current"`
+	ExpiresAt  time.Time          `json:"expiresAt"`
+	Id         openapi_types.UUID `json:"id"`
+	LastSeenAt time.Time          `json:"lastSeenAt"`
 }
 
 // AuthorizeDeviceRequest defines model for AuthorizeDeviceRequest.
@@ -1291,6 +1318,18 @@ type OpenDirectConversationRequest struct {
 	AccountId openapi_types.UUID `json:"accountId"`
 }
 
+// OrganizationPerson defines model for OrganizationPerson.
+type OrganizationPerson struct {
+	Active         bool                             `json:"active"`
+	Email          openapi_types.Email              `json:"email"`
+	Id             openapi_types.UUID               `json:"id"`
+	IsAdmin        bool                             `json:"isAdmin"`
+	MembershipKind OrganizationPersonMembershipKind `json:"membershipKind"`
+}
+
+// OrganizationPersonMembershipKind defines model for OrganizationPerson.MembershipKind.
+type OrganizationPersonMembershipKind string
+
 // PasswordResetConfirmRequest defines model for PasswordResetConfirmRequest.
 type PasswordResetConfirmRequest struct {
 	Password string `json:"password"`
@@ -1441,6 +1480,11 @@ type SendMessageRequest struct {
 	MentionIds       *[]openapi_types.UUID `json:"mentionIds,omitempty"`
 	ReplyToId        *openapi_types.UUID   `json:"replyToId,omitempty"`
 	SignerDeviceId   *openapi_types.UUID   `json:"signerDeviceId,omitempty"`
+}
+
+// SetActiveRequest defines model for SetActiveRequest.
+type SetActiveRequest struct {
+	Active bool `json:"active"`
 }
 
 // SetTrustRootRequest defines model for SetTrustRootRequest.
@@ -1775,6 +1819,9 @@ type EditMessageJSONRequestBody = EditMessageRequest
 // ToggleReactionJSONRequestBody defines body for ToggleReaction for application/json ContentType.
 type ToggleReactionJSONRequestBody = ToggleReactionRequest
 
+// SetPersonActiveJSONRequestBody defines body for SetPersonActive for application/json ContentType.
+type SetPersonActiveJSONRequestBody = SetActiveRequest
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
@@ -2029,6 +2076,12 @@ type ServerInterface interface {
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/v1/notifications/{notificationId}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID)
+	// ListOrganizationPeople Everyone in the organization (administrators)
+	// (GET /api/v1/organization/people)
+	ListOrganizationPeople(w http.ResponseWriter, r *http.Request)
+	// SetPersonActive Deactivate or reactivate an account; deactivating ends every session (administrators)
+	// (PUT /api/v1/organization/people/{accountId}/active)
+	SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID)
 	// ListProjects List projects the account belongs to; archived ones only on request
 	// (GET /api/v1/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -2113,6 +2166,12 @@ type ServerInterface interface {
 	// ListRecoveryGaps Authorized devices that lack the key of a generation (recovery administrator)
 	// (GET /api/v1/recovery/gaps)
 	ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
+	// ListSessions The caller's active sessions
+	// (GET /api/v1/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession End one of the caller's sessions, current or not
+	// (DELETE /api/v1/sessions/{sessionId})
+	RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID)
 	// ListSprints List sprints visible to the account
 	// (GET /api/v1/sprints)
 	ListSprints(w http.ResponseWriter, r *http.Request)
@@ -3567,6 +3626,46 @@ func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListOrganizationPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPersonActive operation middleware
+func (siw *ServerInterfaceWrapper) SetPersonActive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPersonActive(w, r, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
 
@@ -4309,6 +4408,46 @@ func (siw *ServerInterfaceWrapper) ListRecoveryGaps(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSprints operation middleware
 func (siw *ServerInterfaceWrapper) ListSprints(w http.ResponseWriter, r *http.Request) {
 
@@ -4903,6 +5042,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.Login)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/password-reset", wrapper.RequestPasswordReset)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/password-reset/confirm", wrapper.ConfirmPasswordReset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/sessions/{sessionId}", wrapper.RevokeSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/people", wrapper.ListOrganizationPeople)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/organization/people/{accountId}/active", wrapper.SetPersonActive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)

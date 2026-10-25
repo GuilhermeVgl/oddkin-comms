@@ -89,6 +89,78 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's active sessions */
+    get: operations["listSessions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/sessions/{sessionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** End one of the caller's sessions, current or not */
+    delete: operations["revokeSession"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/organization/people": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Everyone in the organization (administrators) */
+    get: operations["listOrganizationPeople"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/organization/people/{accountId}/active": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Deactivate or reactivate an account; deactivating ends every session (administrators) */
+    put: operations["setPersonActive"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/me": {
     parameters: {
       query?: never;
@@ -1790,6 +1862,30 @@ export interface components {
     ArchiveRequest: {
       archived: boolean;
     };
+    AuthSession: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      lastSeenAt: string;
+      /** Format: date-time */
+      expiresAt: string;
+      current: boolean;
+    };
+    OrganizationPerson: {
+      /** Format: uuid */
+      id: string;
+      /** Format: email */
+      email: string;
+      active: boolean;
+      /** @enum {string} */
+      membershipKind: "internal" | "external";
+      isAdmin: boolean;
+    };
+    SetActiveRequest: {
+      active: boolean;
+    };
     BoardColumn: {
       /** Format: uuid */
       id: string;
@@ -2685,6 +2781,160 @@ export interface operations {
       };
       /** @description Too many attempts */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listSessions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sessions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthSession"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revokeSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown session */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listOrganizationPeople: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description People */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationPerson"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrators only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setPersonActive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetActiveRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown person */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The last active administrator cannot be deactivated */
+      409: {
         headers: {
           [name: string]: unknown;
         };

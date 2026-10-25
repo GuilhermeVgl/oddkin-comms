@@ -113,6 +113,90 @@ paths:
           description: The token is invalid, used or expired
         "429":
           description: Too many attempts
+  /api/v1/sessions:
+    get:
+      operationId: listSessions
+      summary: The caller's active sessions
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: No active session
+  /api/v1/sessions/{sessionId}:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeSession
+      summary: End one of the caller's sessions, current or not
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown session
+  /api/v1/organization/people:
+    get:
+      operationId: listOrganizationPeople
+      summary: Everyone in the organization (administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: People
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationPerson"
+        "401":
+          description: No active session
+        "403":
+          description: Administrators only
+  /api/v1/organization/people/{accountId}/active:
+    parameters:
+      - name: accountId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setPersonActive
+      summary: Deactivate or reactivate an account; deactivating ends every session (administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetActiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown person
+        "409":
+          description: The last active administrator cannot be deactivated
   /api/v1/auth/me:
     get:
       operationId: getCurrentAccount
@@ -2868,6 +2952,32 @@ components:
       additionalProperties: false
       properties:
         archived: { type: boolean }
+    AuthSession:
+      type: object
+      required: [id, createdAt, lastSeenAt, expiresAt, current]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        current: { type: boolean }
+    OrganizationPerson:
+      type: object
+      required: [id, email, active, membershipKind, isAdmin]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        active: { type: boolean }
+        membershipKind: { type: string, enum: [internal, external] }
+        isAdmin: { type: boolean }
+    SetActiveRequest:
+      type: object
+      required: [active]
+      additionalProperties: false
+      properties:
+        active: { type: boolean }
     BoardColumn:
       type: object
       required: [id, name, position, category]

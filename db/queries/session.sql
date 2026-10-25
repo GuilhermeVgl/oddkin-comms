@@ -31,3 +31,14 @@ WHERE id = $1 AND revoked_at IS NULL;
 -- name: RevokeAllAccountSessions :execrows
 UPDATE auth_session SET revoked_at = clock_timestamp()
 WHERE account_id = $1 AND revoked_at IS NULL;
+
+-- name: ListAccountSessions :many
+SELECT id, created_at, last_seen_at, expires_at
+FROM auth_session
+WHERE account_id = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()
+  AND last_seen_at > clock_timestamp() - interval '24 hours'
+ORDER BY last_seen_at DESC, id;
+
+-- name: RevokeAccountSession :execrows
+UPDATE auth_session SET revoked_at = clock_timestamp()
+WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL;

@@ -83,6 +83,64 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, tokenHash []
 	return i, err
 }
 
+const listAccountSessions = `-- name: ListAccountSessions :many
+SELECT id, created_at, last_seen_at, expires_at
+FROM auth_session
+WHERE account_id = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()
+  AND last_seen_at > clock_timestamp() - interval '24 hours'
+ORDER BY last_seen_at DESC, id
+`
+
+type ListAccountSessionsRow struct {
+	ID         pgtype.UUID
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+}
+
+func (q *Queries) ListAccountSessions(ctx context.Context, accountID pgtype.UUID) ([]ListAccountSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listAccountSessions, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAccountSessionsRow
+	for rows.Next() {
+		var i ListAccountSessionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeAccountSession = `-- name: RevokeAccountSession :execrows
+UPDATE auth_session SET revoked_at = clock_timestamp()
+WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeAccountSessionParams struct {
+	ID        pgtype.UUID
+	AccountID pgtype.UUID
+}
+
+func (q *Queries) RevokeAccountSession(ctx context.Context, arg RevokeAccountSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAccountSession, arg.ID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeAllAccountSessions = `-- name: RevokeAllAccountSessions :execrows
 UPDATE auth_session SET revoked_at = clock_timestamp()
 WHERE account_id = $1 AND revoked_at IS NULL

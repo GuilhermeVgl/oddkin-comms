@@ -1,18 +1,25 @@
 import {
   createBoardColumn,
   deleteBoardColumn,
+  ApiStatusError,
   getStorageUsage,
+  listOrganizationPeople,
+  listSessions,
   logout,
+  revokeSession,
+  setPersonActive,
   reorderBoardColumns,
   updateBoardColumn,
+  type AuthSession,
   type BoardColumn,
   type CurrentAccount,
+  type OrganizationPerson,
   type RecoveryAuditEntry,
   type RecoveryGap,
 } from "@oddkin/api-client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { confirmDialog } from "../design/confirm";
-import { bytes } from "../design/format";
+import { bytes, rel } from "../design/format";
 import { Icon, type IconName } from "../design/icons";
 import { Modal } from "../design/Modal";
 import { nameOf } from "../design/people";
@@ -34,6 +41,7 @@ const TABS = [
   ["perfil", "Perfil e aparência"],
   ["dispositivos", "Dispositivos"],
   ["colunas", "Colunas"],
+  ["pessoas", "Pessoas"],
   ["armazenamento", "Armazenamento"],
   ["recuperacao", "Recuperação"],
 ] as const;
@@ -164,6 +172,141 @@ function Profile({ account }: { account: CurrentAccount }) {
         </p>
       </section>
     </div>
+  );
+}
+
+function SessionsCard({ onLogout }: { onLogout: () => void }) {
+  const { client } = useWorkspace();
+  const [sessions, setSessions] = useState<AuthSession[] | null>(null);
+  const load = useCallback(() => {
+    listSessions(client)
+      .then(setSessions)
+      .catch(() => setSessions([]));
+  }, [client]);
+  useEffect(load, [load]);
+
+  return (
+    <section className="card pad col gap12">
+      <h2 className="h2">Sessões abertas</h2>
+      {sessions === null ? (
+        <p className="muted">Carregando…</p>
+      ) : (
+        <ul className="col gap8" style={{ listStyle: "none", padding: 0 }}>
+          {sessions.map((entry) => (
+            <li className="row gap8" key={entry.id}>
+              <div className="grow col">
+                <b>{entry.current ? "Esta sessão" : "Outra sessão"}</b>
+                <span className="xs muted">
+                  Iniciada {rel(entry.createdAt)} · ativa{" "}
+                  {rel(entry.lastSeenAt)}
+                </span>
+              </div>
+              <button
+                className="btn sm"
+                onClick={() => {
+                  revokeSession(client, csrfToken(), entry.id)
+                    .then(() => {
+                      if (entry.current) onLogout();
+                      else {
+                        toast("Sessão encerrada.", { icon: "check" });
+                        load();
+                      }
+                    })
+                    .catch(() =>
+                      toast("Não foi possível encerrar.", { kind: "err" }),
+                    );
+                }}
+                type="button"
+              >
+                {entry.current ? "Sair" : "Encerrar"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Administrators see everyone in the organization and can switch accounts off. */
+function People({ account }: { account: CurrentAccount }) {
+  const { client } = useWorkspace();
+  const [people, setPeople] = useState<OrganizationPerson[] | null>(null);
+  const load = useCallback(() => {
+    listOrganizationPeople(client)
+      .then(setPeople)
+      .catch(() => setPeople([]));
+  }, [client]);
+  useEffect(load, [load]);
+
+  async function toggle(person: OrganizationPerson) {
+    if (person.active) {
+      const ok = await confirmDialog({
+        title: `Desativar ${nameOf(person.email)}?`,
+        body: (
+          <p className="muted">
+            Todas as sessões terminam agora e a pessoa não consegue entrar. Os
+            registros dela continuam nos projetos. Você pode reativar a conta
+            depois.
+          </p>
+        ),
+        ok: "Desativar",
+        danger: true,
+      });
+      if (ok !== true) return;
+    }
+    try {
+      await setPersonActive(client, csrfToken(), person.id, !person.active);
+      toast(person.active ? "Conta desativada." : "Conta reativada.", {
+        icon: "check",
+      });
+      load();
+    } catch (error) {
+      toast(
+        error instanceof ApiStatusError && error.status === 409
+          ? "A organização precisa de ao menos um administrador ativo."
+          : "Não foi possível alterar a conta.",
+        { kind: "err" },
+      );
+    }
+  }
+
+  return (
+    <section className="card pad col gap12">
+      <h2 className="h2">Pessoas da organização</h2>
+      {people === null ? (
+        <p className="muted">Carregando…</p>
+      ) : (
+        <ul className="col gap8" style={{ listStyle: "none", padding: 0 }}>
+          {people.map((person) => (
+            <li className="row gap8" key={person.id}>
+              <Avatar email={person.email} id={person.id} size="sm" />
+              <div className="grow col">
+                <b>{nameOf(person.email)}</b>
+                <span className="xs muted">
+                  {person.email} ·{" "}
+                  {person.isAdmin
+                    ? "Administração"
+                    : person.membershipKind === "internal"
+                      ? "Interno"
+                      : "Externo"}
+                  {person.active ? "" : " · desativada"}
+                </span>
+              </div>
+              {person.id === account.id ? null : (
+                <button
+                  className="btn sm"
+                  onClick={() => void toggle(person)}
+                  type="button"
+                >
+                  {person.active ? "Desativar" : "Reativar"}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -421,6 +564,7 @@ function Devices({
           Sair de todas as sessões
         </button>
       </section>
+      <SessionsCard onLogout={onLogout} />
     </div>
   );
 }
@@ -1063,6 +1207,7 @@ export function Settings({
   const tabs = TABS.filter(
     ([id]) =>
       (id !== "colunas" || manager) &&
+      (id !== "pessoas" || account.isAdmin) &&
       (id !== "recuperacao" || account.isAdmin),
   );
   const active: Tab = tabs.some(([id]) => id === tab) ? (tab as Tab) : "perfil";
@@ -1090,6 +1235,7 @@ export function Settings({
           <Devices account={account} onLogout={onLogout} />
         ) : null}
         {active === "colunas" ? <Columns /> : null}
+        {active === "pessoas" ? <People account={account} /> : null}
         {active === "armazenamento" ? (
           <Storage isAdmin={account.isAdmin} />
         ) : null}
