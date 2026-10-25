@@ -73,7 +73,9 @@ services:
     restart: unless-stopped
 
   storage:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Not pinned: MinIO only keeps its newest tags public. After the first pull, pin the digest
+    # shown by `docker image inspect quay.io/minio/minio --format "{{index .RepoDigests 0}}"`.
+    image: quay.io/minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: oddkin-local-storage
