@@ -3,6 +3,7 @@ import {
   createInvitation,
   getExternalPolicy,
   removeProjectMember,
+  setProjectAppearance,
   updateExternalPolicy,
   ApiStatusError,
   type CurrentAccount,
@@ -20,7 +21,8 @@ import { toast } from "../design/toast";
 import { csrfToken, describeError } from "../errors";
 import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
-import { useWorkspace } from "../workspace";
+import { encryptProject } from "../e2ee/content";
+import { useWorkspace, type ProjectState } from "../workspace";
 
 type Permission = ExternalPolicy["permissions"][number];
 
@@ -84,6 +86,141 @@ const DEPENDS: Partial<Record<Permission, Permission>> = {
 };
 
 const LABEL = new Map(GROUPS.flatMap((group) => group.items));
+
+const SWATCHES = [
+  "#63745A",
+  "#9C7E3C",
+  "#3F5A6B",
+  "#8A4F3D",
+  "#6B5A8E",
+  "#3F7A6E",
+  "#7A7A3F",
+  "#4A4F4C",
+];
+
+function EditProjectDialog({
+  state,
+  onClose,
+}: {
+  state: ProjectState;
+  onClose: () => void;
+}) {
+  const { client, run } = useWorkspace();
+  const { project, crypto } = state;
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description);
+  const [color, setColor] = useState(project.color.toUpperCase());
+  // Names and descriptions of encrypted projects are only written by a browser holding the key.
+  const canWriteText =
+    project.encrypted && crypto !== null && crypto.canWrite("work");
+  const textChanged =
+    name.trim() !== project.name || description !== project.description;
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="dh">
+        <h2 id="dlgt">Editar projeto</h2>
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onClose();
+          void run(async () => {
+            if (color.toUpperCase() !== project.color.toUpperCase())
+              await setProjectAppearance(
+                client,
+                csrfToken(),
+                project.id,
+                color,
+              );
+            if (
+              canWriteText &&
+              textChanged &&
+              crypto !== null &&
+              name.trim() !== ""
+            )
+              await encryptProject(client, csrfToken(), crypto, {
+                ...project,
+                name: name.trim(),
+                description,
+              });
+            return true;
+          }).then(
+            (done) =>
+              done !== undefined &&
+              toast("Projeto atualizado.", { icon: "check" }),
+          );
+        }}
+      >
+        <div className="dbd col gap12">
+          <div className="field">
+            <label htmlFor="epn">Nome</label>
+            <input
+              className="inp"
+              disabled={!canWriteText}
+              id="epn"
+              maxLength={120}
+              onChange={(event) => setName(event.target.value)}
+              value={name}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="epd">Descrição</label>
+            <textarea
+              className="inp"
+              disabled={!canWriteText}
+              id="epd"
+              maxLength={2000}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              value={description}
+            />
+            {canWriteText ? null : (
+              <span className="hint">
+                Nome e descrição só mudam em projetos cifrados, com este
+                navegador liberado.
+              </span>
+            )}
+          </div>
+          <div className="field">
+            <span className="lbl" id="epc">
+              Cor
+            </span>
+            <div aria-labelledby="epc" className="row wrap" role="radiogroup">
+              {SWATCHES.map((swatch) => (
+                <button
+                  aria-checked={color === swatch}
+                  aria-label={swatch}
+                  className="iconbtn"
+                  key={swatch}
+                  onClick={() => setColor(swatch)}
+                  role="radio"
+                  style={{
+                    background: swatch,
+                    borderColor:
+                      color === swatch ? "var(--ink)" : "transparent",
+                    borderWidth: 2,
+                    width: 34,
+                    height: 34,
+                  }}
+                  type="button"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="dft">
+          <button className="btn" onClick={onClose} type="button">
+            Cancelar
+          </button>
+          <button className="btn primary" type="submit">
+            Salvar
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function InviteDialog({
   projectId,
@@ -214,6 +351,7 @@ export function Team({ account }: { account: CurrentAccount }) {
   const [policy, setPolicy] = useState<ExternalPolicy | null>(null);
   const [draft, setDraft] = useState<Permission[]>([]);
   const [invite, setInvite] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [rotation, setRotation] = useState<"" | "pending" | "done">("");
   const manager = current?.project.isManager === true || account.isAdmin;
   const externals = (current?.members ?? []).filter(
@@ -355,14 +493,25 @@ export function Team({ account }: { account: CurrentAccount }) {
     <Page
       cta={
         manager ? (
-          <button
-            className="btn primary"
-            disabled={current === null}
-            onClick={() => setInvite(true)}
-            type="button"
-          >
-            <Icon name="plus" /> Convidar
-          </button>
+          <>
+            {current?.project.isManager ? (
+              <button
+                className="btn"
+                onClick={() => setEditing(true)}
+                type="button"
+              >
+                <Icon name="edit" size="sm" /> Editar projeto
+              </button>
+            ) : null}
+            <button
+              className="btn primary"
+              disabled={current === null}
+              onClick={() => setInvite(true)}
+              type="button"
+            >
+              <Icon name="plus" /> Convidar
+            </button>
+          </>
         ) : null
       }
       sub="Membros, convites e o perfil comum de permissões dos externos."
@@ -559,6 +708,9 @@ export function Team({ account }: { account: CurrentAccount }) {
           </section>
         </div>
       )}
+      {editing && current !== null ? (
+        <EditProjectDialog onClose={() => setEditing(false)} state={current} />
+      ) : null}
       {invite && current !== null ? (
         <InviteDialog
           onClose={() => setInvite(false)}

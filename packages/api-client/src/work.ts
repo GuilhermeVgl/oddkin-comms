@@ -265,6 +265,24 @@ export async function setFollowing(
     throw new ApiStatusError(response.status, "setFollowing");
 }
 
+export async function setProjectAppearance(
+  client: Client,
+  token: string,
+  projectId: string,
+  color: string,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/appearance",
+    {
+      params: { path: { projectId } },
+      body: { color },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setProjectAppearance");
+}
+
 export async function getExternalPolicy(
   client: Client,
   projectId: string,
@@ -920,4 +938,11 @@ export async function stopScreenShare(
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, "stopScreenShare");
   }
+}
+
+export type StorageUsage = Schemas["StorageUsage"];
+
+export async function getStorageUsage(client: Client): Promise<StorageUsage> {
+  const { data, response } = await client.GET("/api/v1/storage/usage");
+  return ensure("getStorageUsage", response, data, 200);
 }

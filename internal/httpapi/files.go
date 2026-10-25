@@ -600,3 +600,28 @@ func (h *healthHandler) ListWorkItemAttachments(w http.ResponseWriter, r *http.R
 func (h *healthHandler) ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	h.listAttachments(w, r, pgtype.UUID{}, pgUUID(uuidFrom(conversationId)))
 }
+
+func (h *healthHandler) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	reserved, err := q.ReservedStorage(ctx, membership.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.StorageUsage{QuotaBytes: h.auth.quota, ReservedBytes: reserved})
+}

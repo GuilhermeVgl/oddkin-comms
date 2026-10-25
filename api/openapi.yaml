@@ -248,6 +248,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/projects/{projectId}/appearance:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: setProjectAppearance
+      summary: Choose the project's colour (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectAppearanceRequest"
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Not a #RRGGBB colour
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
   /api/v1/projects/{projectId}/members:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -1243,6 +1270,23 @@ paths:
           description: No active session
         "403":
           description: Origin rejected
+  /api/v1/storage/usage:
+    get:
+      operationId: getStorageUsage
+      summary: Attachment bytes reserved against the organization's quota (administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageUsage"
+        "401":
+          description: No active session
+        "403":
+          description: Administrators only
   /api/v1/uploads:
     post:
       operationId: createUpload
@@ -2673,6 +2717,22 @@ components:
       additionalProperties: false
       properties:
         following: { type: boolean }
+    StorageUsage:
+      type: object
+      required: [quotaBytes, reservedBytes]
+      additionalProperties: false
+      properties:
+        quotaBytes: { type: integer, format: int64 }
+        reservedBytes:
+          type: integer
+          format: int64
+          description: Stored attachments plus uploads still in progress
+    ProjectAppearanceRequest:
+      type: object
+      required: [color]
+      additionalProperties: false
+      properties:
+        color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$" }
     BoardColumn:
       type: object
       required: [id, name, position, category]

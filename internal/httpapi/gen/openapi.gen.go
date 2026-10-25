@@ -1323,6 +1323,11 @@ type Project struct {
 	Version        int                 `json:"version"`
 }
 
+// ProjectAppearanceRequest defines model for ProjectAppearanceRequest.
+type ProjectAppearanceRequest struct {
+	Color string `json:"color"`
+}
+
 // ProjectMember defines model for ProjectMember.
 type ProjectMember struct {
 	AccountId      openapi_types.UUID          `json:"accountId"`
@@ -1458,6 +1463,14 @@ type SprintClosePreview struct {
 type StartCallRequest struct {
 	ConversationId openapi_types.UUID    `json:"conversationId"`
 	InviteeIds     *[]openapi_types.UUID `json:"inviteeIds,omitempty"`
+}
+
+// StorageUsage defines model for StorageUsage.
+type StorageUsage struct {
+	QuotaBytes int64 `json:"quotaBytes"`
+
+	// ReservedBytes Stored attachments plus uploads still in progress
+	ReservedBytes int64 `json:"reservedBytes"`
 }
 
 // ToggleReactionRequest defines model for ToggleReactionRequest.
@@ -1738,6 +1751,9 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
 
+// SetProjectAppearanceJSONRequestBody defines body for SetProjectAppearance for application/json ContentType.
+type SetProjectAppearanceJSONRequestBody = ProjectAppearanceRequest
+
 // CreateBoardColumnJSONRequestBody defines body for CreateBoardColumn for application/json ContentType.
 type CreateBoardColumnJSONRequestBody = CreateBoardColumnRequest
 
@@ -1983,6 +1999,9 @@ type ServerInterface interface {
 	// UpdateProject Encrypt the project name and description (project managers)
 	// (PATCH /api/v1/projects/{projectId})
 	UpdateProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// SetProjectAppearance Choose the project's colour (project managers)
+	// (PUT /api/v1/projects/{projectId}/appearance)
+	SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListBoardColumns List board columns
 	// (GET /api/v1/projects/{projectId}/columns)
 	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2064,6 +2083,9 @@ type ServerInterface interface {
 	// ListSprintWorkItems Tasks of the sprint the account is authorized to read
 	// (GET /api/v1/sprints/{sprintId}/work-items)
 	ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// GetStorageUsage Attachment bytes reserved against the organization's quota (administrators)
+	// (GET /api/v1/storage/usage)
+	GetStorageUsage(w http.ResponseWriter, r *http.Request)
 	// CreateUpload Reserve storage and start a multipart upload (500000000 bytes at most)
 	// (POST /api/v1/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request)
@@ -3548,6 +3570,32 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// SetProjectAppearance operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectAppearance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectAppearance(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListBoardColumns operation middleware
 func (siw *ServerInterfaceWrapper) ListBoardColumns(w http.ResponseWriter, r *http.Request) {
 
@@ -4245,6 +4293,20 @@ func (siw *ServerInterfaceWrapper) ListSprintWorkItems(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetStorageUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStorageUsage(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -4674,6 +4736,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.UpdateProject)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/appearance", wrapper.SetProjectAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.ListProjectMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.AddProjectMember)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{projectId}/members/{accountId}", wrapper.RemoveProjectMember)
@@ -4715,6 +4778,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/notifications/{notificationId}/read", wrapper.MarkNotificationRead)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/read-cursor", wrapper.SetReadCursor)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/events/ws", wrapper.EventsSocket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/storage/usage", wrapper.GetStorageUsage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/uploads/{uploadId}/parts/{partNumber}", wrapper.PresignUploadPart)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/uploads/{uploadId}/complete", wrapper.CompleteUpload)

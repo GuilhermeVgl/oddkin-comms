@@ -70,6 +70,9 @@ LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
 WHERE pm.account_id = $1 AND NOT p.archived
 ORDER BY p.created_at, p.id;
 
+-- name: UpdateProjectColor :exec
+UPDATE project SET color = $2, version = version + 1 WHERE id = $1;
+
 -- name: GetProject :one
 SELECT * FROM project WHERE id = $1;
 

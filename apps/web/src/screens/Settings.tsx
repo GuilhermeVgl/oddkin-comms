@@ -1,6 +1,7 @@
 import {
   createBoardColumn,
   deleteBoardColumn,
+  getStorageUsage,
   logout,
   reorderBoardColumns,
   updateBoardColumn,
@@ -11,6 +12,7 @@ import {
 } from "@oddkin/api-client";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../design/confirm";
+import { bytes } from "../design/format";
 import { Icon, type IconName } from "../design/icons";
 import { Modal } from "../design/Modal";
 import { nameOf } from "../design/people";
@@ -732,7 +734,23 @@ function MoveDialog({
   );
 }
 
-function Storage() {
+function Storage({ isAdmin }: { isAdmin: boolean }) {
+  const { client } = useWorkspace();
+  const [usage, setUsage] = useState<{
+    quota: number;
+    reserved: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    getStorageUsage(client)
+      .then((value) =>
+        setUsage({
+          quota: Number(value.quotaBytes),
+          reserved: Number(value.reservedBytes),
+        }),
+      )
+      .catch(() => setUsage(null));
+  }, [client, isAdmin]);
   const rows: [string, string][] = [
     ["Tamanho máximo por arquivo", "500.000.000 bytes"],
     ["Transferências ativas por usuário", "1 (2 partes em paralelo)"],
@@ -740,8 +758,31 @@ function Storage() {
     ["Objetos desligados", "eliminação física após 30 dias"],
     ["URL de download", "60 s, objeto opaco, bucket privado"],
   ];
+  const blocks = 25;
+  const on =
+    usage === null || usage.quota === 0
+      ? 0
+      : Math.min(blocks, Math.ceil((usage.reserved / usage.quota) * blocks));
   return (
     <div className="stack">
+      {isAdmin ? (
+        <section className="card pad col gap12">
+          <div className="row">
+            <h2 className="h2 grow">Cota da organização</h2>
+            <span className="mono sm">
+              {usage === null
+                ? "—"
+                : `${bytes(usage.reserved)} de ${bytes(usage.quota)}`}
+            </span>
+          </div>
+          <Pbar label="Espaço reservado" on={on} total={blocks} />
+          <p className="xs muted">
+            Inclui os uploads em andamento, reservados para evitar ultrapassar a
+            cota em corridas concorrentes. A cota é configurável
+            (STORAGE_QUOTA_BYTES) e não representa preço do R2.
+          </p>
+        </section>
+      ) : null}
       <section className="card pad">
         <h2 className="h2" style={{ marginBottom: 6 }}>
           Regras
@@ -756,15 +797,6 @@ function Storage() {
             ))}
           </tbody>
         </table>
-      </section>
-      <section className="card pad col gap8">
-        <h2 className="h2">Cota da organização</h2>
-        <Pbar on={0} total={25} />
-        <p className="xs muted">
-          A cota é configurável e reserva espaço para uploads em andamento, para
-          evitar ultrapassar o limite em corridas concorrentes. Nomes e conteúdo
-          dos arquivos são cifrados no navegador antes do envio.
-        </p>
       </section>
     </div>
   );
@@ -1058,7 +1090,9 @@ export function Settings({
           <Devices account={account} onLogout={onLogout} />
         ) : null}
         {active === "colunas" ? <Columns /> : null}
-        {active === "armazenamento" ? <Storage /> : null}
+        {active === "armazenamento" ? (
+          <Storage isAdmin={account.isAdmin} />
+        ) : null}
         {active === "recuperacao" ? <Recovery /> : null}
       </div>
     </Page>

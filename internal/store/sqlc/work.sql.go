@@ -4985,6 +4985,20 @@ func (q *Queries) UpdateExternalProjectPolicy(ctx context.Context, arg UpdateExt
 	return i, err
 }
 
+const updateProjectColor = `-- name: UpdateProjectColor :exec
+UPDATE project SET color = $2, version = version + 1 WHERE id = $1
+`
+
+type UpdateProjectColorParams struct {
+	ID    pgtype.UUID
+	Color string
+}
+
+func (q *Queries) UpdateProjectColor(ctx context.Context, arg UpdateProjectColorParams) error {
+	_, err := q.db.Exec(ctx, updateProjectColor, arg.ID, arg.Color)
+	return err
+}
+
 const updateWorkItem = `-- name: UpdateWorkItem :one
 UPDATE work_item
 SET title = COALESCE($1, title),

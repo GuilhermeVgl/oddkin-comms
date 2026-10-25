@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -387,4 +388,23 @@ func (h *healthHandler) UnfollowWorkItem(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func (h *healthHandler) SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	var payload gen.ProjectAppearanceRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	if !hexColor.MatchString(payload.Color) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
+		if err := q.UpdateProjectColor(ctx, sqlc.UpdateProjectColorParams{ID: pgUUID(projectId), Color: payload.Color}); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, nil
+	})
 }

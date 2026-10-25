@@ -239,6 +239,30 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		t.Fatalf("order: %v", got)
 	}
 
+	// Managers choose the project colour; anyone else is refused and the format is checked.
+	if code := member.do(http.MethodPut, base+"/appearance", `{"color":"#112233"}`, nil); code != http.StatusForbidden {
+		t.Fatalf("colour as member: %d", code)
+	}
+	if code := admin.do(http.MethodPut, base+"/appearance", `{"color":"red"}`, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid colour: %d", code)
+	}
+	if code := admin.do(http.MethodPut, base+"/appearance", `{"color":"#112233"}`, nil); code != http.StatusNoContent {
+		t.Fatalf("set colour: %d", code)
+	}
+	var recoloured struct{ Color string }
+	if code := member.do(http.MethodGet, base, "", &recoloured); code != http.StatusOK || recoloured.Color != "#112233" {
+		t.Fatalf("colour after update: %d %+v", code, recoloured)
+	}
+
+	// Only administrators see how much storage is reserved.
+	var usage struct{ QuotaBytes, ReservedBytes int64 }
+	if code := admin.do(http.MethodGet, "/api/v1/storage/usage", "", &usage); code != http.StatusOK || usage.QuotaBytes != 50_000_000_000 || usage.ReservedBytes != 0 {
+		t.Fatalf("storage usage: %d %+v", code, usage)
+	}
+	if code := member.do(http.MethodGet, "/api/v1/storage/usage", "", nil); code != http.StatusForbidden {
+		t.Fatalf("storage usage as member: %d", code)
+	}
+
 	// Following: whoever can read an activity can follow it, and followers hear about moves.
 	following := "/api/v1/work-items/" + moved[0].Id + "/followers/me"
 	var state struct{ Following bool }

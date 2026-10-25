@@ -178,6 +178,25 @@ export interface paths {
     patch: operations["updateProject"];
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/appearance": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Choose the project's colour (project managers) */
+    put: operations["setProjectAppearance"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/members": {
     parameters: {
       query?: never;
@@ -705,6 +724,23 @@ export interface paths {
     };
     /** WebSocket delivering authorized event references (protocol version 1) */
     get: operations["eventsSocket"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/storage/usage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Attachment bytes reserved against the organization's quota (administrators) */
+    get: operations["getStorageUsage"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1667,6 +1703,18 @@ export interface components {
     };
     Following: {
       following: boolean;
+    };
+    StorageUsage: {
+      /** Format: int64 */
+      quotaBytes: number;
+      /**
+       * Format: int64
+       * @description Stored attachments plus uploads still in progress
+       */
+      reservedBytes: number;
+    };
+    ProjectAppearanceRequest: {
+      color: string;
     };
     BoardColumn: {
       /** Format: uuid */
@@ -2847,6 +2895,65 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ApiError"];
         };
+      };
+    };
+  };
+  setProjectAppearance: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectAppearanceRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not a */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Project is archived */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -4760,6 +4867,40 @@ export interface operations {
         content?: never;
       };
       /** @description Origin rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStorageUsage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Usage */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageUsage"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrators only */
       403: {
         headers: {
           [name: string]: unknown;
