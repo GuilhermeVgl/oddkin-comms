@@ -60,3 +60,21 @@ func TestS3SignsForThePublicEndpointBrowsersReach(t *testing.T) {
 		t.Fatalf("a browser must be given the public address, got %s", signed)
 	}
 }
+
+func TestS3PublicEndpointMayCarryAPathPrefix(t *testing.T) {
+	store, err := NewS3(S3Config{
+		Endpoint: "http://storage:9090", PublicEndpoint: "http://127.0.0.1:3000/storage", PathStyle: true,
+		Bucket: "synthetic-bucket", AccessKeyID: "SYNTHETIC_KEY_ID", SecretAccessKey: "synthetic-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := store.PresignPart(context.Background(), "objects/abc", "upload-1", 1, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, _ := url.Parse(signed)
+	if parsed.Host != "127.0.0.1:3000" || parsed.Path != "/storage/synthetic-bucket/objects/abc" {
+		t.Fatalf("the web server proxies /storage, got %s", signed)
+	}
+}

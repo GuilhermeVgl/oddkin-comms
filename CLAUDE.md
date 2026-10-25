@@ -25,7 +25,7 @@ Este arquivo orienta Claude e outros agentes que implementam ou revisam este rep
 | Chamadas | LiveKit self-hosted; SDK Go no backend, JS/React no cliente |
 | Arquivos | R2 privado, AWS SDK for Go v2, multipart direto do navegador |
 | Criptografia do conteúdo | libsodium no navegador, em workers |
-| Operação | Docker Compose com `postgres`, `api`, `livekit`, `storage` (MinIO simulando o R2) e `web`; sem Redis, worker, migrate, bootstrap ou simulador de e-mail (ADR 0018) |
+| Operação | Docker Compose com `postgres`, `api`, `livekit`, `storage` (S3Mock simulando o R2) e `web`; sem Redis, worker, migrate, bootstrap ou simulador de e-mail (ADR 0018) |
 
 Não introduzir outro backend Node, microserviços, Kubernetes, ORM adicional, broker ou framework de DI sem necessidade concreta e decisão documentada. Node/pnpm continuam necessários ao frontend e aos geradores que os utilizam; não ao runtime da API Go.
 

@@ -2,8 +2,6 @@
 set -eu
 
 project="oddkin-local-check-$$"
-export ODDKIN_STORAGE_BIND='127.0.0.1'
-export ODDKIN_STORAGE_PORT='0'
 export ODDKIN_ADMIN_EMAIL="admin@compose.test"
 export ODDKIN_ADMIN_PASSWORD="synthetic-compose-password"
 export ODDKIN_TIMEZONE="UTC"
@@ -63,18 +61,16 @@ if [ "$invite_code" != 201 ]; then
   echo "Compose invitation returned $invite_code" >&2
   exit 1
 fi
-storage_address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port storage 9000)
-storage_port=${storage_address##*:}
 storage_ready=false
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if curl --fail --silent "http://127.0.0.1:$storage_port/minio/health/live" >/dev/null; then
+  if curl --fail --silent "http://127.0.0.1:$port/storage/favicon.ico" >/dev/null; then
     storage_ready=true
     break
   fi
   sleep 1
 done
 if [ "$storage_ready" != true ]; then
-  echo "Compose file storage (MinIO) did not become healthy" >&2
+  echo "Compose file storage (S3Mock) is not reachable through the web proxy" >&2
   exit 1
 fi
 echo "Local Compose passed: web, API (migrated and bootstrapped itself) and file storage are up"

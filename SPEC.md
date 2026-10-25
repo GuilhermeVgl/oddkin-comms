@@ -672,7 +672,7 @@ Requests mutáveis usam `Idempotency-Key` ou o `clientMutationId` definido no co
 
 ### 15.1 Entrega esperada
 
-`compose.yaml` para desenvolvimento e configuração de produção equivalente com `web`, `api`, `postgres`, `livekit`, `storage` (MinIO, que simula o R2 localmente) e `proxy`. A API executa migrations, cria o primeiro administrador e roda os jobs River no mesmo processo; não há containers separados de migrate, bootstrap, worker, Redis nem simulador de e-mail. O e-mail usa sempre a API real da Resend com chaves do `.env`; produção troca o MinIO pelo R2.
+`compose.yaml` para desenvolvimento e configuração de produção equivalente com `web`, `api`, `postgres`, `livekit`, `storage` (S3Mock, que simula o R2 localmente) e `proxy`. A API executa migrations, cria o primeiro administrador e roda os jobs River no mesmo processo; não há containers separados de migrate, bootstrap, worker, Redis nem simulador de e-mail. O e-mail usa sempre a API real da Resend com chaves do `.env`; produção troca o S3Mock pelo R2.
 
 Entregar Dockerfiles multi-stage, lockfiles, `.env.example` sem credenciais reais, healthchecks, volumes nomeados, política de restart, limites documentados, migrations aplicadas pela própria API sob lock consultivo (ADR 0018) e guia de backup/restauração. Serviços de aplicação executam como usuário sem privilégios quando possível. As particularidades de rede host do LiveKit em Linux devem estar explícitas no Compose/guia, sem fingir portabilidade idêntica para macOS.
 

@@ -2,7 +2,7 @@
 #   postgres  the database (and the job queue: River lives in it)
 #   api       one Go process: HTTP, migrations (which also create the first administrator), background jobs
 #   livekit   audio and video for calls (single node, no Redis)
-#   storage   MinIO, a local stand-in for the Cloudflare R2 bucket
+#   storage   S3Mock, a local stand-in for the Cloudflare R2 bucket
 #   web       Vite with hot reload
 # E-mail goes straight to the real Resend API: put your keys in .env (see .env.example).
 name: oddkin
@@ -43,10 +43,12 @@ services:
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
-      # Defaults point at the local MinIO. To use a real R2 bucket, set the R2_*
+      # Defaults point at the local S3Mock. To use a real R2 bucket, set the R2_*
       # variables in .env (and R2_PATH_STYLE=false, R2_CREATE_BUCKET=false).
-      R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
-      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-${R2_ENDPOINT:-http://127.0.0.1:${ODDKIN_STORAGE_PORT:-9000}}}
+      # Browsers reach the local bucket through the web server at /storage (same
+      # origin, so no CORS); the API itself talks to it directly.
+      R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9090}
+      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-${R2_ENDPOINT:-${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}/storage}}
       R2_BUCKET: ${R2_BUCKET:-oddkin-files}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-oddkin-local-storage}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-oddkin-local-storage-secret}
@@ -73,25 +75,13 @@ services:
     restart: unless-stopped
 
   storage:
-    # Not pinned: MinIO only keeps its newest tags public. After the first pull, pin the digest
-    # shown by `docker image inspect quay.io/minio/minio --format "{{index .RepoDigests 0}}"`.
-    image: quay.io/minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+    image: adobe/s3mock:5.2.3
     environment:
-      MINIO_ROOT_USER: oddkin-local-storage
-      MINIO_ROOT_PASSWORD: oddkin-local-storage-secret
-      # Browsers send file parts straight to the bucket, so it must accept the app's origin.
-      MINIO_API_CORS_ALLOW_ORIGIN: ${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${R2_BUCKET:-oddkin-files}
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
     volumes:
-      - storage_data:/data
-    ports:
-      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:${ODDKIN_STORAGE_PORT:-9000}:9000"
-      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:9001:9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
+      - storage_data:/s3mockroot
     restart: unless-stopped
 
   web:
@@ -103,6 +93,7 @@ services:
       - corepack pnpm install --store-dir /pnpm/store --frozen-lockfile && corepack pnpm --filter @oddkin/web dev --host 0.0.0.0 --port 5173
     environment:
       VITE_API_PROXY_TARGET: http://api:8080
+      VITE_STORAGE_PROXY_TARGET: http://storage:9090
       VITE_USE_POLLING: "true"
     volumes:
       - .:/workspace
@@ -112,6 +103,8 @@ services:
       - "${ODDKIN_WEB_BIND:-127.0.0.1:3000}:5173"
     depends_on:
       api:
+        condition: service_started
+      storage:
         condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
