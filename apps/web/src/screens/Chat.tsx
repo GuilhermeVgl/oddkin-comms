@@ -178,7 +178,7 @@ export function Chat({
                       onClick={() => setManaging(group.state.project.id)}
                       type="button"
                     >
-                      <Icon name="settings" size="sm" />
+                      <Icon name="gear" size="sm" />
                     </button>
                   ) : null}
                 </h4>

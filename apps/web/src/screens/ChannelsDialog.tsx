@@ -75,7 +75,7 @@ export function ChannelsDialog({
                 onClick={() => move(entry, -1)}
                 type="button"
               >
-                <Icon name="chevron-up" size="sm" />
+                <Icon name="up" size="sm" />
               </button>
               <button
                 aria-label={`Descer ${entry.name}`}
@@ -84,7 +84,7 @@ export function ChannelsDialog({
                 onClick={() => move(entry, 1)}
                 type="button"
               >
-                <Icon name="chevron-down" size="sm" />
+                <Icon name="down" size="sm" />
               </button>
               <button
                 className="btn sm"
