@@ -44,7 +44,7 @@ A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arqu
 
 ## 🚧 Estado do projeto
 
-O produto inclui projetos, membros, externos, quadro de trabalho, épicos, atividades, subtarefas, comentários, sprints, canais, DMs, notificações, anexos de até 500 MB e chamadas para até cinco pessoas. O Compose da raiz inicia API, worker, banco, armazenamento local, LiveKit e interface web. Conteúdo de trabalho, DMs, nomes de projetos, canais, sprints e arquivos usa envelopes E2EE no navegador; a mídia das chamadas também usa E2EE via LiveKit. O corpo binário dos anexos ainda aguarda o formato de streaming E2EE e domínios individuais de arquivo descritos na SPEC.
+O produto inclui projetos, membros, externos, quadro de trabalho, épicos, atividades, subtarefas, comentários, sprints, canais, DMs, notificações, anexos de até 500 MB e chamadas para até cinco pessoas. O Compose da raiz inicia API, worker, banco, armazenamento local, LiveKit e interface web. Conteúdo de trabalho, DMs, nomes de projetos, canais, sprints e arquivos usa envelopes E2EE no navegador; a mídia das chamadas também usa E2EE via LiveKit. Além disso: gestão de colunas do quadro, remoção de membros com rotação de chaves, seguir atividades, redefinição de senha por link de uso único, cota de armazenamento visível ao administrador e a interface completa do [protótipo aprovado](./DESIGN.md) (personagens Capuz e Tela, sons opcionais, paleta Ctrl/Cmd K). O corpo binário dos anexos ainda aguarda o formato de streaming E2EE e domínios individuais de arquivo descritos na SPEC.
 
 - [Especificação funcional e técnica](./SPEC.md)
 - [Regras de desenvolvimento, TDD e quality gates](./CLAUDE.md)
