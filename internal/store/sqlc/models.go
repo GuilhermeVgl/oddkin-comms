@@ -285,6 +285,17 @@ type OrganizationTrust struct {
 	SetAt             pgtype.Timestamptz
 }
 
+type PasswordReset struct {
+	ID              pgtype.UUID
+	AccountID       pgtype.UUID
+	TokenHash       []byte
+	TokenCiphertext []byte
+	ExpiresAt       pgtype.Timestamptz
+	UsedAt          pgtype.Timestamptz
+	SentAt          pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
 type Project struct {
 	ID                    pgtype.UUID
 	OrganizationID        pgtype.UUID

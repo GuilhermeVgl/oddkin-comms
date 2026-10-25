@@ -125,5 +125,47 @@ export async function acceptInvitation(
       );
   }
 }
+export async function requestPasswordReset(
+  client: ReturnType<typeof createApiClient>,
+  email: string,
+): Promise<"accepted" | "rate-limited" | "unavailable"> {
+  const { response } = await client.POST("/api/v1/auth/password-reset", {
+    body: { email },
+  });
+  switch (response.status) {
+    case 202:
+      return "accepted";
+    case 429:
+      return "rate-limited";
+    case 503:
+      return "unavailable";
+    default:
+      throw new Error(`Unexpected password reset status: ${response.status}`);
+  }
+}
+
+export async function confirmPasswordReset(
+  client: ReturnType<typeof createApiClient>,
+  token: string,
+  password: string,
+): Promise<"changed" | "invalid" | "weak" | "rate-limited"> {
+  const { response } = await client.POST(
+    "/api/v1/auth/password-reset/confirm",
+    { body: { token, password } },
+  );
+  switch (response.status) {
+    case 204:
+      return "changed";
+    case 400:
+      return "weak";
+    case 404:
+      return "invalid";
+    case 429:
+      return "rate-limited";
+    default:
+      throw new Error(`Unexpected password reset status: ${response.status}`);
+  }
+}
+
 export * from "./work";
 export * from "./e2ee";

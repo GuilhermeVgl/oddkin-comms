@@ -17,6 +17,7 @@ import {
   DeviceGate,
   InvitationScreen,
   LoginScreen,
+  ResetPasswordScreen,
   StatusScreen,
   type PendingInvitation,
 } from "./screens/Auth";
@@ -29,7 +30,10 @@ type SessionState =
   | { status: "authenticated"; account: CurrentAccount }
   | { status: "unavailable" };
 
-type Entry = { kind: "invitation"; invitation: PendingInvitation } | null;
+type Entry =
+  | { kind: "invitation"; invitation: PendingInvitation }
+  | { kind: "reset"; token: string }
+  | null;
 
 /** Links from e-mails carry a one-time token in the hash; read it once and clear it. */
 function readEntry(): Entry {
@@ -43,6 +47,11 @@ function readEntry(): Entry {
       return { kind: "invitation", invitation: { email, token } };
     }
     return null;
+  }
+  const reset = /^#reset-password\?(.*)$/.exec(hash);
+  if (reset !== null) {
+    const token = new URLSearchParams(reset[1]).get("token");
+    if (token !== null && token.length === 43) return { kind: "reset", token };
   }
   return null;
 }
@@ -180,6 +189,10 @@ function App() {
         </EventsProvider>
       );
     }
+  } else if (entry?.kind === "reset") {
+    screen = (
+      <ResetPasswordScreen onDone={() => setEntry(null)} token={entry.token} />
+    );
   } else if (entry?.kind === "invitation" && !signingIn) {
     screen = (
       <InvitationScreen

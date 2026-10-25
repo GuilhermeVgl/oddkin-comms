@@ -31,5 +31,8 @@ func NewWorkersWithInvitationEmail(pool *pgxpool.Pool, mailer InvitationMailer, 
 	river.AddWorker(workers, &invitationEmailWorker{
 		pool: pool, mailer: mailer, deliveryKey: append([]byte(nil), deliveryKey...), publicURL: publicURL,
 	})
+	river.AddWorker(workers, &passwordResetEmailWorker{
+		pool: pool, mailer: mailer, deliveryKey: append([]byte(nil), deliveryKey...), publicURL: publicURL,
+	})
 	return workers
 }

@@ -1,8 +1,10 @@
 import {
   acceptInvitation,
+  confirmPasswordReset,
   createApiClient,
   fetchCurrentAccount,
   login,
+  requestPasswordReset,
   type CurrentAccount,
 } from "@oddkin/api-client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -87,29 +89,74 @@ function LoginArt({ duo }: { duo: React.RefObject<DuoRef | null> }) {
 }
 
 function ForgotDialog({ onClose }: { onClose: () => void }) {
+  const client = useMemo(() => createApiClient(""), []);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
     <Modal onClose={onClose}>
       <div className="dh">
-        <h2 id="dlgt">Esqueci a senha</h2>
+        <h2 id="dlgt">Redefinir senha</h2>
       </div>
-      <div className="dbd col gap12">
-        <Banner icon="mail" kind="warn">
-          <b>
-            A redefinição por e-mail ainda não está disponível nesta instalação.
-          </b>{" "}
-          Peça um novo acesso à administração: ela envia um convite novo para o
-          seu e-mail.
-        </Banner>
-        <Banner>
-          Redefinir a senha <b>não restaura o histórico cifrado</b>. Depois de
-          entrar, este dispositivo ainda precisa ser liberado.
-        </Banner>
-      </div>
-      <div className="dft">
-        <button className="btn primary" onClick={onClose} type="button">
-          Entendi
-        </button>
-      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setBusy(true);
+          requestPasswordReset(client, email)
+            .then((result) => {
+              onClose();
+              if (result === "accepted") {
+                toast("Se existir uma conta, o link foi enviado.", {
+                  icon: "mail",
+                });
+              } else {
+                toast(
+                  result === "rate-limited"
+                    ? "Muitas tentativas. Aguarde um instante."
+                    : "O envio de e-mails não está disponível agora.",
+                  { kind: "err" },
+                );
+              }
+            })
+            .catch(() => {
+              setBusy(false);
+              toast("Não foi possível pedir o link agora.", { kind: "err" });
+            });
+        }}
+      >
+        <div className="dbd col gap12">
+          <p className="muted">
+            Enviaremos um link de uso único, válido por uma hora. A resposta é a
+            mesma para qualquer e-mail, assim ninguém descobre quem tem conta.
+          </p>
+          <div className="field">
+            <label htmlFor="fe">E-mail</label>
+            <input
+              autoComplete="username"
+              className="inp"
+              id="fe"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+          </div>
+          <Banner>
+            Redefinir a senha <b>não restaura o histórico cifrado</b>. Depois,
+            este dispositivo ainda precisa ser liberado.
+          </Banner>
+        </div>
+        <div className="dft">
+          <button className="btn" onClick={onClose} type="button">
+            Cancelar
+          </button>
+          <button
+            className={`btn primary${busy ? " loading" : ""}`}
+            type="submit"
+          >
+            Enviar link
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -480,6 +527,124 @@ export function InvitationScreen({
                 Já tenho uma conta
               </button>
             ) : null}
+          </form>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/** The page behind the link in a password reset e-mail. */
+export function ResetPasswordScreen({
+  token,
+  onDone,
+}: {
+  token: string;
+  onDone: () => void;
+}) {
+  const client = useMemo(() => createApiClient(""), []);
+  const [password, setPassword] = useState("");
+  const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password !== again) {
+      setError("As senhas não são iguais.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await confirmPasswordReset(client, token, password);
+      if (result === "changed") {
+        toast("Senha redefinida. Entre com a nova senha.", { icon: "check" });
+        onDone();
+        return;
+      }
+      blip("err");
+      setError(
+        result === "weak"
+          ? `Use pelo menos ${MIN_PASSWORD} caracteres.`
+          : result === "rate-limited"
+            ? "Muitas tentativas. Aguarde um instante."
+            : "Este link é inválido, já foi usado ou expirou. Peça um novo.",
+      );
+    } catch {
+      setError("Não foi possível redefinir a senha agora.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div id="app">
+      <div className="login">
+        <section className="login-art">
+          <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
+            <Logo />
+            <span>Oddkin</span>
+          </div>
+          <div className="stage-px" style={{ justifyContent: "flex-start" }}>
+            <div className="floor" />
+            <Duo gap={24} pose="think" scale={6} />
+          </div>
+          <h2>
+            Nova senha,
+            <br />
+            <em>mesmo histórico.</em>
+          </h2>
+        </section>
+        <section className="login-form">
+          <div>
+            <h1>Redefinir senha</h1>
+            <p className="muted" style={{ marginTop: 6 }}>
+              O link vale uma vez e encerra as sessões anteriores.
+            </p>
+          </div>
+          <form className="col gap16" onSubmit={(event) => void submit(event)}>
+            <div className="field">
+              <label htmlFor="rp1">Nova senha</label>
+              <input
+                autoComplete="new-password"
+                className="inp"
+                id="rp1"
+                minLength={MIN_PASSWORD}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                type="password"
+                value={password}
+              />
+              <span className="hint">Mínimo de {MIN_PASSWORD} caracteres.</span>
+            </div>
+            <div className="field">
+              <label htmlFor="rp2">Repita a senha</label>
+              <input
+                autoComplete="new-password"
+                className="inp"
+                id="rp2"
+                onChange={(event) => setAgain(event.target.value)}
+                required
+                type="password"
+                value={again}
+              />
+            </div>
+            {error === "" ? null : (
+              <Banner kind="err" role="alert">
+                {error}
+              </Banner>
+            )}
+            <Banner>
+              Redefinir a senha <b>não restaura o histórico cifrado</b>. Depois
+              de entrar, este dispositivo ainda precisa ser liberado.
+            </Banner>
+            <button
+              className={`btn primary lg${busy ? " loading" : ""}`}
+              type="submit"
+            >
+              Redefinir senha
+            </button>
           </form>
         </section>
       </div>
