@@ -12,13 +12,13 @@ A instalação atende poucas pessoas e roda em uma máquina. Cada container a ma
 
 Cinco serviços no Compose de desenvolvimento:
 
-| Serviço | Papel |
-| --- | --- |
-| `postgres` | Banco de dados e fila de jobs (River mora nele) |
-| `api` | Um processo Go: HTTP/WebSocket, migrations, primeiro administrador e workers River |
-| `livekit` | Mídia das chamadas, nó único |
-| `storage` | MinIO, que simula o bucket R2 de arquivos |
-| `web` | Vite com hot reload |
+| Serviço    | Papel                                                                              |
+| ---------- | ---------------------------------------------------------------------------------- |
+| `postgres` | Banco de dados e fila de jobs (River mora nele)                                    |
+| `api`      | Um processo Go: HTTP/WebSocket, migrations, primeiro administrador e workers River |
+| `livekit`  | Mídia das chamadas, nó único                                                       |
+| `storage`  | MinIO, que simula o bucket R2 de arquivos                                          |
+| `web`      | Vite com hot reload                                                                |
 
 - **Migrations**: a API as aplica ao iniciar, sob o mesmo lock consultivo do `cmd/migrate`, que continua existindo como utilitário. `AUTO_MIGRATE=false` desliga. Com uma única instância da API não há corrida de migração; antes de escalar para várias réplicas, volte a migrar fora da API.
 - **Primeiro administrador**: criado pela API quando `ODDKIN_ADMIN_EMAIL` e `ODDKIN_ADMIN_PASSWORD` estão definidos e a instalação está vazia. Idempotente.
