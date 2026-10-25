@@ -16,7 +16,10 @@ import (
 // S3Config configures an S3-compatible endpoint; for R2 the endpoint is
 // https://<account>.r2.cloudflarestorage.com and the region is "auto".
 type S3Config struct {
-	Endpoint        string
+	Endpoint string
+	// PublicEndpoint is the address browsers use for presigned URLs when it
+	// differs from Endpoint (local MinIO behind Docker). Empty means Endpoint.
+	PublicEndpoint  string
 	Bucket          string
 	AccessKeyID     string
 	SecretAccessKey string
@@ -45,7 +48,32 @@ func NewS3(config S3Config) (Store, error) {
 		Credentials:  credentials.NewStaticCredentialsProvider(config.AccessKeyID, config.SecretAccessKey, ""),
 		UsePathStyle: config.PathStyle,
 	})
-	return &s3Store{client: client, presign: s3.NewPresignClient(client), bucket: config.Bucket}, nil
+	presigner := client
+	if config.PublicEndpoint != "" && config.PublicEndpoint != config.Endpoint {
+		presigner = s3.New(s3.Options{
+			Region:       region,
+			BaseEndpoint: aws.String(config.PublicEndpoint),
+			Credentials:  credentials.NewStaticCredentialsProvider(config.AccessKeyID, config.SecretAccessKey, ""),
+			UsePathStyle: config.PathStyle,
+		})
+	}
+	return &s3Store{client: client, presign: s3.NewPresignClient(presigner), bucket: config.Bucket}, nil
+}
+
+// EnsureBucket creates the bucket when it does not exist. Meant for the local
+// MinIO that stands in for R2.
+func (s *s3Store) EnsureBucket(ctx context.Context) error {
+	if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket}); err == nil {
+		return nil
+	}
+	if _, err := s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket}); err != nil {
+		var exists *types.BucketAlreadyOwnedByYou
+		if errors.As(err, &exists) {
+			return nil
+		}
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	return nil
 }
 
 func (s *s3Store) CreateMultipart(ctx context.Context, key string) (string, error) {

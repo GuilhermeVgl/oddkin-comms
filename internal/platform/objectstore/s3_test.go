@@ -42,3 +42,21 @@ func TestS3RequiresCompleteConfiguration(t *testing.T) {
 		t.Fatal("incomplete configuration must be rejected")
 	}
 }
+
+func TestS3SignsForThePublicEndpointBrowsersReach(t *testing.T) {
+	store, err := NewS3(S3Config{
+		Endpoint: "http://storage:9000", PublicEndpoint: "http://127.0.0.1:9000", PathStyle: true,
+		Bucket: "synthetic-bucket", AccessKeyID: "SYNTHETIC_KEY_ID", SecretAccessKey: "synthetic-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := store.PresignGet(context.Background(), "objects/abc", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, _ := url.Parse(signed)
+	if parsed.Host != "127.0.0.1:9000" || parsed.Path != "/synthetic-bucket/objects/abc" {
+		t.Fatalf("a browser must be given the public address, got %s", signed)
+	}
+}

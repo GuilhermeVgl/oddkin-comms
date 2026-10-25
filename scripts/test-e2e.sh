@@ -18,10 +18,6 @@ if [ -z "$database_port" ]; then
 fi
 TEST_DATABASE_URL="postgres://oddkin_test:synthetic_test_password@127.0.0.1:$database_port/oddkin_test"
 export TEST_DATABASE_URL
-DATABASE_URL="$TEST_DATABASE_URL" go run ./cmd/migrate
-DATABASE_URL="$TEST_DATABASE_URL" \
-  ODDKIN_ADMIN_EMAIL="admin@example.test" \
-  ODDKIN_ADMIN_PASSWORD="synthetic-admin-password" \
-  ODDKIN_TIMEZONE="UTC" \
-  go run ./cmd/bootstrap
+# The API migrates and creates the administrator itself; the E2E suite starts it.
+export DATABASE_URL="$TEST_DATABASE_URL" ODDKIN_ADMIN_EMAIL="admin@example.test" ODDKIN_ADMIN_PASSWORD="synthetic-admin-password" ODDKIN_TIMEZONE="UTC"
 corepack pnpm test:e2e

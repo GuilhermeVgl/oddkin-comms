@@ -15,7 +15,7 @@ Este arquivo orienta Claude e outros agentes que implementam ou revisam este rep
 
 | Parte | Tecnologia |
 | --- | --- |
-| API e worker | Go, um módulo na raiz, `net/http`, monólito modular |
+| API (com jobs) | Go, um módulo na raiz, `net/http`, monólito modular; um único processo roda HTTP, migrations, bootstrap do administrador e workers River |
 | Banco | PostgreSQL, `pgx/v5`, `sqlc`, migrations SQL com Goose |
 | Jobs | River open source, usando PostgreSQL e transações do app |
 | Contrato HTTP | OpenAPI 3.0.3, `oapi-codegen`, cliente TypeScript gerado |
@@ -25,7 +25,7 @@ Este arquivo orienta Claude e outros agentes que implementam ou revisam este rep
 | Chamadas | LiveKit self-hosted; SDK Go no backend, JS/React no cliente |
 | Arquivos | R2 privado, AWS SDK for Go v2, multipart direto do navegador |
 | Criptografia do conteúdo | libsodium no navegador, em workers |
-| Operação | Docker Compose; Redis privado somente para LiveKit nesta arquitetura |
+| Operação | Docker Compose com `postgres`, `api`, `livekit`, `storage` (MinIO simulando o R2) e `web`; sem Redis, worker, migrate, bootstrap ou simulador de e-mail (ADR 0018) |
 
 Não introduzir outro backend Node, microserviços, Kubernetes, ORM adicional, broker ou framework de DI sem necessidade concreta e decisão documentada. Node/pnpm continuam necessários ao frontend e aos geradores que os utilizam; não ao runtime da API Go.
 
@@ -47,7 +47,7 @@ Nunca escrever testes que apenas reproduzem a implementação, testar getters tr
 
 ## 4. Estrutura e regras Go
 
-- `cmd/api`, `cmd/worker` e `cmd/migrate` contêm inicialização e composição, não regras de negócio.
+- `cmd/api` e `cmd/migrate` contêm inicialização e composição, não regras de negócio.
 - Domínio fica em `internal/<dominio>`; HTTP, SQL e integrações são adaptadores. Defina interfaces pequenas onde são consumidas, quando necessárias para isolamento/teste.
 - Use nomes idiomáticos Go, `gofmt`, construtores explícitos e retorno de erros. Evite pacote genérico `utils`, singleton mutável, reflection desnecessária e interfaces para cada struct sem motivo.
 - Propague `context.Context` a todas as operações de I/O. Respeite cancelamento, deadlines, encerramento e liberação de recursos.
@@ -70,7 +70,7 @@ Nunca escrever testes que apenas reproduzem a implementação, testar getters tr
 - Não chame a API da Resend, R2 ou LiveKit mantendo lock do banco. Modele intenção, efeito externo e reconciliação para as falhas entre etapas.
 - Mantenha constraints de integridade mesmo quando o serviço valida a mesma regra. Mutex Go não substitui lock transacional em admissão de chamadas, fechamento de sprint ou quota.
 - Migrations já aplicadas são imutáveis. Alterar schema com nova migration e testar banco vazio e upgrade. Mudanças destrutivas requerem plano de dados e autorização concreta; não aplicar contra produção por conveniência.
-- `cmd/migrate` executa migrations da aplicação e River na sequência documentada. API e worker não executam migration automaticamente ao iniciar.
+- As migrations (aplicação e River, nessa ordem) rodam no início da API sob lock consultivo, salvo `AUTO_MIGRATE=false`; `cmd/migrate` executa o mesmo código à mão. Decisão do mantenedor para uma instalação pequena, em ADR 0018.
 - Não depender de recursos River Pro para satisfazer requisitos do projeto open source.
 
 ## 6. Contratos, eventos e frontend
@@ -93,7 +93,7 @@ Estas regras precisam de testes positivos e negativos:
 1. Usuário acessa somente projetos autorizados; IDs conhecidos, busca, totais, eventos, anexos e cursor não contornam isolamento.
 2. Todos os externos de um projeto usam a mesma política granular; não criar overrides individuais.
 3. Conteúdo do trabalho e arquivos são E2EE; backend só recebe ciphertext e metadados operacionais definidos na spec.
-4. Chaves privadas de conteúdo/recuperação não ficam em secrets de servidor, Redis, logs, JWTs ou URLs.
+4. Chaves privadas de conteúdo/recuperação não ficam em secrets de servidor, logs, JWTs ou URLs.
 5. Reset de senha não recupera por si só chaves do histórico. Dispositivo precisa de autorização criptográfica.
 6. Administração de recuperação é explicitamente confiável; não alegar privacidade contra quem tem essa capacidade.
 7. Uma chamada nunca admite seis pessoas, inclusive sob corrida, retry e múltiplos dispositivos. Há validação transacional e restrição no LiveKit.
@@ -123,7 +123,7 @@ Criar um Makefile na raiz como interface única para desenvolvedores e CI. Os al
 | `make test-e2e` | Playwright contra app/container reais, usuários isolados, navegadores baseline e artefatos de falha |
 | `make coverage-check` | Cobertura de código escrito à mão, limiares abaixo, sem esconder pacotes novos |
 | `make security-check` | `govulncheck ./...`, auditoria de dependências JS, secret scan e verificação de dependências/imagens conforme política |
-| `make build` | Compilar API, worker, migrate e frontend com toolchains fixadas |
+| `make build` | Compilar API, migrate e frontend com toolchains fixadas |
 | `make container-check` | Validar Compose com configuração de teste, build de imagens, migrations e smoke test/healthcheck |
 | `make commit-check` | Validar mensagens dos commits novos e bloquear trailer de coautoria |
 | `make gate-docs` | Markdown, links relativos/âncoras, ausência de segredos e política de commits; para mudança exclusivamente documental |

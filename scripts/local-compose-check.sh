@@ -2,7 +2,8 @@
 set -eu
 
 project="oddkin-local-check-$$"
-export ODDKIN_RESEND_BIND='127.0.0.1:'
+export ODDKIN_STORAGE_BIND='127.0.0.1'
+export ODDKIN_STORAGE_PORT='0'
 export ODDKIN_ADMIN_EMAIL="admin@compose.test"
 export ODDKIN_ADMIN_PASSWORD="synthetic-compose-password"
 export ODDKIN_TIMEZONE="UTC"
@@ -13,7 +14,7 @@ trap cleanup EXIT HUP INT TERM
 
 ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" config -q
 ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" up -d --wait --build
-address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port web 8080)
+address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port web 5173)
 port=${address##*:}
 if [ -z "$port" ]; then
   echo "Web port was not published" >&2
@@ -62,18 +63,18 @@ if [ "$invite_code" != 201 ]; then
   echo "Compose invitation returned $invite_code" >&2
   exit 1
 fi
-inbox_address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port resend 8081)
-inbox_port=${inbox_address##*:}
-delivered=false
+storage_address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port storage 9000)
+storage_port=${storage_address##*:}
+storage_ready=false
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if curl --fail --silent --show-error "http://127.0.0.1:$inbox_port/" | grep -q 'invited@compose.test'; then
-    delivered=true
+  if curl --fail --silent "http://127.0.0.1:$storage_port/minio/health/live" >/dev/null; then
+    storage_ready=true
     break
   fi
   sleep 1
 done
-if [ "$delivered" != true ]; then
-  echo "Compose invitation email was not delivered to the local inbox" >&2
+if [ "$storage_ready" != true ]; then
+  echo "Compose file storage (MinIO) did not become healthy" >&2
   exit 1
 fi
-echo "Local Compose passed: web and API available through one port"
+echo "Local Compose passed: web, API (migrated and bootstrapped itself) and file storage are up"

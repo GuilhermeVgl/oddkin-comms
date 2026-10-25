@@ -7,7 +7,7 @@ import (
 )
 
 // FromEnv builds the store from R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and
-// R2_SECRET_ACCESS_KEY. It returns a nil store when none is set and an error
+// R2_SECRET_ACCESS_KEY. R2_PUBLIC_ENDPOINT (optional) is the host browsers reach. It returns a nil store when none is set and an error
 // when only some are, so a half-configured deployment fails loudly.
 func FromEnv() (Store, error) {
 	endpoint, bucket := os.Getenv("R2_ENDPOINT"), os.Getenv("R2_BUCKET")
@@ -24,7 +24,7 @@ func FromEnv() (Store, error) {
 	case 4:
 		return NewS3(S3Config{
 			Endpoint: endpoint, Bucket: bucket, AccessKeyID: keyID, SecretAccessKey: secret,
-			PathStyle: os.Getenv("R2_PATH_STYLE") == "true",
+			PublicEndpoint: os.Getenv("R2_PUBLIC_ENDPOINT"), PathStyle: os.Getenv("R2_PATH_STYLE") == "true",
 		})
 	default:
 		return nil, errors.New("R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required together")

@@ -77,7 +77,7 @@ run(
   { stdio: "inherit" },
 );
 
-for (const target of secretsOnly ? [] : ["api", "migrate", "worker"]) {
+for (const target of secretsOnly ? [] : ["api"]) {
   const image = run("docker", [
     "build",
     "--quiet",

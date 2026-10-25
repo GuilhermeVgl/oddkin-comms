@@ -1,4 +1,4 @@
-.PHONY: doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web build-bootstrap build-migrate build-worker build-email-smoke build-resend-stub
+.PHONY: doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web  build-migrate  build-email-smoke 
 
 COMMIT_BASE ?=
 COMMIT_HEAD ?=
@@ -61,7 +61,7 @@ lint:
 	corepack pnpm typecheck
 
 test-go:
-	go test -race -count=1 ./internal/... ./cmd/bootstrap ./cmd/email-smoke ./cmd/resend-stub
+	go test -race -count=1 ./internal/... ./cmd/email-smoke
 
 test-ts:
 	corepack pnpm test:unit
@@ -81,25 +81,16 @@ coverage-check:
 build-api:
 	go build -o /dev/null ./cmd/api
 
-build-bootstrap:
-	go build -o /dev/null ./cmd/bootstrap
-
 build-migrate:
 	go build -o /dev/null ./cmd/migrate
-
-build-worker:
-	go build -o /dev/null ./cmd/worker
 
 build-email-smoke:
 	go build -o /dev/null ./cmd/email-smoke
 
-build-resend-stub:
-	go build -o /dev/null ./cmd/resend-stub
-
 build-web:
 	corepack pnpm build
 
-build: build-api build-bootstrap build-worker build-migrate build-email-smoke build-resend-stub build-web
+build: build-api build-migrate build-email-smoke build-web
 
 container-check:
 	./scripts/container-check.sh

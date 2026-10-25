@@ -18,7 +18,9 @@ import (
 const advisoryLockID int64 = 0x4f44444b494e
 
 // Run applies application migrations before River migrations under one
-// installation-wide advisory lock. It does not run during API or worker startup.
+// installation-wide advisory lock, so concurrent starts cannot migrate twice.
+// The API calls it at startup unless AUTO_MIGRATE=false; cmd/migrate is the
+// same call for running it by hand.
 func Run(ctx context.Context, databaseURL string) (err error) {
 	if databaseURL == "" {
 		return errors.New("DATABASE_URL is required")

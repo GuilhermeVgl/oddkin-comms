@@ -13,6 +13,8 @@ import (
 
 	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/installation"
+	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration"
 	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,11 +34,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if databaseURL == "" {
 		return errors.New("DATABASE_URL is required")
 	}
+	// One process owns the schema: it migrates under an advisory lock, then
+	// creates the first administrator when asked to. Set AUTO_MIGRATE=false to
+	// run `go run ./cmd/migrate` by hand instead.
+	if os.Getenv("AUTO_MIGRATE") != "false" {
+		if err := migration.Run(ctx, databaseURL); err != nil {
+			return fmt.Errorf("migrate: %w", err)
+		}
+		logger.Info("migrations applied")
+	}
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return errors.New("DATABASE_URL is invalid")
 	}
 	defer pool.Close()
+	if err := bootstrapAdministrator(ctx, logger, pool); err != nil {
+		return err
+	}
 
 	address := os.Getenv("HTTP_ADDR")
 	if address == "" {
@@ -69,7 +83,20 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	if store == nil {
 		logger.Warn("object storage is not configured; uploads are disabled")
+	} else if os.Getenv("R2_CREATE_BUCKET") == "true" {
+		if err := ensureBucket(ctx, logger, store); err != nil {
+			return err
+		}
 	}
+	jobsClient, err := startWorkers(ctx, logger, pool, deliveryKey, store, livekit)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = jobsClient.Stop(stopCtx)
+	}()
 	server := &http.Server{
 		Addr:              address,
 		Handler:           handler,
@@ -97,4 +124,52 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		return nil
 	}
+}
+
+// bootstrapAdministrator creates the first administrator from the environment
+// the first time the installation starts; later starts leave it alone.
+func bootstrapAdministrator(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
+	email, password := os.Getenv("ODDKIN_ADMIN_EMAIL"), os.Getenv("ODDKIN_ADMIN_PASSWORD")
+	if email == "" && password == "" {
+		return nil
+	}
+	if email == "" || password == "" {
+		return errors.New("ODDKIN_ADMIN_EMAIL and ODDKIN_ADMIN_PASSWORD are required together")
+	}
+	timezone := os.Getenv("ODDKIN_TIMEZONE")
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	err := installation.Bootstrap(ctx, pool, email, password, timezone)
+	switch {
+	case err == nil:
+		logger.Info("installation bootstrap completed")
+	case errors.Is(err, installation.ErrAlreadyInitialized):
+		// Nothing to do: the administrator already exists.
+	default:
+		return fmt.Errorf("installation bootstrap failed: %w", err)
+	}
+	return nil
+}
+
+// ensureBucket is for local development against MinIO, where the bucket does
+// not exist yet. Real R2 buckets are created in the Cloudflare dashboard.
+func ensureBucket(ctx context.Context, logger *slog.Logger, store objectstore.Store) error {
+	ensurer, ok := store.(objectstore.BucketEnsurer)
+	if !ok {
+		return nil
+	}
+	var err error
+	for attempt := 0; attempt < 30; attempt++ {
+		if err = ensurer.EnsureBucket(ctx); err == nil {
+			logger.Info("object storage bucket is ready")
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	return fmt.Errorf("object storage bucket: %w", err)
 }

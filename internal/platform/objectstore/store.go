@@ -29,6 +29,12 @@ type Store interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// BucketEnsurer is implemented by stores that can create their bucket, which
+// only local development needs.
+type BucketEnsurer interface {
+	EnsureBucket(ctx context.Context) error
+}
+
 // Release frees the bucket resources of an attachment that left the active
 // states: the multipart upload when aborted, the object when deleted. It is
 // idempotent so cleanup can be retried safely.

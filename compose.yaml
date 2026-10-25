@@ -1,3 +1,10 @@
+# Local development. Five pieces, each with a reason to exist:
+#   postgres  the database (and the job queue: River lives in it)
+#   api       one Go process: HTTP, migrations, first administrator, background jobs
+#   livekit   audio and video for calls (single node, no Redis)
+#   storage   MinIO, a local stand-in for the Cloudflare R2 bucket
+#   web       Vite with hot reload
+# E-mail goes straight to the real Resend API: put your keys in .env (see .env.example).
 name: oddkin
 
 services:
@@ -16,35 +23,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  migrate:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: migrate
-    environment:
-      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  bootstrap:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: bootstrap
-    environment:
-      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
-      ODDKIN_ADMIN_EMAIL: ${ODDKIN_ADMIN_EMAIL:-admin@oddkin.local}
-      ODDKIN_ADMIN_PASSWORD: ${ODDKIN_ADMIN_PASSWORD:-oddkin-local-password}
-      ODDKIN_TIMEZONE: ${ODDKIN_TIMEZONE:-America/Campo_Grande}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    restart: "no"
-
   api:
     build:
       context: .
@@ -54,59 +32,33 @@ services:
     environment:
       DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
       HTTP_ADDR: :8080
-      INVITATION_DELIVERY_KEY: synthetic-local-invite-key-00001
-      LIVEKIT_URL: ws://${ODDKIN_LIVEKIT_HOST:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}
-      LIVEKIT_API_URL: http://livekit:7880
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
-    depends_on:
-      bootstrap:
-        condition: service_completed_successfully
-      livekit:
-        condition: service_started
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: worker
-    environment:
-      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+      ODDKIN_ADMIN_EMAIL: ${ODDKIN_ADMIN_EMAIL:-admin@oddkin.local}
+      ODDKIN_ADMIN_PASSWORD: ${ODDKIN_ADMIN_PASSWORD:-oddkin-local-password}
+      ODDKIN_TIMEZONE: ${ODDKIN_TIMEZONE:-America/Campo_Grande}
+      INVITATION_DELIVERY_KEY: ${INVITATION_DELIVERY_KEY:-synthetic-local-invite-key-00001}
       APP_PUBLIC_URL: ${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}
-      INVITATION_DELIVERY_KEY: synthetic-local-invite-key-00001
-      RESEND_API_KEY: synthetic-local-resend-key
-      RESEND_FROM_EMAIL: notices@oddkin.local
-      RESEND_API_URL: http://resend:8081/emails
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
       LIVEKIT_URL: ws://${ODDKIN_LIVEKIT_HOST:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
+      # Defaults point at the local MinIO. To use a real R2 bucket, set the R2_*
+      # variables in .env (and R2_PATH_STYLE=false, R2_CREATE_BUCKET=false).
+      R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
+      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-${R2_ENDPOINT:-http://127.0.0.1:${ODDKIN_STORAGE_PORT:-9000}}}
+      R2_BUCKET: ${R2_BUCKET:-oddkin-files}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-oddkin-local-storage}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-oddkin-local-storage-secret}
+      R2_PATH_STYLE: ${R2_PATH_STYLE:-true}
+      R2_CREATE_BUCKET: ${R2_CREATE_BUCKET:-true}
     depends_on:
-      bootstrap:
-        condition: service_completed_successfully
-      resend:
-        condition: service_started
+      postgres:
+        condition: service_healthy
       livekit:
         condition: service_started
-    restart: unless-stopped
-
-  resend:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: resend-stub
-    environment:
-      HTTP_ADDR: :8081
-    ports:
-      - "${ODDKIN_RESEND_BIND:-127.0.0.1:8025}:8081"
-    restart: unless-stopped
-
-  redis:
-    image: redis:8.2.3-alpine3.22@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+      storage:
+        condition: service_started
     restart: unless-stopped
 
   livekit:
@@ -118,9 +70,26 @@ services:
       - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}:7880"
       - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:7881:7881"
       - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:50000-50100:50000-50100/udp"
-    depends_on:
-      redis:
-        condition: service_started
+    restart: unless-stopped
+
+  storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: oddkin-local-storage
+      MINIO_ROOT_PASSWORD: oddkin-local-storage-secret
+      # Browsers send file parts straight to the bucket, so it must accept the app's origin.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}
+    volumes:
+      - storage_data:/data
+    ports:
+      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:${ODDKIN_STORAGE_PORT:-9000}:9000"
+      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
 
   web:
@@ -151,5 +120,6 @@ services:
 
 volumes:
   postgres_data:
+  storage_data:
   web_node_modules:
   web_pnpm_store:

@@ -6,9 +6,6 @@ rtc:
   port_range_start: 50000
   port_range_end: 50100
 
-redis:
-  address: redis:6379
-
 keys:
   devkey: oddkin-local-livekit-secret-00001
 

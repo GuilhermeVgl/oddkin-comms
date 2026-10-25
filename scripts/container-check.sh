@@ -30,7 +30,7 @@ while [ "$attempt" -lt 30 ]; do
   sleep 1
 done
 if [ "$ready" -ne 1 ]; then
-  docker compose -p "$project" -f "$compose_file" logs api migrate >&2
+  docker compose -p "$project" -f "$compose_file" logs api >&2
   echo "API did not become ready" >&2
   exit 1
 fi
@@ -42,9 +42,4 @@ if [ "$tables" != 4 ]; then
   echo "Expected organization, invitation, Goose and River tables; found $tables" >&2
   exit 1
 fi
-worker_id=$(docker compose -p "$project" -f "$compose_file" ps -q worker)
-if [ -z "$worker_id" ] || [ "$(docker inspect --format '{{.State.Running}}' "$worker_id")" != true ]; then
-  echo "River worker container is not running" >&2
-  exit 1
-fi
-echo "Container smoke passed: API ready, worker running, and application/River migrations applied"
+echo "Container smoke passed: API ready, and application and River migrations applied by the API"

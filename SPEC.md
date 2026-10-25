@@ -77,7 +77,7 @@ Aplicativos nativos, múltiplas empresas na mesma instalação, faturamento, aut
 | Interface | Tailwind CSS + componentes acessíveis baseados em Radix | Construir a linguagem visual do mockup mantendo semântica, foco e navegação por teclado |
 | Movimento | Motion para React; CSS para sprites | Transições e celebrações sem introduzir um motor de jogos |
 | Quadro | dnd-kit, com alternativa por teclado/menu | Reordenação e mudança de coluna com acessibilidade |
-| Backend | Go + `net/http`, monólito modular | API e worker compilados; composição explícita, contextos canceláveis e módulos de domínio |
+| Backend | Go + `net/http`, monólito modular | Um processo com API e jobs; composição explícita, contextos canceláveis e módulos de domínio |
 | API | REST, OpenAPI 3.0.3, `oapi-codegen` e cliente TS gerado | Contrato primeiro; handlers Go estritos e validação runtime, sem GraphQL [S16] |
 | Tempo real do produto | WebSocket padrão, `github.com/coder/websocket` | Eventos após persistência; mutações via REST; retomada por cursor e filas limitadas, conforme seção 14.4 [S10] |
 | Banco | PostgreSQL | Integridade de relações, transações, políticas de acesso e histórico operacional |
@@ -85,12 +85,12 @@ Aplicativos nativos, múltiplas empresas na mesma instalação, faturamento, aut
 | Jobs duráveis | River open source + PostgreSQL | Enqueue transacional com o mesmo `pgx.Tx`, retries e workers idempotentes; sem depender de recursos River Pro [S20] |
 | Chamadas | LiveKit self-hosted; SDK oficial Go no backend; JS/React no navegador | Go gerencia salas/tokens e valida webhooks; mídia E2EE continua no LiveKit e no cliente [S1–S4, S15] |
 | Conectividade de chamadas | TURN embutido do LiveKit | Conexão por retransmissão quando a rede do participante exigir [S2] |
-| Redis | Instância privada dedicada ao LiveKit | Configuração de produção do serviço de mídia; não é banco de mensagens nem repositório de chaves em claro |
+| Redis | Não usado | LiveKit roda em nó único sem Redis; só será necessário se houver mais de um nó de mídia |
 | Criptografia do conteúdo | libsodium.js / libsodium-wrappers-sumo, em Web Workers | Primitivas mantidas para criptografia autenticada, envelopes de chave e streaming [S5–S7] |
 | Arquivos | R2 privado; AWS SDK for Go v2, cliente S3 e presigner no backend | Go emite URLs e conclui multipart; navegador envia ciphertext diretamente ao R2 [S8–S9, S23] |
 | Sessões | Cookie opaco HttpOnly; sessão no banco | Revogação central, sem tokens de login persistidos em localStorage |
 | Senhas | Argon2id via `golang.org/x/crypto/argon2` | Salt aleatório, parâmetros versionados e limites de custo; não usar como chave E2EE de login [S24] |
-| E-mails transacionais | API HTTPS da Resend | Envio no worker após commit, com chave de idempotência estável, timeout e credencial apenas no servidor [S26–S27] |
+| E-mails transacionais | API HTTPS da Resend | Envio pelos jobs, após commit, com chave de idempotência estável, timeout e credencial apenas no servidor [S26–S27] |
 | Testes | Go `testing`/`httptest`, `-race`, PostgreSQL real; Vitest e Playwright | TDD, concorrência, API real e interface; gates detalhados no `CLAUDE.md` |
 | Empacotamento | Um módulo Go na raiz + pnpm workspace para frontend; Docker multi-stage e Compose | API/worker Go independentes do runtime Node; Node apenas no desenvolvimento/build do frontend |
 | Entrada HTTPS | Caddy; roteamento L4 quando necessário para TURN/TLS | Certificados e proxy; portas e mídia exigem configuração específica |
@@ -119,14 +119,13 @@ O navegador faz autenticação, sincroniza envelopes, descriptografa conteúdo a
 flowchart TD
   B["Navegador: interface e criptografia"] --> A["API Go e WebSocket"]
   A --> P["PostgreSQL"]
-  A --> J["Worker Go / River"]
+  A --> J["Jobs River, no mesmo processo"]
   J --> P
   J --> E["API HTTPS da Resend"]
   B --> R["R2: arquivos cifrados"]
   A --> R
   B --> L["LiveKit e TURN"]
   A --> L
-  L --> D["Redis privado"]
 ```
 
 Os módulos de negócio pertencem a um único backend: Identity, Organizations, Projects, Authorization, WorkItems, Sprints, Conversations, Notifications, Attachments, Calls, KeyManagement e Audit. LiveKit é um serviço especializado separado. Não dividir o domínio em microserviços no MVP.
@@ -137,8 +136,7 @@ Os módulos de negócio pertencem a um único backend: Identity, Organizations, 
 | --- | --- |
 | `apps/web` | SPA, UI, sincronização, workers de criptografia e download |
 | `cmd/api` | Composição e inicialização do servidor HTTP/WebSocket; sem regras de negócio |
-| `cmd/worker` | Worker River e composição dos mesmos serviços de domínio |
-| `cmd/migrate` | Comando de migrations da aplicação e do River; execução única por deploy |
+| `cmd/migrate` | Opcional: as mesmas migrations (aplicação e River) executadas à mão. A API as aplica ao iniciar, sob lock consultivo |
 | `internal/<dominio>` | Serviços, políticas, tipos e interfaces pequenas dos módulos de negócio |
 | `internal/httpapi` | Adaptadores HTTP, middleware e código OpenAPI gerado |
 | `internal/realtime` | Conexões WebSocket, entrega e retomada; sem escrita de negócio por socket |
@@ -152,7 +150,7 @@ Os módulos de negócio pertencem a um único backend: Identity, Organizations, 
 | `tests/integration` e `tests/e2e` | Cenários reais de concorrência, integração e UI |
 | `packages/crypto-client` | Formatos versionados e integração das primitivas no navegador |
 | `packages/ui` | Componentes visuais e tokens |
-| `infra` | Dockerfiles, Compose, proxy, LiveKit, Redis e exemplos de configuração |
+| `infra` | Dockerfiles, Compose, proxy, LiveKit e exemplos de configuração |
 | `docs` | ADRs, matriz de permissões, protocolo de chaves, operação e recuperação |
 
 ### 3.2 Regras de implementação Go
@@ -674,25 +672,25 @@ Requests mutáveis usam `Idempotency-Key` ou o `clientMutationId` definido no co
 
 ### 15.1 Entrega esperada
 
-`compose.yaml` para desenvolvimento e configuração de produção equivalente com `web`, `api`, `worker`, `postgres`, `redis`, `livekit` e `proxy`. Perfil local pode incluir storage S3 de teste e simulador HTTP local da Resend; produção usa R2 e a API HTTPS da Resend.
+`compose.yaml` para desenvolvimento e configuração de produção equivalente com `web`, `api`, `postgres`, `livekit`, `storage` (MinIO, que simula o R2 localmente) e `proxy`. A API executa migrations, cria o primeiro administrador e roda os jobs River no mesmo processo; não há containers separados de migrate, bootstrap, worker, Redis nem simulador de e-mail. O e-mail usa sempre a API real da Resend com chaves do `.env`; produção troca o MinIO pelo R2.
 
-Entregar Dockerfiles multi-stage, lockfiles, `.env.example` sem credenciais reais, healthchecks, volumes nomeados, política de restart, limites documentados, tarefa de migração separada e guia de backup/restauração. Serviços de aplicação executam como usuário sem privilégios quando possível. As particularidades de rede host do LiveKit em Linux devem estar explícitas no Compose/guia, sem fingir portabilidade idêntica para macOS.
+Entregar Dockerfiles multi-stage, lockfiles, `.env.example` sem credenciais reais, healthchecks, volumes nomeados, política de restart, limites documentados, migrations aplicadas pela própria API sob lock consultivo (ADR 0018) e guia de backup/restauração. Serviços de aplicação executam como usuário sem privilégios quando possível. As particularidades de rede host do LiveKit em Linux devem estar explícitas no Compose/guia, sem fingir portabilidade idêntica para macOS.
 
 PostgreSQL e Redis não expõem portas à internet. Imagens de API não contêm chaves R2, Resend, sessão ou LiveKit. Configurações sensíveis são injetadas por secrets/arquivos de ambiente protegidos no host.
 
 ### 15.1.1 Build Go e ciclo de implantação
 
-Construir binários separados `api`, `worker` e `migrate` a partir do mesmo módulo e commit. Docker multi-stage usa versão fixada de Go, `go mod download` com cache, `go mod verify` e build com `-trimpath`. Preferir `CGO_ENABLED=0` no runtime, desde que todas as dependências escolhidas suportem; não incorporar o cliente de mídia LiveKit/FFI desnecessariamente para só gerenciar salas. O detector de corridas roda em imagem CI com CGO/toolchain nativo apropriado, separado do build final.
+Construir o binário `api` (que inclui os workers) e o utilitário `migrate` a partir do mesmo módulo e commit. Docker multi-stage usa versão fixada de Go, `go mod download` com cache, `go mod verify` e build com `-trimpath`. Preferir `CGO_ENABLED=0` no runtime, desde que todas as dependências escolhidas suportem; não incorporar o cliente de mídia LiveKit/FFI desnecessariamente para só gerenciar salas. O detector de corridas roda em imagem CI com CGO/toolchain nativo apropriado, separado do build final.
 
 Imagem runtime mínima e sem Node, contendo certificados CA e dados de timezone necessários, executando sem root. Frontend é compilado em estágio Node e servido como assets estáticos. Não copiar credenciais, cache de build, `node_modules` ou código-fonte sensível para runtime. Healthcheck não deve presumir shell/curl disponível em imagem mínima: prover modo/comando de healthcheck no binário ou imagem compatível.
 
-Ordem de deploy: dependências saudáveis → migration job único → API/worker → readiness e smoke test. Compose `depends_on` sozinho não substitui readiness/retries. Não escalar API arbitrariamente: a primeira versão tem um processo de entrega WebSocket; antes de múltiplas réplicas, implementar distribuição do feed entre instâncias e repetir testes de revogação.
+Ordem de deploy: dependências saudáveis → API (migra sob lock, cria o administrador, inicia os jobs) → readiness e smoke test. Compose `depends_on` sozinho não substitui readiness/retries. Não escalar API arbitrariamente: a primeira versão tem um processo de entrega WebSocket; antes de múltiplas réplicas, implementar distribuição do feed entre instâncias e repetir testes de revogação.
 
 O Go servidor deve ler configuração validada, falhar cedo quando segredo obrigatório falta e encerrar com erro explicativo sem imprimir seu valor. Segredos de mídia/R2/Resend são independentes do material E2EE. Volume do PostgreSQL e backups permanecem persistentes entre trocas de containers.
 
 ### 15.2 Configurações
 
-Documentar: domínio público, origens permitidas, conexão PostgreSQL, Redis do LiveKit, endpoint/API key/secret LiveKit, TLS/TURN, credenciais e buckets R2, chave da API e remetente verificado da Resend, segredo de sessão, quota, retenção, fuso e intervalos de jobs. A chave privada E2EE do administrador de recuperação NÃO é variável de ambiente de servidor.
+Documentar: domínio público, origens permitidas, conexão PostgreSQL, endpoint/API key/secret LiveKit, TLS/TURN, credenciais e buckets R2, chave da API e remetente verificado da Resend, segredo de sessão, quota, retenção, fuso e intervalos de jobs. A chave privada E2EE do administrador de recuperação NÃO é variável de ambiente de servidor.
 
 ### 15.3 Custos e responsabilidade
 

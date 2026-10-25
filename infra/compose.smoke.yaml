@@ -10,17 +10,6 @@ services:
       interval: 1s
       timeout: 2s
       retries: 20
-  migrate:
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: migrate
-    environment:
-      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
-    depends_on:
-      postgres:
-        condition: service_healthy
   api:
     build:
       context: ..
@@ -33,16 +22,5 @@ services:
     ports:
       - "127.0.0.1::8080"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-  worker:
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.api
-      args:
-        TARGET: worker
-    environment:
-      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
