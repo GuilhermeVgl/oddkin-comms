@@ -213,10 +213,20 @@ export async function createItem(
     parentId?: string;
     title: string;
     description?: string;
+    assigneeId?: string;
+    dueDate?: string;
+    priority?: "low" | "normal" | "high" | "urgent";
+    columnId?: string;
   },
 ): Promise<WorkItem> {
   const parent =
     input.parentId === undefined ? {} : { parentId: input.parentId };
+  const plainFields = {
+    ...(input.assigneeId === undefined ? {} : { assigneeId: input.assigneeId }),
+    ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+    ...(input.priority === undefined ? {} : { priority: input.priority }),
+    ...(input.columnId === undefined ? {} : { columnId: input.columnId }),
+  };
   if (writeMode(pc, "work") === "plain" || pc === null) {
     return createWorkItemRaw(client, token, projectId, {
       kind: input.kind,
@@ -225,6 +235,7 @@ export async function createItem(
         ? {}
         : { description: input.description }),
       ...parent,
+      ...plainFields,
     });
   }
   const id = newId();
@@ -247,6 +258,7 @@ export async function createItem(
     descriptionEnc: description.envelope,
     signerDeviceId: title.signerDeviceId,
     ...parent,
+    ...plainFields,
   });
 }
 
@@ -653,7 +665,7 @@ export async function createSprintContent(
   client: Client,
   token: string,
   pc: ProjectCrypto | null,
-  input: { name: string; startsOn: string; endsOn: string },
+  input: { name: string; goal?: string; startsOn: string; endsOn: string },
 ): Promise<Sprint> {
   if (pc === null || writeMode(pc, "sprint") === "plain") {
     return createSprintRaw(client, token, input);
@@ -665,7 +677,12 @@ export async function createSprintContent(
     1,
     input.name,
   );
-  const goal = pc.encrypt("sprint", resources.sprint(id, "goal"), 1, "");
+  const goal = pc.encrypt(
+    "sprint",
+    resources.sprint(id, "goal"),
+    1,
+    input.goal ?? "",
+  );
   return createSprintRaw(client, token, {
     id,
     startsOn: input.startsOn,

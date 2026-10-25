@@ -1,0 +1,96 @@
+:root {
+  --carvao: #202321;
+  --musgo: #63745a;
+  --limao: #dfff70;
+  --papel: #f1f0e8;
+  --branco: #ffffff;
+  --musgo-fundo: #4a5a42;
+  --carvao-2: #2a2e2b;
+  --carvao-0: #161917;
+  --bg: #f1f0e8;
+  --surface: #ffffff;
+  --surface-2: #f8f7f1;
+  --sunken: #e9e8de;
+  --raised: #ffffff;
+  --ink: #202321;
+  --ink-2: #596157;
+  --ink-3: #6a7266;
+  --ink-off: #9aa095;
+  --line: #dddbcf;
+  --line-strong: #c4c2b3;
+  --brand: #63745a;
+  --brand-ink: #4a5a42;
+  --brand-tint: #e4eadb;
+  --brand-tint-2: #d3dcc8;
+  --on-brand: #ffffff;
+  --accent: #dfff70;
+  --on-accent: #202321;
+  --accent-ink: #4a5a1c;
+  --danger: #b4381c;
+  --danger-tint: #f8e4dc;
+  --warn: #8a5a00;
+  --warn-tint: #fbefd0;
+  --info: #2f5e86;
+  --info-tint: #e2eef7;
+  --focus: #202321;
+  --side: #202321;
+  --side-2: #2a2e2b;
+  --side-ink: #eceee4;
+  --side-muted: #a3aa9e;
+  --side-line: #353a36;
+  --side-active: rgba(223, 255, 112, 0.14);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --sh-1: 0 1px 0 rgba(32, 35, 33, 0.05), 0 2px 8px -4px rgba(32, 35, 33, 0.16);
+  --sh-2:
+    0 1px 0 rgba(32, 35, 33, 0.05), 0 10px 24px -12px rgba(32, 35, 33, 0.28);
+  --sh-3:
+    0 2px 0 rgba(32, 35, 33, 0.05), 0 24px 48px -16px rgba(32, 35, 33, 0.4);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 220ms;
+  --f-ui:
+    "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --f-display: "Archivo", "Schibsted Grotesk", ui-sans-serif, sans-serif;
+  --f-pixel: "Pixelify Sans", "Courier New", monospace;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+[data-theme="carvao"] {
+  --bg: #161917;
+  --surface: #202321;
+  --surface-2: #272b28;
+  --sunken: #121412;
+  --raised: #2a2e2b;
+  --ink: #f1f0e8;
+  --ink-2: #a8afa3;
+  --ink-3: #8d9488;
+  --ink-off: #5f665c;
+  --line: #333835;
+  --line-strong: #474d48;
+  --brand: #8fa583;
+  --brand-ink: #a9bd9c;
+  --brand-tint: #2a332a;
+  --brand-tint-2: #364235;
+  --on-brand: #161917;
+  --accent-ink: #dfff70;
+  --danger: #e8654a;
+  --danger-tint: #3a211b;
+  --warn: #ebc15a;
+  --warn-tint: #352b10;
+  --info: #7fb0dc;
+  --info-tint: #1c2b38;
+  --focus: #dfff70;
+  --side: #101211;
+  --side-2: #1a1d1b;
+  --side-line: #262a27;
+  --sh-1: 0 1px 0 rgba(0, 0, 0, 0.3), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+  --sh-2: 0 1px 0 rgba(0, 0, 0, 0.3), 0 10px 24px -12px rgba(0, 0, 0, 0.6);
+  --sh-3: 0 2px 0 rgba(0, 0, 0, 0.3), 0 24px 48px -16px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}

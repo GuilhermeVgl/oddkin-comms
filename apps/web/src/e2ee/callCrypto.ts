@@ -7,7 +7,12 @@ import {
   type DirectoryDevice,
   type createApiClient,
 } from "@oddkin/api-client";
-import { CryptoError, fromBase64Url, toBase64Url, type Crypto } from "@oddkin/crypto";
+import {
+  CryptoError,
+  fromBase64Url,
+  toBase64Url,
+  type Crypto,
+} from "@oddkin/crypto";
 import type { Keyring } from "./keyring";
 import type { Vault } from "./vault";
 
@@ -38,7 +43,10 @@ export class CallCrypto {
     return keys;
   }
 
-  private async open(callId: string, generation: number): Promise<Uint8Array | null> {
+  private async open(
+    callId: string,
+    generation: number,
+  ): Promise<Uint8Array | null> {
     const known = this.cache(callId);
     const cached = known.get(generation);
     if (cached !== undefined) return cached;
@@ -122,10 +130,11 @@ export class CallCrypto {
     } catch (error) {
       // A second participant often wins this harmless election. Open its
       // envelope instead; never fall back to plaintext media.
-      if (!(error instanceof ApiStatusError) || error.status !== 409) throw error;
+      if (!(error instanceof ApiStatusError) || error.status !== 409)
+        throw error;
       const winner = await this.open(call.id, generation);
       if (winner !== null) return winner;
-      throw new Error("media key rotation is still pending");
+      throw new Error("media key rotation is still pending", { cause: error });
     }
   }
 }

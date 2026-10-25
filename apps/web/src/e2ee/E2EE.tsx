@@ -516,7 +516,7 @@ export function E2EEProvider({
         return this.openScope({ type: "organization" }, options);
       },
 
-      async openCall(_callId) {
+      async openCall() {
         const { crypto, vault } = await runtimeOf();
         const current = record.current;
         const ring = keyring.current;

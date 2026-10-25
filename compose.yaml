@@ -124,16 +124,26 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.web
+    image: node:24.10.0-alpine3.22@sha256:775ba24d35a13e74dedce1d2af4ad510337b68d8e22be89e0ce2ccc299329083
+    working_dir: /workspace
+    command:
+      - sh
+      - -lc
+      - corepack pnpm install --store-dir /pnpm/store --frozen-lockfile && corepack pnpm --filter @oddkin/web dev --host 0.0.0.0 --port 5173
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+      VITE_USE_POLLING: "true"
+    volumes:
+      - .:/workspace
+      - web_node_modules:/workspace/node_modules
+      - web_pnpm_store:/pnpm/store
     ports:
-      - "${ODDKIN_WEB_BIND:-127.0.0.1:3000}:8080"
+      - "${ODDKIN_WEB_BIND:-127.0.0.1:3000}:5173"
     depends_on:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -141,3 +151,5 @@ services:
 
 volumes:
   postgres_data:
+  web_node_modules:
+  web_pnpm_store:

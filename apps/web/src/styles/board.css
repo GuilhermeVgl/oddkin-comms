@@ -1,0 +1,335 @@
+/* ---------- board ---------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 32px 14px;
+  flex-wrap: wrap;
+}
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(290px, 1fr);
+  gap: 16px;
+  padding: 0 32px 28px;
+  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  align-items: start;
+}
+.colm {
+  background: color-mix(in srgb, var(--sunken) 70%, transparent);
+  border-radius: var(--r-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 100%;
+  min-height: 160px;
+  transition:
+    background var(--t-base),
+    outline-color var(--t-base);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+.colm.over {
+  background: var(--brand-tint);
+  outline-color: var(--brand);
+}
+.colh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 2px;
+}
+.colh .n {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+}
+.colh h3 {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.colh .cat {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 2px;
+  margin: -2px;
+  min-height: 8px;
+}
+.wi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: grab;
+  box-shadow: var(--sh-1);
+  transition:
+    transform var(--t-fast) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    border-color var(--t-fast);
+  position: relative;
+  touch-action: pan-y;
+}
+.wi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2);
+  border-color: var(--line-strong);
+}
+.wi.ro {
+  cursor: pointer;
+}
+.wi.dragging {
+  opacity: 0.25;
+  transform: none;
+  box-shadow: none;
+}
+.wi.settle {
+  animation: settle 260ms var(--ease);
+}
+.wi.done .ttl {
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-off);
+  color: var(--ink-2);
+}
+.wi .r1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wi .ttl {
+  font-size: 15px;
+  font-weight: 680;
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+}
+.wi .ds {
+  color: var(--ink-2);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wi .ft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.wi .ft .who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 520;
+  color: var(--ink);
+  min-width: 0;
+}
+.wi .ft .who span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wi .meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.wi .over {
+  color: var(--danger);
+  font-weight: 650;
+}
+.chk {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.75px solid var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  flex: none;
+  margin-left: auto;
+  transition: all var(--t-fast) var(--ease);
+  color: transparent;
+  padding: 0;
+}
+.chk:hover {
+  border-color: var(--brand);
+}
+.chk svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.6;
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+}
+.chk[aria-checked="true"] {
+  background: var(--limao);
+  border-color: var(--limao);
+  color: var(--carvao);
+}
+.chk[aria-checked="true"] svg {
+  animation: drawck 260ms var(--ease) forwards;
+}
+.chk.sq {
+  border-radius: 7px;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+.prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 620;
+}
+.prio.alta {
+  color: var(--warn);
+}
+.prio.urgente {
+  color: var(--danger);
+}
+.prio.baixa {
+  color: var(--ink-3);
+}
+.prio.normal {
+  color: var(--ink-2);
+}
+.addcard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong);
+  background: none;
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.addcard:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+  background: var(--surface);
+}
+.ghost-card {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  transform: rotate(2deg) scale(1.03);
+  box-shadow: var(--sh-3);
+  opacity: 0.96;
+  cursor: grabbing;
+}
+.ph {
+  height: 64px;
+  border-radius: 14px;
+  border: 2px dashed var(--brand);
+  background: var(--brand-tint);
+  animation: enter var(--t-fast) var(--ease);
+}
+.emptycol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  color: var(--ink-2);
+  text-align: center;
+  font-size: 13px;
+}
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tbl th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.tbl tbody tr {
+  transition: background var(--t-fast);
+  cursor: pointer;
+}
+.tbl tbody tr:hover {
+  background: var(--surface-2);
+}
+.tbl th button {
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0;
+}
+.wi .ft {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.wi .ft .who span:not(.av) {
+  max-width: 74px;
+}
+.wi .ft .meta,
+.wi .ft .prio {
+  white-space: nowrap;
+}
+.pd {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  display: inline-block;
+  flex: none;
+}
+.mini {
+  width: 28px;
+  height: 28px;
+}
+.emp-sp2 {
+  display: flex;
+  justify-content: center;
+}
+.wi {
+  position: relative;
+}
+.wi .ft {
+  padding-right: 30px;
+}
+.wi .ft .iconbtn.mini {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  margin: 0 !important;
+}
