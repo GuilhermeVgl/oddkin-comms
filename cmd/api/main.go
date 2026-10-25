@@ -125,7 +125,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 }
 
-// ensureBucket is for local development against S3Mock, where the bucket does
+// ensureBucket is for local development against MinIO, where the bucket does
 // not exist yet. Real R2 buckets are created in the Cloudflare dashboard.
 func ensureBucket(ctx context.Context, logger *slog.Logger, store objectstore.Store) error {
 	ensurer, ok := store.(objectstore.BucketEnsurer)

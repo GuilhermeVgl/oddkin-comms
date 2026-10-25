@@ -15,13 +15,6 @@ export default defineConfig({
       interval: 100,
     },
     proxy: {
-      // The local bucket (S3Mock) is served at /storage so uploads stay same-origin.
-      "/storage": {
-        target:
-          process.env["VITE_STORAGE_PROXY_TARGET"] ?? "http://127.0.0.1:9090",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/storage/, ""),
-      },
       "/api": {
         target: proxyTarget,
         changeOrigin: true,
