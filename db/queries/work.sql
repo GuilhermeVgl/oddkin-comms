@@ -580,8 +580,23 @@ WHERE i.call_id = $1 ORDER BY a.email_normalized;
 -- name: CancelPendingCallInvitations :exec
 UPDATE call_invitation SET state = 'cancelled', responded_at = now() WHERE call_id = $1 AND state = 'pending';
 
+-- name: ListCallRecords :many
+-- The conversation's call history, newest first: who started each call and who
+-- actually joined it (a seat that was only reserved does not count).
+SELECT c.id, c.state, c.created_at, c.ended_at, c.ended_reason, c.started_by,
+       COALESCE(s.email_normalized, '')::text AS started_by_email,
+       COALESCE((
+           SELECT array_agg(DISTINCT a.email_normalized ORDER BY a.email_normalized)
+           FROM call_admission AS ad JOIN account AS a ON a.id = ad.account_id
+           WHERE ad.call_id = c.id AND ad.joined_at IS NOT NULL
+       ), '{}')::text[] AS participant_emails
+FROM call AS c LEFT JOIN account AS s ON s.id = c.started_by
+WHERE c.conversation_id = $1
+ORDER BY c.created_at DESC
+LIMIT $2;
+
 -- name: ListPendingCallInvitations :many
-SELECT c.id AS call_id, c.conversation_id, c.created_at, COALESCE(s.email_normalized, '')::text AS started_by_email
+SELECT c.id AS call_id, c.conversation_id, c.created_at, c.started_by, COALESCE(s.email_normalized, '')::text AS started_by_email
 FROM call_invitation AS i
 JOIN call AS c ON c.id = i.call_id AND c.state = 'active'
 LEFT JOIN account AS s ON s.id = c.started_by

@@ -4,10 +4,12 @@ import {
   deleteMessage,
   getConversationKeyDomain,
   listActiveCalls,
+  listCallHistory,
   listMessages,
   setReadCursor,
   startCall,
   toggleReaction,
+  type CallRecord,
   type Message,
   type ProjectMember,
 } from "@crewstead/api-client";
@@ -44,6 +46,7 @@ import { csrfToken } from "../errors";
 import { useEvents } from "../events";
 import { useInbox } from "../inbox";
 import { useCalls } from "../shell/calls";
+import { CallRecordRow } from "./CallRecordRow";
 import { useWorkspace } from "../workspace";
 
 const POLL_MS = 30_000;
@@ -161,6 +164,7 @@ export function Thread({
     count: number;
     max: number;
   } | null>(null);
+  const [history, setHistory] = useState<CallRecord[]>([]);
   const [dmStatus, setDmStatus] = useState("");
   const lastSeq = useRef(0);
   const readSeq = useRef(0);
@@ -247,6 +251,9 @@ export function Thread({
   });
 
   const loadCall = useCallback(async () => {
+    listCallHistory(client, target.id)
+      .then(setHistory)
+      .catch(() => undefined);
     try {
       const active = (await listActiveCalls(client, target.id))[0];
       setCall(
@@ -442,6 +449,22 @@ export function Thread({
   const firstUnread =
     unreadAtOpen.current > 0 ? shown.length - unreadAtOpen.current : -1;
   let lastDay = "";
+  // Calls sit between the messages, at the moment they started.
+  const timeline: (
+    | { kind: "message"; message: Message; index: number }
+    | { kind: "call"; record: CallRecord }
+  )[] = [];
+  const records = needle === "" ? [...history].reverse() : [];
+  shown.forEach((message, index) => {
+    while (
+      records[0] !== undefined &&
+      records[0].startedAt <= message.createdAt
+    ) {
+      timeline.push({ kind: "call", record: records.shift() as CallRecord });
+    }
+    timeline.push({ kind: "message", message, index });
+  });
+  for (const record of records) timeline.push({ kind: "call", record });
 
   return (
     <section aria-label="Conversa" className="thread" id="thread">
@@ -554,7 +577,33 @@ export function Thread({
             servidor.
           </Banner>
         ) : null}
-        {shown.map((message, index) => {
+        {timeline.map((entry) => {
+          if (entry.kind === "call") {
+            const callDay = fmtLong(new Date(entry.record.startedAt));
+            const callSeparator = callDay !== lastDay;
+            lastDay = callDay;
+            return (
+              <div key={`call-${entry.record.id}`}>
+                {callSeparator ? (
+                  <div className="daysep">
+                    <span>
+                      {new Date(entry.record.startedAt).toDateString() ===
+                      new Date().toDateString()
+                        ? "Hoje"
+                        : callDay}
+                    </span>
+                  </div>
+                ) : null}
+                <CallRecordRow
+                  canJoin={canCall}
+                  meEmail={me.email}
+                  onJoin={() => openCall(entry.record.id)}
+                  record={entry.record}
+                />
+              </div>
+            );
+          }
+          const { message, index } = entry;
           const day = fmtLong(new Date(message.createdAt));
           const separator = day !== lastDay;
           lastDay = day;
@@ -745,7 +794,10 @@ export function Thread({
             </div>
           </article>
         ))}
-        {loaded && shown.length === 0 && outgoing.length === 0 ? (
+        {loaded &&
+        shown.length === 0 &&
+        outgoing.length === 0 &&
+        timeline.length === 0 ? (
           needle !== "" ? (
             <div className="empty">
               <h3>Nenhum resultado</h3>

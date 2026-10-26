@@ -1191,6 +1191,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/calls/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The calls of a conversation, newest first */
+    get: operations["listCallHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/call-invitations": {
     parameters: {
       query?: never;
@@ -2538,12 +2555,35 @@ export interface components {
       canEnd: boolean;
       invitedMe: boolean;
     };
+    CallRecord: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      state: "active" | "ended";
+      /** @description E-mail of who started it */
+      startedBy: string;
+      /** Format: uuid */
+      startedById?: string;
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      endedAt?: string;
+      endedReason?: string;
+      /** @description E-mails of everyone who joined at least once */
+      participants: string[];
+      /** @description At least two people were in the call; otherwise it was missed */
+      answered: boolean;
+      /** @description Seconds from start to end (to now while active) */
+      durationSeconds: number;
+    };
     CallInvitation: {
       /** Format: uuid */
       callId: string;
       /** Format: uuid */
       conversationId: string;
       startedBy: string;
+      /** Format: uuid */
+      startedById?: string;
       /** Format: date-time */
       createdAt: string;
     };
@@ -6631,6 +6671,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Call"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible conversation */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listCallHistory: {
+    parameters: {
+      query: {
+        conversationId: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Call records */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CallRecord"][];
         };
       };
       /** @description No active session */

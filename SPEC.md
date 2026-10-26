@@ -620,7 +620,7 @@ Prefixo `/api/v1`. Recursos propostos:
 - `/sprints`, `/sprints/:id/start`, `/sprints/:id/close-preview`, `/sprints/:id/close`.
 - `/conversations`, `/conversations/:id/messages`, `/messages/:id/reactions`, `/conversations/:id/read-cursor`.
 - `/uploads`, `/uploads/:id/parts`, `/uploads/:id/complete`, `/uploads/:id/abort`, `/attachments/:id/download`.
-- `/calls`, `/calls/:id/invitations`, `/calls/:id/join`, `/calls/:id/leave`, `/calls/:id/end`, `/webhooks/livekit`.
+- `/calls`, `/calls/history` (registro de chamadas da conversa), `/calls/:id/invitations`, `/calls/:id/join`, `/calls/:id/leave`, `/calls/:id/end`, `/webhooks/livekit`.
 - `/notifications`, `/sync`, `/health/live`, `/health/ready`.
 
 Contratos devem expor ciphertext e metadados mínimos; nenhum endpoint `decrypt` no backend. Listagens por cursor; limite máximo de página; `409` para versões conflitantes; `403` ou `404` sem revelar recurso inacessível; `413` para excesso; `429` para limitação. Erros não incluem conteúdo recebido, tokens ou chaves.

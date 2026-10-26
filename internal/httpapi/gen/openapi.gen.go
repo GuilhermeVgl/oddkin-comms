@@ -180,6 +180,24 @@ func (e CallParticipantState) Valid() bool {
 	}
 }
 
+// Defines values for CallRecordState.
+const (
+	CallRecordStateActive CallRecordState = "active"
+	CallRecordStateEnded  CallRecordState = "ended"
+)
+
+// Valid indicates whether the value is a known member of the CallRecordState enum.
+func (e CallRecordState) Valid() bool {
+	switch e {
+	case CallRecordStateActive:
+		return true
+	case CallRecordStateEnded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CloseSprintRequestDecisionsDestination.
 const (
 	Backlog CloseSprintRequestDecisionsDestination = "backlog"
@@ -1001,10 +1019,11 @@ type CallConflictCode string
 
 // CallInvitation defines model for CallInvitation.
 type CallInvitation struct {
-	CallId         openapi_types.UUID `json:"callId"`
-	ConversationId openapi_types.UUID `json:"conversationId"`
-	CreatedAt      time.Time          `json:"createdAt"`
-	StartedBy      string             `json:"startedBy"`
+	CallId         openapi_types.UUID  `json:"callId"`
+	ConversationId openapi_types.UUID  `json:"conversationId"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	StartedBy      string              `json:"startedBy"`
+	StartedById    *openapi_types.UUID `json:"startedById,omitempty"`
 }
 
 // CallInvitationState defines model for CallInvitationState.
@@ -1026,6 +1045,30 @@ type CallParticipant struct {
 
 // CallParticipantState defines model for CallParticipant.State.
 type CallParticipantState string
+
+// CallRecord defines model for CallRecord.
+type CallRecord struct {
+	// Answered At least two people were in the call; otherwise it was missed
+	Answered bool `json:"answered"`
+
+	// DurationSeconds Seconds from start to end (to now while active)
+	DurationSeconds int                `json:"durationSeconds"`
+	EndedAt         *time.Time         `json:"endedAt,omitempty"`
+	EndedReason     *string            `json:"endedReason,omitempty"`
+	Id              openapi_types.UUID `json:"id"`
+
+	// Participants E-mails of everyone who joined at least once
+	Participants []string  `json:"participants"`
+	StartedAt    time.Time `json:"startedAt"`
+
+	// StartedBy E-mail of who started it
+	StartedBy   string              `json:"startedBy"`
+	StartedById *openapi_types.UUID `json:"startedById,omitempty"`
+	State       CallRecordState     `json:"state"`
+}
+
+// CallRecordState defines model for CallRecord.State.
+type CallRecordState string
 
 // CallTicket defines model for CallTicket.
 type CallTicket struct {
@@ -1960,6 +2003,12 @@ type ListActiveCallsParams struct {
 	ConversationId openapi_types.UUID `form:"conversationId" json:"conversationId"`
 }
 
+// ListCallHistoryParams defines parameters for ListCallHistory.
+type ListCallHistoryParams struct {
+	ConversationId openapi_types.UUID `form:"conversationId" json:"conversationId"`
+	Limit          *int               `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListMessagesParams defines parameters for ListMessages.
 type ListMessagesParams struct {
 	After *int64 `form:"after,omitempty" json:"after,omitempty"`
@@ -2179,6 +2228,9 @@ type ServerInterface interface {
 	// ListActiveCalls The active call of a conversation, if any
 	// (GET /api/v1/calls/active)
 	ListActiveCalls(w http.ResponseWriter, r *http.Request, params ListActiveCallsParams)
+	// ListCallHistory The calls of a conversation, newest first
+	// (GET /api/v1/calls/history)
+	ListCallHistory(w http.ResponseWriter, r *http.Request, params ListCallHistoryParams)
 	// GetCall Call state, participants and invitations
 	// (GET /api/v1/calls/{callId})
 	GetCall(w http.ResponseWriter, r *http.Request, callId CallId)
@@ -2790,6 +2842,52 @@ func (siw *ServerInterfaceWrapper) ListActiveCalls(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListActiveCalls(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCallHistory operation middleware
+func (siw *ServerInterfaceWrapper) ListCallHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCallHistoryParams
+
+	// ------------- Required query parameter "conversationId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "conversationId", r.URL.Query(), &params.ConversationId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "conversationId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCallHistory(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5616,6 +5714,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/attachments", wrapper.ListConversationAttachments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls", wrapper.StartCall)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/active", wrapper.ListActiveCalls)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/history", wrapper.ListCallHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/call-invitations", wrapper.ListCallInvitations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calls/{callId}", wrapper.GetCall)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calls/{callId}/join", wrapper.JoinCall)

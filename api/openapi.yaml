@@ -1972,6 +1972,34 @@ paths:
           description: No active session
         "404":
           description: Unknown or inaccessible conversation
+  /api/v1/calls/history:
+    get:
+      operationId: listCallHistory
+      summary: The calls of a conversation, newest first
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: conversationId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        "200":
+          description: Call records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallRecord"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or inaccessible conversation
   /api/v1/call-invitations:
     get:
       operationId: listCallInvitations
@@ -3840,6 +3868,29 @@ components:
           items: { $ref: "#/components/schemas/CallInvitationState" }
         canEnd: { type: boolean }
         invitedMe: { type: boolean }
+    CallRecord:
+      type: object
+      required:
+        [id, state, startedBy, startedAt, participants, answered, durationSeconds]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        state: { type: string, enum: [active, ended] }
+        startedBy: { type: string, description: E-mail of who started it, empty when that account is gone }
+        startedById: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        endedReason: { type: string }
+        participants:
+          type: array
+          description: E-mails of everyone who joined at least once
+          items: { type: string }
+        answered:
+          type: boolean
+          description: At least two people were in the call; otherwise it was missed
+        durationSeconds:
+          type: integer
+          description: Seconds from start to end (to now while active)
     CallInvitation:
       type: object
       required: [callId, conversationId, startedBy, createdAt]
@@ -3848,6 +3899,7 @@ components:
         callId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
         startedBy: { type: string }
+        startedById: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
     CallTicket:
       type: object

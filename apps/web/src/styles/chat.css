@@ -499,3 +499,53 @@
   font-size: 19px;
   width: 38px;
 }
+
+/* A call shown between messages. */
+.callrec {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 20px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.callrec-ic {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+  flex: none;
+}
+.callrec.missed .callrec-ic {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.callrec.missed b {
+  color: var(--danger);
+}
+.callrec.live {
+  border-color: var(--brand);
+}
+.callrec.live .callrec-ic {
+  background: var(--brand);
+  color: #fff;
+  animation: callpulse 1.6s ease-out infinite;
+}
+@keyframes callpulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .callrec.live .callrec-ic {
+    animation: none;
+  }
+}

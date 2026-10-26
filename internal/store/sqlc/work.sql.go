@@ -2749,6 +2749,67 @@ func (q *Queries) ListCallParticipants(ctx context.Context, callID pgtype.UUID) 
 	return items, nil
 }
 
+const listCallRecords = `-- name: ListCallRecords :many
+SELECT c.id, c.state, c.created_at, c.ended_at, c.ended_reason, c.started_by,
+       COALESCE(s.email_normalized, '')::text AS started_by_email,
+       COALESCE((
+           SELECT array_agg(DISTINCT a.email_normalized ORDER BY a.email_normalized)
+           FROM call_admission AS ad JOIN account AS a ON a.id = ad.account_id
+           WHERE ad.call_id = c.id AND ad.joined_at IS NOT NULL
+       ), '{}')::text[] AS participant_emails
+FROM call AS c LEFT JOIN account AS s ON s.id = c.started_by
+WHERE c.conversation_id = $1
+ORDER BY c.created_at DESC
+LIMIT $2
+`
+
+type ListCallRecordsParams struct {
+	ConversationID pgtype.UUID
+	Limit          int32
+}
+
+type ListCallRecordsRow struct {
+	ID                pgtype.UUID
+	State             string
+	CreatedAt         pgtype.Timestamptz
+	EndedAt           pgtype.Timestamptz
+	EndedReason       pgtype.Text
+	StartedBy         pgtype.UUID
+	StartedByEmail    string
+	ParticipantEmails []string
+}
+
+// The conversation's call history, newest first: who started each call and who
+// actually joined it (a seat that was only reserved does not count).
+func (q *Queries) ListCallRecords(ctx context.Context, arg ListCallRecordsParams) ([]ListCallRecordsRow, error) {
+	rows, err := q.db.Query(ctx, listCallRecords, arg.ConversationID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCallRecordsRow
+	for rows.Next() {
+		var i ListCallRecordsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.State,
+			&i.CreatedAt,
+			&i.EndedAt,
+			&i.EndedReason,
+			&i.StartedBy,
+			&i.StartedByEmail,
+			&i.ParticipantEmails,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChannelIDs = `-- name: ListChannelIDs :many
 SELECT id FROM conversation WHERE project_id = $1 AND kind = 'channel' ORDER BY position, created_at, id
 `
@@ -3421,7 +3482,7 @@ func (q *Queries) ListOpenSubtasks(ctx context.Context, parentID pgtype.UUID) ([
 }
 
 const listPendingCallInvitations = `-- name: ListPendingCallInvitations :many
-SELECT c.id AS call_id, c.conversation_id, c.created_at, COALESCE(s.email_normalized, '')::text AS started_by_email
+SELECT c.id AS call_id, c.conversation_id, c.created_at, c.started_by, COALESCE(s.email_normalized, '')::text AS started_by_email
 FROM call_invitation AS i
 JOIN call AS c ON c.id = i.call_id AND c.state = 'active'
 LEFT JOIN account AS s ON s.id = c.started_by
@@ -3433,6 +3494,7 @@ type ListPendingCallInvitationsRow struct {
 	CallID         pgtype.UUID
 	ConversationID pgtype.UUID
 	CreatedAt      pgtype.Timestamptz
+	StartedBy      pgtype.UUID
 	StartedByEmail string
 }
 
@@ -3449,6 +3511,7 @@ func (q *Queries) ListPendingCallInvitations(ctx context.Context, accountID pgty
 			&i.CallID,
 			&i.ConversationID,
 			&i.CreatedAt,
+			&i.StartedBy,
 			&i.StartedByEmail,
 		); err != nil {
 			return nil, err

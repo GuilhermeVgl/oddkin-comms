@@ -454,6 +454,33 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	if code := memberB.do(http.MethodPost, "/api/v1/calls", startBody(channel), nil); code != http.StatusCreated {
 		t.Fatalf("a new call can start once the previous ended: %d", code)
 	}
+
+	// The conversation keeps a record of every call: who started it, who took
+	// part, how long it lasted. Only people who can read the conversation see it.
+	var history []struct {
+		Id              string
+		State           string
+		StartedBy       string
+		Participants    []string
+		Answered        bool
+		DurationSeconds int
+		EndedReason     *string
+	}
+	if code := memberB.do(http.MethodGet, "/api/v1/calls/history?conversationId="+channel, "", &history); code != http.StatusOK || len(history) != 2 {
+		t.Fatalf("call history: %d %+v", code, history)
+	}
+	if history[0].State != "active" || history[1].Id != call.Id || history[1].State != "ended" {
+		t.Fatalf("history is newest first, with the running call on top: %+v", history)
+	}
+	if !contains(history[1].Participants, emailB) || history[1].StartedBy != emails[1] {
+		t.Fatalf("ended call must list who took part and who started it: %+v", history[1])
+	}
+	if history[1].EndedReason == nil || *history[1].EndedReason == "" {
+		t.Fatalf("ended call must say why it ended: %+v", history[1])
+	}
+	if code := outsider.do(http.MethodGet, "/api/v1/calls/history?conversationId="+channel, "", nil); code != http.StatusNotFound {
+		t.Fatalf("outsider reads call history: %d", code)
+	}
 }
 
 func contains(values []string, wanted string) bool {

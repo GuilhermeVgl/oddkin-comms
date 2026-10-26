@@ -820,6 +820,7 @@ export async function uploadFile(
 
 export type Call = Schemas["Call"];
 export type CallInvitation = Schemas["CallInvitation"];
+export type CallRecord = Schemas["CallRecord"];
 export type CallTicket = Schemas["CallTicket"];
 export type CallConflictCode = Schemas["CallConflict"]["code"];
 
@@ -861,6 +862,17 @@ export async function listActiveCalls(
     params: { query: { conversationId } },
   });
   return ensure("listActiveCalls", response, data, 200);
+}
+
+/** The calls of a conversation, newest first, for the record shown in the thread. */
+export async function listCallHistory(
+  client: Client,
+  conversationId: string,
+): Promise<CallRecord[]> {
+  const { data, response } = await client.GET("/api/v1/calls/history", {
+    params: { query: { conversationId } },
+  });
+  return ensure("listCallHistory", response, data, 200);
 }
 
 export async function getCall(client: Client, callId: string): Promise<Call> {
