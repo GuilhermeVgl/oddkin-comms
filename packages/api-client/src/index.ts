@@ -30,11 +30,6 @@ export async function updateOrganizationBranding(
   if (response.status === 200 && data !== undefined) return data;
   throw new Error(`Unexpected branding update status: ${response.status}`);
 }
-export type Invitation = components["schemas"]["Invitation"];
-export type InvitationStatus = components["schemas"]["InvitationStatus"];
-export type HistoryMode = components["schemas"]["HistoryMode"];
-export type MembershipKind =
-  components["schemas"]["CreateInvitationRequest"]["membershipKind"];
 export type LoginResult =
   "authenticated" | "invalid-credentials" | "rate-limited" | "unavailable";
 
@@ -117,54 +112,6 @@ export function readCookie(cookies: string, name: string): string | null {
   return null;
 }
 
-export async function createInvitation(
-  client: ReturnType<typeof createApiClient>,
-  email: string,
-  membershipKind: MembershipKind,
-  csrfToken: string,
-  history?: { historyMode: HistoryMode; linkExtra?: string },
-  projectId?: string,
-): Promise<Invitation> {
-  const { data, response } = await client.POST("/api/v1/invitations", {
-    body: {
-      email,
-      membershipKind,
-      ...(history === undefined ? {} : { historyMode: history.historyMode }),
-      ...(history?.linkExtra === undefined
-        ? {}
-        : { linkExtra: history.linkExtra }),
-      ...(projectId === undefined ? {} : { projectId }),
-    },
-    headers: { "X-CSRF-Token": csrfToken },
-  });
-  if (response.status === 201 && data !== undefined) {
-    return data;
-  }
-  throw new Error(`Unexpected invitation status: ${response.status}`);
-}
-
-export async function acceptInvitation(
-  client: ReturnType<typeof createApiClient>,
-  token: string,
-  email: string,
-  password?: string,
-): Promise<"accepted" | "invalid" | "unavailable"> {
-  const { response } = await client.POST("/api/v1/invitations/accept", {
-    body: { token, email, ...(password === undefined ? {} : { password }) },
-  });
-  switch (response.status) {
-    case 204:
-      return "accepted";
-    case 400:
-      return "invalid";
-    case 503:
-      return "unavailable";
-    default:
-      throw new Error(
-        `Unexpected invitation acceptance status: ${response.status}`,
-      );
-  }
-}
 export async function requestPasswordReset(
   client: ReturnType<typeof createApiClient>,
   email: string,
@@ -207,8 +154,24 @@ export async function confirmPasswordReset(
   }
 }
 
-export * from "./work";
+export * from "./avatar";
+export * from "./calls";
+export * from "./channels";
+export * from "./chat";
+export * from "./columns";
 export * from "./e2ee";
+export * from "./epics";
+export * from "./gamification";
+export * from "./invitations";
+export * from "./members";
+export * from "./notifications";
+export * from "./people";
+export * from "./projects";
+export * from "./sessions";
+export * from "./sprints";
+export * from "./uploads";
+export * from "./workItems";
+export { ApiStatusError } from "./internal";
 
 export async function setHistoryMode(
   client: ReturnType<typeof createApiClient>,
@@ -221,47 +184,4 @@ export async function setHistoryMode(
   });
   if (response.status !== 204)
     throw new Error(`Unexpected history mode status: ${response.status}`);
-}
-
-export async function listInvitations(
-  client: ReturnType<typeof createApiClient>,
-  projectId?: string,
-): Promise<InvitationStatus[]> {
-  const { data, response } = await client.GET("/api/v1/invitations", {
-    params: { query: projectId === undefined ? {} : { projectId } },
-  });
-  if (response.status === 200 && data !== undefined) return data;
-  throw new Error(`Unexpected invitations status: ${response.status}`);
-}
-
-export type AvatarVersion = components["schemas"]["AvatarVersion"];
-
-export async function listAvatars(
-  client: ReturnType<typeof createApiClient>,
-): Promise<AvatarVersion[]> {
-  const { data, response } = await client.GET("/api/v1/avatars");
-  if (response.status === 200 && data !== undefined) return data;
-  throw new Error(`Unexpected avatars status: ${response.status}`);
-}
-
-/** Uploads the caller's photo, already resized by the browser. */
-export async function putAvatar(csrfToken: string, photo: Blob): Promise<void> {
-  const response = await fetch("/api/v1/account/avatar", {
-    method: "PUT",
-    headers: { "Content-Type": photo.type, "X-CSRF-Token": csrfToken },
-    body: photo,
-  });
-  if (response.status !== 204)
-    throw new Error(`Unexpected avatar status: ${response.status}`);
-}
-
-export async function deleteAvatar(
-  client: ReturnType<typeof createApiClient>,
-  csrfToken: string,
-): Promise<void> {
-  const { response } = await client.DELETE("/api/v1/account/avatar", {
-    headers: { "X-CSRF-Token": csrfToken },
-  });
-  if (response.status !== 204)
-    throw new Error(`Unexpected avatar status: ${response.status}`);
 }

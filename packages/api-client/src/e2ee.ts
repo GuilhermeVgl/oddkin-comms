@@ -1,9 +1,4 @@
-import type { components } from "./openapi.gen";
-import type { createApiClient } from "./index";
-import { ApiStatusError } from "./work";
-
-type Client = ReturnType<typeof createApiClient>;
-type Schemas = components["schemas"];
+import { ApiStatusError, type Client, type Schemas } from "./internal";
 
 export type TrustRoot = Schemas["TrustRoot"];
 export type Device = Schemas["Device"];

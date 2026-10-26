@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "./index";
-import { uploadFile } from "./work";
+import { uploadFile } from "./uploads";
 
 function apiFetcher(log: string[], failPart?: number): typeof fetch {
   return async (input, init) => {
