@@ -2320,6 +2320,13 @@ export interface components {
       /** Format: int64 */
       size: number;
       bodyEncrypted?: boolean;
+      /** Format: uuid */
+      uploaderId?: string;
+      /**
+       * Format: uuid
+       * @description Device that signed the manifest of an encrypted body
+       */
+      bodySignerDeviceId?: string;
       /**
        * Format: int64
        * @description Size of the original file; equals size unless the body is encrypted

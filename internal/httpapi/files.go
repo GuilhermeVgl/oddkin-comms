@@ -398,6 +398,14 @@ func toAttachment(row sqlc.Attachment, uploaderEmail string) gen.Attachment {
 		contentSize, _ = plaintextSizeFor(contentSize)
 	}
 	attachment.ContentSize = &contentSize
+	if row.UploaderID.Valid {
+		uploader := fromPG(row.UploaderID)
+		attachment.UploaderId = &uploader
+	}
+	if row.BodyEncrypted && row.BodySignerDeviceID.Valid {
+		signer := fromPG(row.BodySignerDeviceID)
+		attachment.BodySignerDeviceId = &signer
+	}
 	if row.Encrypted {
 		attachment.NameEnc = blob(row.NameEnc)
 		if row.ContentAuthorID.Valid {
@@ -634,6 +642,7 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 			attachments = append(attachments, toAttachment(sqlc.Attachment{
 				ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt,
 				Encrypted: row.Encrypted, NameEnc: row.NameEnc, ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+				BodyEncrypted: row.BodyEncrypted, UploaderID: row.UploaderID, BodySignerDeviceID: row.BodySignerDeviceID,
 			}, row.UploaderEmail))
 		}
 	} else {
@@ -646,6 +655,7 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 			attachments = append(attachments, toAttachment(sqlc.Attachment{
 				ID: row.ID, Name: row.Name, ContentType: row.ContentType, StoredSize: row.StoredSize, CreatedAt: row.CreatedAt,
 				Encrypted: row.Encrypted, NameEnc: row.NameEnc, ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
+				BodyEncrypted: row.BodyEncrypted, UploaderID: row.UploaderID, BodySignerDeviceID: row.BodySignerDeviceID,
 			}, row.UploaderEmail))
 		}
 	}

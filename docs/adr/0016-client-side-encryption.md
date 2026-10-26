@@ -26,7 +26,7 @@ Títulos e descrições de atividades e subtarefas, títulos e descrições de �
 
 ## Limites conhecidos
 
-- DMs, nomes de projeto, canal e sprint também são cifrados. O nome de um anexo novo é cifrado e assinado no navegador, vinculado ao ID do anexo e ao domínio do contexto. O corpo binário, o MIME type e a chave individual por arquivo ainda não usam o formato de streaming E2EE definido na SPEC.
+- DMs, nomes de projeto, canal e sprint também são cifrados. O nome de um anexo novo é cifrado e assinado no navegador, vinculado ao ID do anexo e ao domínio do contexto. O corpo dos arquivos passou a ser cifrado pela [ADR 0019](./0019-encrypted-file-bodies.md); o MIME type continua fora.
 - Os campos que o servidor precisa para funcionar (responsável, coluna, prioridade, prazo, relações, tamanhos) ficam visíveis ao backend, como na SPEC 10.2.
 - O libsodium roda na thread principal, não em um worker.
 - Apagar o texto em claro de uma linha migrada não apaga cópias já feitas em backups do banco anteriores à migração.

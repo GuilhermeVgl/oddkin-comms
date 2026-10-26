@@ -636,6 +636,8 @@ export async function createUpload(
   context: UploadContext,
   file: { name: string; type: string; size: number },
   encryption?: UploadNameEncryption,
+  /** For an encrypted body: the client-chosen id and the signing device; `file.size` is then the encrypted size. */
+  body?: { id: string; signerDeviceId: string },
 ): Promise<UploadSession> {
   const { data, response } = await client.POST("/api/v1/uploads", {
     body: {
@@ -646,6 +648,13 @@ export async function createUpload(
             id: encryption.id,
             nameEnc: encryption.nameEnc,
             signerDeviceId: encryption.signerDeviceId,
+          }),
+      ...(body === undefined
+        ? {}
+        : {
+            bodyEncrypted: true,
+            id: body.id,
+            signerDeviceId: body.signerDeviceId,
           }),
       size: file.size,
       ...(file.type === "" ? {} : { contentType: file.type }),

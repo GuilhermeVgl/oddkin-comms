@@ -151,7 +151,7 @@ export async function createKeyDomain(
   client: Client,
   token: string,
   projectId: string,
-  kind: "work" | "chat",
+  kind: "work" | "chat" | "files",
 ): Promise<KeyDomain> {
   const { data, response } = await client.POST(
     "/api/v1/projects/{projectId}/key-domains",

@@ -1,8 +1,12 @@
 import {
+  createFileSealer,
   CryptoError,
   fromBase64Url,
+  openFile,
   toBase64Url,
   type Crypto,
+  type FileOpener,
+  type FileSealer,
 } from "@crewstead/crypto";
 import {
   createConversationKeyDomain,
@@ -93,6 +97,23 @@ export class ContentCrypto {
    */
   async refresh(maintain: boolean): Promise<void> {
     let domains = await this.fetchDomains();
+    if (
+      maintain &&
+      this.scope.type === "project" &&
+      domains.some(
+        (domain) => domain.kind === "work" && domain.currentGeneration > 0,
+      ) &&
+      !domains.some((domain) => domain.kind === "files")
+    ) {
+      // Projects that turned encryption on before file bodies were encrypted
+      // get their files domain the next time an internal member opens them.
+      try {
+        await this.keyring.ensureDomains(this.scope.projectId);
+        domains = await this.fetchDomains();
+      } catch {
+        // Not allowed for this person: someone else will create it.
+      }
+    }
     if (maintain) {
       for (const domain of domains) {
         if (domain.currentGeneration === 0) continue;
@@ -165,6 +186,66 @@ export class ContentCrypto {
       this.vault.unlocked &&
       this.keyring.keyFor(domain.id, domain.currentGeneration) !== undefined
     );
+  }
+
+  /** The domain that protects file bodies here: the DM's own, or the project's files domain. */
+  fileKind(): DomainKind {
+    return this.scope.type === "conversation" ? "dm" : "files";
+  }
+
+  /** Starts sealing a file of `size` bytes as attachment `attachmentId`. */
+  fileSealer(
+    attachmentId: string,
+    size: number,
+  ): { sealer: FileSealer; signerDeviceId: string } {
+    const domain = this.domains.get(this.fileKind());
+    const key =
+      domain === undefined
+        ? undefined
+        : this.keyring.keyFor(domain.id, domain.currentGeneration);
+    if (domain === undefined || key === undefined)
+      throw new Error("no key for this domain");
+    return {
+      sealer: createFileSealer(this.crypto, {
+        domainKey: key,
+        generation: domain.currentGeneration,
+        scope: {
+          organizationId: domain.organizationId,
+          domainId: domain.id,
+          authorId: this.accountId,
+          attachmentId,
+        },
+        signerSecretKey: this.vault.deviceKeys().signSecretKey,
+        size,
+      }),
+      signerDeviceId: this.deviceId,
+    };
+  }
+
+  /** Opens the head of a downloaded file after checking who signed its manifest. */
+  async openFileHead(input: {
+    attachmentId: string;
+    uploaderId: string;
+    signerDeviceId: string;
+    head: Uint8Array;
+  }): Promise<FileOpener> {
+    const domain = this.domains.get(this.fileKind());
+    if (!this.vault.unlocked) throw new CryptoError("decryption_failed");
+    if (domain === undefined) throw new CryptoError("unknown_generation");
+    const signer = await this.keyring.trusted(input.signerDeviceId);
+    if (signer === undefined) throw new CryptoError("bad_signature");
+    return openFile(this.crypto, {
+      keyForGeneration: (generation) =>
+        this.keyring.keyFor(domain.id, generation),
+      scope: {
+        organizationId: domain.organizationId,
+        domainId: domain.id,
+        authorId: input.uploaderId,
+        attachmentId: input.attachmentId,
+      },
+      signerPublicKey: fromBase64Url(signer.signPublicKey),
+      head: input.head,
+    });
   }
 
   encrypt(

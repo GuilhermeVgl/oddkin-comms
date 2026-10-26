@@ -817,8 +817,11 @@ type ArchiveRequest struct {
 
 // Attachment defines model for Attachment.
 type Attachment struct {
-	BodyEncrypted   *bool               `json:"bodyEncrypted,omitempty"`
-	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
+	BodyEncrypted *bool `json:"bodyEncrypted,omitempty"`
+
+	// BodySignerDeviceId Device that signed the manifest of an encrypted body
+	BodySignerDeviceId *openapi_types.UUID `json:"bodySignerDeviceId,omitempty"`
+	ContentAuthorId    *openapi_types.UUID `json:"contentAuthorId,omitempty"`
 
 	// ContentSize Size of the original file; equals size unless the body is encrypted
 	ContentSize *int64             `json:"contentSize,omitempty"`
@@ -833,6 +836,7 @@ type Attachment struct {
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 	Size           int64               `json:"size"`
 	UploaderEmail  string              `json:"uploaderEmail"`
+	UploaderId     *openapi_types.UUID `json:"uploaderId,omitempty"`
 }
 
 // AuthSession defines model for AuthSession.

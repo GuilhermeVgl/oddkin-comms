@@ -3518,6 +3518,11 @@ components:
         contentType: { type: string }
         size: { type: integer, format: int64 }
         bodyEncrypted: { type: boolean }
+        uploaderId: { type: string, format: uuid }
+        bodySignerDeviceId:
+          type: string
+          format: uuid
+          description: Device that signed the manifest of an encrypted body
         contentSize:
           type: integer
           format: int64
