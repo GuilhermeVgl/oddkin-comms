@@ -95,57 +95,69 @@ func (h *apiServer) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err)
 		return
 	}
-	starts := pgtype.Date{Time: payload.StartsOn.Time, Valid: true}
-	ends := pgtype.Date{Time: payload.EndsOn.Time, Valid: true}
 	var sprint sqlc.Sprint
 	if encrypted {
-		id := toPG(*payload.Id)
-		writer, fail, prepErr := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(toPG(*payload.SignerDeviceId)))
-		if prepErr == nil && fail == nil {
-			if fail = writer.verify(session.AccountID, sprintResource(id, "name"), 1, *payload.NameEnc); fail == nil {
-				fail = writer.verify(session.AccountID, sprintResource(id, "goal"), 1, *payload.GoalEnc)
-			}
-		}
-		if prepErr != nil {
-			serverError(w, r, prepErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		nameEnc, _ := unb64(*payload.NameEnc, 0)
-		goalEnc, _ := unb64(*payload.GoalEnc, 0)
-		sprint, err = q.CreateEncryptedSprint(ctx, sqlc.CreateEncryptedSprintParams{
-			ID: id, OrganizationID: membership.OrganizationID, StartsOn: starts, EndsOn: ends, CreatedBy: session.AccountID,
-			NameEnc: nameEnc, GoalEnc: goalEnc, ContentSignerDeviceID: writer.signer.ID,
-		})
+		sprint, err = insertEncryptedSprint(ctx, w, q, session.AccountID, membership.OrganizationID, domain, found, payload)
 	} else {
-		if found && domain.CurrentGeneration > 0 {
-			(&encFailure{http.StatusConflict, gen.ApiErrorCodeEncryptionRequired}).write(w)
-			return
-		}
-		goal := ""
-		if payload.Goal != nil {
-			goal = *payload.Goal
-		}
-		sprint, err = q.CreateSprint(ctx, sqlc.CreateSprintParams{
-			OrganizationID: membership.OrganizationID, Name: *payload.Name, Goal: goal, StartsOn: starts, EndsOn: ends, CreatedBy: session.AccountID,
-		})
+		sprint, err = insertPlainSprint(ctx, w, q, session.AccountID, membership.OrganizationID, domain, found, payload)
 	}
-	if isUniqueViolation(err) {
+	switch {
+	case errors.Is(err, errResponded):
+	case isUniqueViolation(err):
 		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if isConstraintViolation(err) {
+	case isConstraintViolation(err):
 		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err != nil {
+	case err != nil:
 		serverError(w, r, err)
-		return
+	default:
+		writeJSON(w, http.StatusCreated, toSprint(sprint))
 	}
-	writeJSON(w, http.StatusCreated, toSprint(sprint))
+}
+
+// insertEncryptedSprint stores a sprint whose name and goal arrive as envelopes
+// signed by the author's device. A refusal is written to w and reported as
+// errResponded.
+func insertEncryptedSprint(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account, organizationID pgtype.UUID, domain sqlc.KeyDomain, found bool, payload gen.CreateSprintRequest) (sqlc.Sprint, error) {
+	id := toPG(*payload.Id)
+	writer, fail, err := prepareEncryptedWith(ctx, q, account, domain, found, optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+	if err != nil {
+		return sqlc.Sprint{}, err
+	}
+	if fail == nil {
+		if fail = writer.verify(account, sprintResource(id, "name"), 1, *payload.NameEnc); fail == nil {
+			fail = writer.verify(account, sprintResource(id, "goal"), 1, *payload.GoalEnc)
+		}
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.Sprint{}, errResponded
+	}
+	nameEnc, _ := unb64(*payload.NameEnc, 0)
+	goalEnc, _ := unb64(*payload.GoalEnc, 0)
+	return q.CreateEncryptedSprint(ctx, sqlc.CreateEncryptedSprintParams{
+		ID: id, OrganizationID: organizationID, StartsOn: sprintDate(payload.StartsOn), EndsOn: sprintDate(payload.EndsOn), CreatedBy: account,
+		NameEnc: nameEnc, GoalEnc: goalEnc, ContentSignerDeviceID: writer.signer.ID,
+	})
+}
+
+// insertPlainSprint stores a sprint in the clear, which only an organization
+// that has not started encrypting sprints may still do.
+func insertPlainSprint(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account, organizationID pgtype.UUID, domain sqlc.KeyDomain, found bool, payload gen.CreateSprintRequest) (sqlc.Sprint, error) {
+	if found && domain.CurrentGeneration > 0 {
+		(&encFailure{http.StatusConflict, gen.ApiErrorCodeEncryptionRequired}).write(w)
+		return sqlc.Sprint{}, errResponded
+	}
+	goal := ""
+	if payload.Goal != nil {
+		goal = *payload.Goal
+	}
+	return q.CreateSprint(ctx, sqlc.CreateSprintParams{
+		OrganizationID: organizationID, Name: *payload.Name, Goal: goal, StartsOn: sprintDate(payload.StartsOn), EndsOn: sprintDate(payload.EndsOn), CreatedBy: account,
+	})
+}
+
+func sprintDate(date openapi_types.Date) pgtype.Date {
+	return pgtype.Date{Time: date.Time, Valid: true}
 }
 
 // UpdateSprint encrypts the name and goal of a sprint (administrators).
@@ -164,66 +176,55 @@ func (h *apiServer) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintI
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	visible, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
-	if !ok {
-		return
-	}
-	sprint, err := q.GetSprintForUpdate(ctx, visible.ID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	domain, found, err := sprintDomain(ctx, q, sprint.OrganizationID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	revision := int32(payload.ContentRevision)
-	writer, fail, err := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(toPG(payload.SignerDeviceId)))
-	if err == nil && fail == nil && revision != sprint.ContentRevision+1 {
-		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
-	}
-	if err == nil && fail == nil {
-		if fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "name"), revision, payload.NameEnc); fail == nil {
-			fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "goal"), revision, payload.GoalEnc)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		visible, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
+		if !ok {
+			return errResponded
 		}
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if fail != nil {
-		fail.write(w)
-		return
-	}
-	nameEnc, _ := unb64(payload.NameEnc, 0)
-	goalEnc, _ := unb64(payload.GoalEnc, 0)
-	changed, err := q.SetSprintContent(ctx, sqlc.SetSprintContentParams{
-		ID: sprint.ID, NameEnc: nameEnc, GoalEnc: goalEnc, ContentRevision: revision,
-		ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		sprint, err := q.GetSprintForUpdate(ctx, visible.ID)
+		if err != nil {
+			return err
+		}
+		domain, found, err := sprintDomain(ctx, q, sprint.OrganizationID)
+		if err != nil {
+			return err
+		}
+		revision := int32(payload.ContentRevision)
+		writer, fail, err := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(toPG(payload.SignerDeviceId)))
+		if err != nil {
+			return err
+		}
+		if fail == nil && revision != sprint.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		}
+		if fail == nil {
+			if fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "name"), revision, payload.NameEnc); fail == nil {
+				fail = writer.verify(session.AccountID, sprintResource(sprint.ID, "goal"), revision, payload.GoalEnc)
+			}
+		}
+		if fail != nil {
+			fail.write(w)
+			return errResponded
+		}
+		nameEnc, _ := unb64(payload.NameEnc, 0)
+		goalEnc, _ := unb64(payload.GoalEnc, 0)
+		changed, err := q.SetSprintContent(ctx, sqlc.SetSprintContentParams{
+			ID: sprint.ID, NameEnc: nameEnc, GoalEnc: goalEnc, ContentRevision: revision,
+			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			return statusError(http.StatusConflict)
+		}
+		internal, err := q.ListInternalAccounts(ctx, sprint.OrganizationID)
+		if err != nil {
+			return err
+		}
+		return emitEvent(ctx, q, internal, eventSpec{Type: "sprint.changed", ResourceID: sprint.ID})
 	})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		var internal []pgtype.UUID
-		if internal, err = q.ListInternalAccounts(ctx, sprint.OrganizationID); err == nil {
-			err = emitEvent(ctx, q, internal, eventSpec{Type: "sprint.changed", ResourceID: sprint.ID})
-		}
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -358,43 +359,71 @@ func (h *apiServer) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		visible, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		sprint, err := q.GetSprintForUpdate(ctx, visible.ID)
+		if err != nil {
+			return err
+		}
+		if sprint.State != "active" {
+			return statusError(http.StatusConflict)
+		}
+		tasks, err := q.ListSprintTasksForClose(ctx, sqlc.ListSprintTasksForCloseParams{SprintID: sprint.ID, AccountID: session.AccountID})
+		if err != nil {
+			return err
+		}
+		decisions, err := indexCloseDecisions(payload)
+		if err != nil {
+			return err
+		}
+		needsNext, err := checkCloseDecisions(tasks, decisions)
+		if err != nil {
+			return err
+		}
+		var destination pgtype.UUID
+		if needsNext {
+			if destination, err = nextSprintFor(ctx, q, sprint, payload.DestinationSprintId); err != nil {
+				return err
+			}
+		}
+		if err = recordCloseOutcomes(ctx, q, sprint.ID, tasks, decisions, destination); err != nil {
+			return err
+		}
+		return q.CloseSprint(ctx, sprint.ID)
+	})
+	if respondError(w, r, err) {
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	sprint, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
-	if !ok {
-		return
-	}
-	if sprint, err = q.GetSprintForUpdate(ctx, sprint.ID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if sprint.State != "active" {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	tasks, err := q.ListSprintTasksForClose(ctx, sqlc.ListSprintTasksForCloseParams{SprintID: sprint.ID, AccountID: session.AccountID})
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	type decision struct {
-		version     int32
-		destination string
-	}
-	decisions := make(map[pgtype.UUID]decision, len(payload.Decisions))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// closeDecision is what the administrator chose for one unfinished task.
+type closeDecision struct {
+	version     int32
+	destination string
+}
+
+// indexCloseDecisions keys the decisions by work item; naming a task twice is a
+// bad request.
+func indexCloseDecisions(payload gen.CloseSprintRequest) (map[pgtype.UUID]closeDecision, error) {
+	decisions := make(map[pgtype.UUID]closeDecision, len(payload.Decisions))
 	for _, entry := range payload.Decisions {
 		id := toPG(entry.WorkItemId)
 		if _, duplicate := decisions[id]; duplicate {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return nil, statusError(http.StatusBadRequest)
 		}
-		decisions[id] = decision{version: int32(entry.Version), destination: string(entry.Destination)}
+		decisions[id] = closeDecision{version: int32(entry.Version), destination: string(entry.Destination)}
 	}
+	return decisions, nil
+}
+
+// checkCloseDecisions requires exactly one current decision for every
+// unfinished task, none of them hidden from the administrator. It reports
+// whether any task is carried to the next sprint.
+func checkCloseDecisions(tasks []sqlc.ListSprintTasksForCloseRow, decisions map[pgtype.UUID]closeDecision) (bool, error) {
 	needsNext := false
 	pending := 0
 	for _, task := range tasks {
@@ -403,66 +432,57 @@ func (h *apiServer) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId
 		}
 		pending++
 		if !task.Accessible {
-			w.WriteHeader(http.StatusConflict)
-			return
+			return false, statusError(http.StatusConflict)
 		}
 		chosen, present := decisions[task.ID]
 		if !present {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return false, statusError(http.StatusBadRequest)
 		}
 		if chosen.version != task.Version {
-			w.WriteHeader(http.StatusConflict)
-			return
+			return false, statusError(http.StatusConflict)
 		}
 		needsNext = needsNext || chosen.destination == "next"
 	}
 	if pending != len(decisions) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return false, statusError(http.StatusBadRequest)
 	}
-	var destination pgtype.UUID
-	if needsNext {
-		if payload.DestinationSprintId == nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		next, nextErr := q.GetSprint(ctx, toPG(*payload.DestinationSprintId))
-		if errors.Is(nextErr, pgx.ErrNoRows) || (nextErr == nil && (next.OrganizationID != sprint.OrganizationID || next.State != "planned")) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if nextErr != nil {
-			serverError(w, r, nextErr)
-			return
-		}
-		destination = next.ID
+	return needsNext, nil
+}
+
+// nextSprintFor resolves the planned sprint of the same organization that
+// receives the carried tasks.
+func nextSprintFor(ctx context.Context, q *sqlc.Queries, closing sqlc.Sprint, requested *openapi_types.UUID) (pgtype.UUID, error) {
+	if requested == nil {
+		return pgtype.UUID{}, statusError(http.StatusBadRequest)
 	}
+	next, err := q.GetSprint(ctx, toPG(*requested))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (next.OrganizationID != closing.OrganizationID || next.State != "planned")) {
+		return pgtype.UUID{}, statusError(http.StatusBadRequest)
+	}
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	return next.ID, nil
+}
+
+// recordCloseOutcomes moves each unfinished task as decided and records how
+// every task of the sprint ended.
+func recordCloseOutcomes(ctx context.Context, q *sqlc.Queries, sprintID pgtype.UUID, tasks []sqlc.ListSprintTasksForCloseRow, decisions map[pgtype.UUID]closeDecision, destination pgtype.UUID) error {
 	for _, task := range tasks {
 		outcome := "completed"
 		if !task.Finished {
-			chosen := decisions[task.ID]
 			target := pgtype.UUID{}
 			outcome = "backlog"
-			if chosen.destination == "next" {
+			if decisions[task.ID].destination == "next" {
 				target, outcome = destination, "carried"
 			}
-			err = q.SetTaskSprint(ctx, sqlc.SetTaskSprintParams{ID: task.ID, SprintID: target})
+			if err := q.SetTaskSprint(ctx, sqlc.SetTaskSprintParams{ID: task.ID, SprintID: target}); err != nil {
+				return err
+			}
 		}
-		if err == nil {
-			err = q.RecordSprintItem(ctx, sqlc.RecordSprintItemParams{SprintID: sprint.ID, WorkItemID: task.ID, Outcome: outcome})
-		}
-		if err != nil {
-			serverError(w, r, err)
-			return
+		if err := q.RecordSprintItem(ctx, sqlc.RecordSprintItemParams{SprintID: sprintID, WorkItemID: task.ID, Outcome: outcome}); err != nil {
+			return err
 		}
 	}
-	if err = q.CloseSprint(ctx, sprint.ID); err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return nil
 }

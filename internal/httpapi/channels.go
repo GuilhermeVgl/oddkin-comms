@@ -8,7 +8,6 @@ import (
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -125,37 +124,26 @@ func (h *apiServer) SetChannelArchived(w http.ResponseWriter, r *http.Request, c
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	conversation, chat, ok := conversationAccess(ctx, w, q, conversationId, session.AccountID)
-	if !ok {
-		return
-	}
-	if conversation.Kind != "channel" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if !chat.manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if chat.archived && !conversation.Archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if _, err = q.SetConversationArchived(ctx, sqlc.SetConversationArchivedParams{ID: conversation.ID, Archived: payload.Archived}); err == nil {
-		err = announceProjectChanged(ctx, q, conversation.ProjectID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		conversation, chat, ok := conversationAccess(ctx, w, q, conversationId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if conversation.Kind != "channel" {
+			return statusError(http.StatusNotFound)
+		}
+		if !chat.manager {
+			return statusError(http.StatusForbidden)
+		}
+		if chat.archived && !conversation.Archived {
+			return statusError(http.StatusConflict)
+		}
+		if _, err := q.SetConversationArchived(ctx, sqlc.SetConversationArchivedParams{ID: conversation.ID, Archived: payload.Archived}); err != nil {
+			return err
+		}
+		return announceProjectChanged(ctx, q, conversation.ProjectID)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -173,36 +161,27 @@ func (h *apiServer) SetProjectArchived(w http.ResponseWriter, r *http.Request, p
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err = q.LockProject(ctx, pgUUID(projectId)); err == nil {
-		var recipients []pgtype.UUID
-		recipients, err = projectRecipients(ctx, q, pgUUID(projectId), "")
-		if err == nil {
-			err = q.SetProjectArchived(ctx, sqlc.SetProjectArchivedParams{ID: pgUUID(projectId), Archived: payload.Archived})
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+		if !ok {
+			return errResponded
 		}
-		if err == nil {
-			err = emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)})
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
 		}
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		if err := q.LockProject(ctx, pgUUID(projectId)); err != nil {
+			return err
+		}
+		recipients, err := projectRecipients(ctx, q, pgUUID(projectId), "")
+		if err != nil {
+			return err
+		}
+		if err = q.SetProjectArchived(ctx, sqlc.SetProjectArchivedParams{ID: pgUUID(projectId), Archived: payload.Archived}); err != nil {
+			return err
+		}
+		return emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)})
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

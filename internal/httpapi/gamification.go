@@ -31,7 +31,7 @@ func (h *apiServer) GetMyStats(w http.ResponseWriter, r *http.Request) {
 			zone = loaded
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	rows, err := q.ListCompletionDays(ctx, session.AccountID)
@@ -86,37 +86,29 @@ func (h *apiServer) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	item, access, ok := h.workItemAccess(ctx, w, q, workItemId, session.AccountID)
-	if !ok {
-		return
-	}
-	switch {
-	case !access.access.Can(work.WorkRead):
-		w.WriteHeader(http.StatusForbidden)
-		return
-	case item.AssigneeID == session.AccountID:
-		w.WriteHeader(http.StatusForbidden)
-		return
-	case !item.AssigneeID.Valid || !item.CompletedAt.Valid:
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	added, err := q.GiveKudos(ctx, sqlc.GiveKudosParams{WorkItemID: item.ID, FromAccountID: session.AccountID})
-	if err == nil && added > 0 {
-		err = notifyAccount(ctx, q, item.AssigneeID, "kudos", item.ID, item.ProjectID, pgtype.UUID{})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		item, access, ok := h.workItemAccess(ctx, w, q, workItemId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		switch {
+		case !access.access.Can(work.WorkRead):
+			return statusError(http.StatusForbidden)
+		case item.AssigneeID == session.AccountID:
+			return statusError(http.StatusForbidden)
+		case !item.AssigneeID.Valid || !item.CompletedAt.Valid:
+			return statusError(http.StatusConflict)
+		}
+		added, err := q.GiveKudos(ctx, sqlc.GiveKudosParams{WorkItemID: item.ID, FromAccountID: session.AccountID})
+		if err != nil {
+			return err
+		}
+		if added > 0 {
+			return notifyAccount(ctx, q, item.AssigneeID, "kudos", item.ID, item.ProjectID, pgtype.UUID{})
+		}
+		return nil
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -130,7 +122,7 @@ func (h *apiServer) RemoveKudos(w http.ResponseWriter, r *http.Request, workItem
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).RemoveKudos(ctx, sqlc.RemoveKudosParams{WorkItemID: item.ID, FromAccountID: account}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -152,7 +144,7 @@ func (h *apiServer) RecordFocusSession(w http.ResponseWriter, r *http.Request, w
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).RecordFocusSession(ctx, sqlc.RecordFocusSessionParams{AccountID: account, WorkItemID: item.ID, Minutes: int32(payload.Minutes)}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
