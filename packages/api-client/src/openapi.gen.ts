@@ -2586,11 +2586,13 @@ export interface components {
       signerDeviceId: string;
       contentRevision: number;
     };
+    /** @description Either an encrypted name (nameEnc, signerDeviceId, contentRevision) or, while the project keeps chat in the clear, a plain name */
     UpdateConversationRequest: {
-      nameEnc: components["schemas"]["EncryptedBlob"];
+      name?: string;
+      nameEnc?: components["schemas"]["EncryptedBlob"];
       /** Format: uuid */
-      signerDeviceId: string;
-      contentRevision: number;
+      signerDeviceId?: string;
+      contentRevision?: number;
     };
     UpdateSprintRequest: {
       nameEnc: components["schemas"]["EncryptedBlob"];

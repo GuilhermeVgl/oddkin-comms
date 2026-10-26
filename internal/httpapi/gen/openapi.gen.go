@@ -1656,13 +1656,14 @@ type UpdateBoardColumnRequest struct {
 // UpdateBoardColumnRequestCategory defines model for UpdateBoardColumnRequest.Category.
 type UpdateBoardColumnRequestCategory string
 
-// UpdateConversationRequest defines model for UpdateConversationRequest.
+// UpdateConversationRequest Either an encrypted name (nameEnc, signerDeviceId, contentRevision) or, while the project keeps chat in the clear, a plain name
 type UpdateConversationRequest struct {
-	ContentRevision int `json:"contentRevision"`
+	ContentRevision *int    `json:"contentRevision,omitempty"`
+	Name            *string `json:"name,omitempty"`
 
 	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
-	NameEnc        EncryptedBlob      `json:"nameEnc"`
-	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
 // UpdateEpicRequest defines model for UpdateEpicRequest.

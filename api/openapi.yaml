@@ -3880,9 +3880,10 @@ components:
         contentRevision: { type: integer }
     UpdateConversationRequest:
       type: object
-      required: [nameEnc, signerDeviceId, contentRevision]
       additionalProperties: false
+      description: Either an encrypted name (nameEnc, signerDeviceId, contentRevision) or, while the project keeps chat in the clear, a plain name
       properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
         nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         signerDeviceId: { type: string, format: uuid }
         contentRevision: { type: integer }

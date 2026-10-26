@@ -270,6 +270,23 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 	if channels[0].Id != design.Id {
 		t.Fatalf("order not applied: %+v", channels)
 	}
+	// A plain channel is renamed in place (managers only); names stay unique and valid.
+	if code := member.do(http.MethodPatch, "/api/v1/conversations/"+design.Id, `{"name":"visual"}`, nil); code != http.StatusForbidden {
+		t.Fatalf("rename as member: %d", code)
+	}
+	if code := admin.do(http.MethodPatch, "/api/v1/conversations/"+design.Id, `{"name":"   "}`, nil); code != http.StatusBadRequest {
+		t.Fatalf("blank rename: %d", code)
+	}
+	if code := admin.do(http.MethodPatch, "/api/v1/conversations/"+design.Id, `{"name":"geral"}`, nil); code != http.StatusConflict {
+		t.Fatalf("duplicate name: %d", code)
+	}
+	if code := admin.do(http.MethodPatch, "/api/v1/conversations/"+design.Id, `{"name":"visual"}`, nil); code != http.StatusNoContent {
+		t.Fatalf("rename: %d", code)
+	}
+	admin.do(http.MethodGet, base+"/conversations", "", &channels)
+	if channels[0].Name != "visual" {
+		t.Fatalf("renamed channel: %+v", channels)
+	}
 	if code := member.do(http.MethodPut, "/api/v1/conversations/"+design.Id+"/archive", `{"archived":true}`, nil); code != http.StatusForbidden {
 		t.Fatalf("archive as member: %d", code)
 	}

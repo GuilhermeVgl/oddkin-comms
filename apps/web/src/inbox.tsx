@@ -29,6 +29,8 @@ export type Channel = {
   name: string;
   unread: number;
   archived: boolean;
+  encrypted: boolean;
+  contentRevision: number;
 };
 
 type InboxValue = {
@@ -80,6 +82,8 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
                 name: named.name,
                 unread: Number(named.unread),
                 archived: named.archived === true,
+                encrypted: named.encrypted,
+                contentRevision: named.contentRevision,
               };
             }),
           );

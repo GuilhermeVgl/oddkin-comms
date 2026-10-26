@@ -194,6 +194,9 @@ INSERT INTO conversation (id, project_id, name, encrypted, name_enc, content_rev
 VALUES ($1, $2, '', true, $3, 1, $4, $5, (SELECT COALESCE(max(position) + 1, 0) FROM conversation WHERE project_id = $2 AND kind = 'channel'))
 RETURNING *;
 
+-- name: SetConversationName :execrows
+UPDATE conversation SET name = $2 WHERE id = $1 AND kind = 'channel' AND NOT encrypted;
+
 -- name: SetConversationArchived :execrows
 UPDATE conversation SET archived = $2 WHERE id = $1 AND kind = 'channel';
 

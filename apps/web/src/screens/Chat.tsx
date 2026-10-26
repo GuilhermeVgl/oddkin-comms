@@ -3,7 +3,6 @@ import {
   type CurrentAccount,
 } from "@crewstead/api-client";
 import { useEffect, useMemo, useState } from "react";
-import { Icon } from "../design/icons";
 import { nameOf } from "../design/people";
 import { Avatar } from "../design/primitives";
 import { go } from "../design/router";
@@ -13,8 +12,8 @@ import { toast } from "../design/toast";
 import { csrfToken } from "../errors";
 import { useInbox } from "../inbox";
 import { Page } from "../shell/Page";
-import { can, useWorkspace, type ProjectState } from "../workspace";
-import { ChannelsDialog } from "./ChannelsDialog";
+import { can, useWorkspace } from "../workspace";
+import { ChannelList } from "./ChannelList";
 import { Thread, type ThreadTarget } from "./Thread";
 
 const last = createStore({ id: "" });
@@ -31,7 +30,6 @@ export function Chat({
   const { channels, dms, contacts, reloadChat } = useInbox();
   const remembered = last.use().id;
   const [narrow, setNarrow] = useState(window.innerWidth <= 900);
-  const [managing, setManaging] = useState<string | null>(null);
 
   useEffect(() => {
     const resize = () => setNarrow(window.innerWidth <= 900);
@@ -106,7 +104,7 @@ export function Chat({
       state: entry,
       items: channels.filter((value) => value.projectId === entry.project.id),
     }))
-    .filter((group) => group.items.length > 0);
+    .filter((group) => group.items.length > 0 || group.state.project.isManager);
   const strangers = contacts.filter(
     (contact) => !dms.some((entry) => entry.peerId === contact.accountId),
   );
@@ -168,30 +166,12 @@ export function Chat({
         <div className="chatwrap" data-pane={mobilePane}>
           <nav aria-label="Conversas" className="clist">
             {groups.map((group) => (
-              <div key={group.state.project.id}>
-                <h4 className="row">
-                  <span className="grow">{group.state.project.name}</span>
-                  {group.state.project.isManager ? (
-                    <button
-                      aria-label={`Gerenciar canais de ${group.state.project.name}`}
-                      className="iconbtn"
-                      onClick={() => setManaging(group.state.project.id)}
-                      type="button"
-                    >
-                      <Icon name="gear" size="sm" />
-                    </button>
-                  ) : null}
-                </h4>
-                {group.items.map((entry) =>
-                  item(
-                    entry.id,
-                    <Icon name="hash" size="sm" />,
-                    entry.archived ? `${entry.name} (arquivado)` : entry.name,
-                    entry.unread,
-                    () => go(`chat/${entry.id}`),
-                  ),
-                )}
-              </div>
+              <ChannelList
+                key={group.state.project.id}
+                onOpen={(id) => go(`chat/${id}`)}
+                selectedId={selectedId}
+                state={group.state}
+              />
             ))}
             <h4>Mensagens diretas</h4>
             {dms.map((entry) =>
@@ -237,17 +217,6 @@ export function Chat({
           )}
         </div>
       )}
-      {managing !== null &&
-      projects?.find((entry) => entry.project.id === managing) ? (
-        <ChannelsDialog
-          onClose={() => setManaging(null)}
-          state={
-            projects.find(
-              (entry) => entry.project.id === managing,
-            ) as ProjectState
-          }
-        />
-      ) : null}
     </Page>
   );
 }

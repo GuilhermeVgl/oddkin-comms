@@ -723,13 +723,58 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	revision := int32(payload.ContentRevision)
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	if payload.Name != nil {
+		if payload.NameEnc != nil || conversation.Encrypted {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		name, valid := validColumnName(*payload.Name)
+		if !valid {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fail, planErr := requirePlaintextAllowed(ctx, q, conversation.ProjectID, "chat")
+		if planErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if fail != nil {
+			fail.write(w)
+			return
+		}
+		changed, nameErr := q.SetConversationName(ctx, sqlc.SetConversationNameParams{ID: conversation.ID, Name: name})
+		if isUniqueViolation(nameErr) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if nameErr == nil && changed == 0 {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if nameErr == nil {
+			nameErr = announceProjectChanged(ctx, q, conversation.ProjectID)
+		}
+		if nameErr == nil {
+			nameErr = tx.Commit(ctx)
+		}
+		if nameErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if payload.NameEnc == nil || payload.SignerDeviceId == nil || payload.ContentRevision == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	revision := int32(*payload.ContentRevision)
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
 	if err == nil && fail == nil && revision != conversation.ContentRevision+1 {
 		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 	}
 	if err == nil && fail == nil {
-		fail = writer.verify(session.AccountID, channelResource(conversation.ID), revision, payload.NameEnc)
+		fail = writer.verify(session.AccountID, channelResource(conversation.ID), revision, *payload.NameEnc)
 	}
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -739,7 +784,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		fail.write(w)
 		return
 	}
-	nameEnc, _ := unb64(payload.NameEnc, 0)
+	nameEnc, _ := unb64(*payload.NameEnc, 0)
 	changed, err := q.SetConversationContent(ctx, sqlc.SetConversationContentParams{
 		ID: conversation.ID, NameEnc: nameEnc, ContentRevision: revision, ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
 	})

@@ -4803,6 +4803,23 @@ func (q *Queries) SetConversationContent(ctx context.Context, arg SetConversatio
 	return result.RowsAffected(), nil
 }
 
+const setConversationName = `-- name: SetConversationName :execrows
+UPDATE conversation SET name = $2 WHERE id = $1 AND kind = 'channel' AND NOT encrypted
+`
+
+type SetConversationNameParams struct {
+	ID   pgtype.UUID
+	Name string
+}
+
+func (q *Queries) SetConversationName(ctx context.Context, arg SetConversationNameParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setConversationName, arg.ID, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setConversationPosition = `-- name: SetConversationPosition :exec
 UPDATE conversation SET position = $3 WHERE id = $1 AND project_id = $2 AND kind = 'channel'
 `

@@ -956,6 +956,25 @@ export async function getStorageUsage(client: Client): Promise<StorageUsage> {
   return ensure("getStorageUsage", response, data, 200);
 }
 
+/** Renames a channel whose name is still in the clear. */
+export async function renameChannel(
+  client: Client,
+  token: string,
+  conversationId: string,
+  name: string,
+): Promise<void> {
+  const { response } = await client.PATCH(
+    "/api/v1/conversations/{conversationId}",
+    {
+      params: { path: { conversationId } },
+      body: { name },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "renameChannel");
+}
+
 export async function createChannel(
   client: Client,
   token: string,
