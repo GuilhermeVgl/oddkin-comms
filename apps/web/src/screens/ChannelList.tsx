@@ -5,13 +5,15 @@ import {
   setChannelArchived,
   type Conversation,
 } from "@crewstead/api-client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../design/icons";
-import { toast } from "../design/toast";
+import { toast, toastError } from "../design/toast";
 import { createChannelNamed, encryptChannel } from "../e2ee/content";
 import { csrfToken, describeError } from "../errors";
 import { useInbox, type Channel } from "../inbox";
 import { useWorkspace, type ProjectState } from "../workspace";
+import { idsAfterDrop, idsAfterMove } from "./channels/channelOrder";
+import { InlineName } from "./channels/InlineName";
 
 /**
  * The channels of one project, with everything a manager needs right in the
@@ -43,11 +45,10 @@ export function ChannelList({
       await reloadChat();
       if (done !== undefined) toast(done, { icon: "check" });
     } catch (error) {
-      toast(
+      toastError(
         error instanceof ApiStatusError && error.status === 409
           ? "Já existe um canal com esse nome, ou o projeto está arquivado."
           : describeError(error),
-        { kind: "err" },
       );
     }
   }
@@ -57,20 +58,22 @@ export function ChannelList({
   }
 
   function move(id: string, offset: number) {
-    const ids = mine.map((entry) => entry.id);
-    const from = ids.indexOf(id);
-    const to = from + offset;
-    if (from < 0 || to < 0 || to >= ids.length) return;
-    ids.splice(to, 0, ids.splice(from, 1)[0] ?? id);
-    reorder(ids);
+    const ids = idsAfterMove(
+      mine.map((entry) => entry.id),
+      id,
+      offset,
+    );
+    if (ids !== null) reorder(ids);
   }
 
   function drop(targetId: string, after: boolean) {
-    if (dragging === null || dragging === targetId) return;
-    const ids = mine.map((entry) => entry.id).filter((id) => id !== dragging);
-    const at = ids.indexOf(targetId) + (after ? 1 : 0);
-    ids.splice(at, 0, dragging);
-    reorder(ids);
+    const ids = idsAfterDrop(
+      mine.map((entry) => entry.id),
+      dragging,
+      targetId,
+      after,
+    );
+    if (ids !== null) reorder(ids);
   }
 
   function save(entry: Channel, raw: string) {
@@ -279,53 +282,5 @@ export function ChannelList({
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** A text field that saves on Enter or when it loses focus, and cancels on Escape. */
-function InlineName({
-  initial,
-  label,
-  placeholder,
-  onSave,
-  onCancel,
-}: {
-  initial: string;
-  label: string;
-  placeholder?: string;
-  onSave: (value: string) => void;
-  onCancel: () => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const settled = useRef(false);
-  useEffect(() => {
-    input.current?.focus();
-    input.current?.select();
-  }, []);
-  const finish = (save: boolean) => {
-    if (settled.current) return;
-    settled.current = true;
-    if (save) onSave(input.current?.value ?? "");
-    else onCancel();
-  };
-  return (
-    <input
-      aria-label={label}
-      className="crow-input"
-      defaultValue={initial}
-      maxLength={60}
-      onBlur={() => finish(true)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          finish(true);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          finish(false);
-        }
-      }}
-      placeholder={placeholder}
-      ref={input}
-    />
   );
 }

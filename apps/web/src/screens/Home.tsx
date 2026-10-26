@@ -1,161 +1,43 @@
-import type { CurrentAccount, Sprint, WorkItem } from "@crewstead/api-client";
+import type { CurrentAccount } from "@crewstead/api-client";
 import { useEffect, useMemo } from "react";
-import {
-  dueLabel,
-  daysTo,
-  fmtD,
-  fmtLong,
-  greeting,
-  rel,
-  todayIso,
-} from "../design/format";
-import { Icon, type IconName } from "../design/icons";
+import { isDone } from "../columns";
+import { fmtLong, greeting, todayIso } from "../design/format";
+import { Icon } from "../design/icons";
 import { firstNameOf } from "../design/people";
-import { Avatar, Empty, NoAvatar, Pbar } from "../design/primitives";
-import { go } from "../design/router";
-import { Duo, Sprite } from "../design/Sprite";
-import { MissionBar } from "../design/Mission";
-import { dayLine, streakLabel } from "../design/gamify";
-import { useStats } from "../shell/stats";
 import { Page } from "../shell/Page";
-import { projectColor } from "../shell/Sidebar";
 import { useShell } from "../shell/context";
-import { isDone, useWorkspace } from "../workspace";
+import { useWorkspace } from "../workspace";
 import { APP_NAME } from "../brand";
+import { DayCard } from "./home/DayCard";
+import { MyQueue } from "./home/MyQueue";
+import { ProjectsCard } from "./home/ProjectsCard";
+import { RecentActivity } from "./home/RecentActivity";
+import { NoSprintHero, SprintHero } from "./home/SprintHero";
+import {
+  countOpenToday,
+  countUpcoming,
+  myQueue,
+  recentActivity,
+} from "./home/homeRules";
+import { PRIORITY_ICON, PRIORITY_LABEL } from "./priority";
+import { taskEntries } from "./work/workRules";
 
-export const PRIORITY_ICON: Record<WorkItem["priority"], IconName> = {
-  low: "pBaixa",
-  normal: "pNormal",
-  high: "pAlta",
-  urgent: "pUrgente",
-};
+export { PRIORITY_ICON, PRIORITY_LABEL };
 
-export const PRIORITY_LABEL: Record<WorkItem["priority"], string> = {
-  low: "Baixa",
-  normal: "Normal",
-  high: "Alta",
-  urgent: "Urgente",
-};
-
-function byDue(left: WorkItem, right: WorkItem): number {
-  if (left.dueDate === undefined && right.dueDate === undefined) return 0;
-  if (left.dueDate === undefined) return 1;
-  if (right.dueDate === undefined) return -1;
-  return left.dueDate.localeCompare(right.dueDate);
-}
-
-function SprintHero({
-  sprint,
-  total,
-  done,
-  projectNames,
-}: {
-  sprint: Sprint;
-  total: number;
-  done: number;
-  projectNames: string[];
-}) {
-  const left = Math.max(0, daysTo(sprint.endsOn));
-  return (
-    <section aria-label="Sprint atual" className="sprint-hero">
-      <div className="col gap12 grow">
-        <span className="tag lime" style={{ width: "fit-content" }}>
-          Sprint ativa
-        </span>
-        <h2>{sprint.name}</h2>
-        {sprint.goal === "" ? null : (
-          <p className="mission-goal">
-            <b>Missão:</b> {sprint.goal}
-          </p>
-        )}
-        <p className="muted sm">
-          {fmtD(sprint.startsOn)} a {fmtD(sprint.endsOn)} ·{" "}
-          {left === 0 ? "último dia" : `${left} dias restantes`}
-        </p>
-        <MissionBar done={done} total={total} />
-        <div className="row" style={{ marginTop: 6 }}>
-          <a className="btn accent sm" href="#/sprints">
-            Ver sprint
-          </a>
-          <span className="xs muted">
-            {projectNames.length === 0
-              ? ""
-              : `Projetos: ${projectNames.join(", ")}`}
-          </span>
-        </div>
-      </div>
-      <div
-        aria-hidden="true"
-        className="dockhero"
-        style={{ alignSelf: "flex-end", marginBottom: -24, marginRight: -4 }}
-      >
-        <Duo pose="wave" scale={4} />
-      </div>
-    </section>
-  );
-}
-
-/** The person's own day: what is still open today, what is done, and the streak. */
-function DayCard({ open, quiet }: { open: number; quiet: boolean }) {
-  const { stats } = useStats();
-  const finished = stats?.completedToday ?? 0;
-  const streak = stats?.currentStreak ?? 0;
-  return (
-    <section aria-label="Seu dia" className="card dayc">
-      <span aria-hidden="true" className="dayc-sp">
-        <Sprite
-          pose={open === 0 && finished > 0 ? "cheer" : "idle"}
-          scale={3}
-          who="capuz"
-        />
-      </span>
-      <div className="col grow">
-        <span className="dayc-line">
-          {quiet && finished === 0
-            ? "Nada com prazo para hoje. Pegue a próxima da fila."
-            : dayLine(open, finished)}
-        </span>
-        <div className="dayc-chips">
-          {streak > 0 ? (
-            <span className="tag lime">
-              <Icon name="bell" size="sm" />
-              {streakLabel(streak)}
-            </span>
-          ) : null}
-          {stats !== null && stats.bestStreak > streak ? (
-            <span className="tag mute">Recorde: {stats.bestStreak} dias</span>
-          ) : null}
-          {stats !== null && stats.completedTotal > 0 ? (
-            <span className="tag mute">
-              {stats.completedTotal}{" "}
-              {stats.completedTotal === 1 ? "entrega" : "entregas"} no total
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
+/** The subtitle under the greeting: how long the person's queue is. */
+function queueSummary(queueLength: number, upcoming: number): string {
+  if (queueLength === 0) return "Sua fila está limpa.";
+  return `Você tem ${queueLength} ${queueLength === 1 ? "item" : "itens"} na fila${
+    upcoming > 0 ? `, ${upcoming} com prazo curto` : ""
+  }.`;
 }
 
 export function Home({ account }: { account: CurrentAccount }) {
-  const { projects, sprints, setCurrentProjectId, people } = useWorkspace();
+  const { projects, sprints } = useWorkspace();
   const { openNewItem } = useShell();
   const loading = projects === null;
-  const items = useMemo(
-    () =>
-      (projects ?? []).flatMap((state) =>
-        state.items
-          .filter((item) => item.kind === "task")
-          .map((item) => ({ item, state })),
-      ),
-    [projects],
-  );
-  const mine = items
-    .filter(
-      ({ item, state }) =>
-        item.assigneeId === account.id && !isDone(state.columns, item.columnId),
-    )
-    .sort((left, right) => byDue(left.item, right.item));
+  const items = useMemo(() => taskEntries(projects ?? []), [projects]);
+  const mine = myQueue(items, account.id);
   const active = sprints.find((sprint) => sprint.state === "active");
   const inSprint =
     active === undefined
@@ -164,27 +46,13 @@ export function Home({ account }: { account: CurrentAccount }) {
   const finished = inSprint.filter(({ item, state }) =>
     isDone(state.columns, item.columnId),
   ).length;
-  const today = todayIso();
-  const todayOpen = mine.filter(
-    ({ item, state }) =>
-      (item.dueDate !== undefined && item.dueDate <= today) ||
-      state.columns.find((column) => column.id === item.columnId)?.category ===
-        "in_progress",
-  ).length;
-  const upcoming = mine.filter(
-    ({ item }) => item.dueDate !== undefined && daysTo(item.dueDate) <= 3,
-  ).length;
+  const todayOpen = countOpenToday(mine, todayIso());
+  const upcoming = countUpcoming(mine);
   const canCreate = (projects ?? []).length > 0;
 
   useEffect(() => {
     document.title = `${APP_NAME} · Visão geral`;
   }, []);
-
-  const feed = [...items]
-    .sort((left, right) =>
-      right.item.updatedAt.localeCompare(left.item.updatedAt),
-    )
-    .slice(0, 5);
 
   return (
     <Page
@@ -200,13 +68,7 @@ export function Home({ account }: { account: CurrentAccount }) {
         ) : null
       }
       sub={`${fmtLong(todayIso())}. ${
-        loading
-          ? ""
-          : mine.length > 0
-            ? `Você tem ${mine.length} ${mine.length === 1 ? "item" : "itens"} na fila${
-                upcoming > 0 ? `, ${upcoming} com prazo curto` : ""
-              }.`
-            : "Sua fila está limpa."
+        loading ? "" : queueSummary(mine.length, upcoming)
       }`}
       title={`${greeting()}, ${firstNameOf(account.email)}`}
     >
@@ -219,33 +81,7 @@ export function Home({ account }: { account: CurrentAccount }) {
             />
           )}
           {active === undefined ? (
-            <section aria-label="Sprint atual" className="sprint-hero">
-              <div className="col gap12 grow">
-                <span className="tag" style={{ width: "fit-content" }}>
-                  Planejamento
-                </span>
-                <h2>Pronto para o próximo passo</h2>
-                <p className="muted sm">
-                  Ainda não existe uma sprint ativa. Organize o backlog e comece
-                  quando a equipe estiver pronta.
-                </p>
-                <div className="row" style={{ marginTop: 6 }}>
-                  <a className="btn accent sm" href="#/sprints">
-                    Ver sprints
-                  </a>
-                </div>
-              </div>
-              <div
-                aria-hidden="true"
-                style={{
-                  alignSelf: "flex-end",
-                  marginBottom: -24,
-                  marginRight: -4,
-                }}
-              >
-                <Duo pose="think" scale={4} />
-              </div>
-            </section>
+            <NoSprintHero />
           ) : (
             <SprintHero
               done={finished}
@@ -256,181 +92,11 @@ export function Home({ account }: { account: CurrentAccount }) {
               total={inSprint.length}
             />
           )}
-          <section className="card pad">
-            <div className="row" style={{ marginBottom: 6 }}>
-              <h2 className="h2 grow">Minha fila</h2>
-              <a className="btn ghost sm" href="#/work">
-                Ver quadro <Icon name="right" size="sm" />
-              </a>
-            </div>
-            {mine.length > 0 ? (
-              mine.slice(0, 6).map(({ item, state }) => {
-                const late =
-                  item.dueDate !== undefined && daysTo(item.dueDate) < 0;
-                return (
-                  <button
-                    className="qrow"
-                    key={item.id}
-                    onClick={() => {
-                      setCurrentProjectId(state.project.id);
-                      go(`work/${item.id}`);
-                    }}
-                    type="button"
-                  >
-                    <span
-                      className={`prio ${item.priority}`}
-                      title={`Prioridade ${PRIORITY_LABEL[item.priority]}`}
-                    >
-                      <Icon name={PRIORITY_ICON[item.priority]} size="sm" />
-                      <span className="sr">
-                        {PRIORITY_LABEL[item.priority]}
-                      </span>
-                    </span>
-                    <span className="grow col">
-                      <b style={{ fontWeight: 650 }}>{item.title}</b>
-                      <span className="xs muted">
-                        {state.project.name} ·{" "}
-                        {state.columns.find(
-                          (column) => column.id === item.columnId,
-                        )?.name ?? ""}
-                      </span>
-                    </span>
-                    <span
-                      className="sm muted"
-                      style={
-                        late
-                          ? { color: "var(--danger)", fontWeight: 650 }
-                          : undefined
-                      }
-                    >
-                      {item.dueDate === undefined
-                        ? "sem prazo"
-                        : dueLabel(item.dueDate)}
-                    </span>
-                  </button>
-                );
-              })
-            ) : (
-              <Empty
-                art={<Sprite pose="sit" scale={5} who="capuz" />}
-                title={loading ? "Carregando…" : "Fila limpa"}
-              >
-                {loading
-                  ? undefined
-                  : "Nada atribuído a você agora. Aproveite o respiro."}
-              </Empty>
-            )}
-          </section>
+          <MyQueue loading={loading} queue={mine} />
         </div>
         <div className="stack">
-          <section className="card pad">
-            <h2 className="h2" style={{ marginBottom: 10 }}>
-              Projetos
-            </h2>
-            <div className="col gap8">
-              {(projects ?? []).length === 0 ? (
-                <p className="muted sm">
-                  {loading
-                    ? "Carregando projetos…"
-                    : account.isAdmin
-                      ? "Nenhum projeto ainda. Crie o primeiro em Atividades."
-                      : "Você ainda não participa de nenhum projeto."}
-                </p>
-              ) : null}
-              {(projects ?? []).map((state) => {
-                const tasks = state.items.filter(
-                  (item) => item.kind === "task",
-                );
-                const done = tasks.filter((item) =>
-                  isDone(state.columns, item.columnId),
-                ).length;
-                return (
-                  <button
-                    className="proj-card"
-                    key={state.project.id}
-                    onClick={() => {
-                      setCurrentProjectId(state.project.id);
-                      go("work");
-                    }}
-                    type="button"
-                  >
-                    <div className="row">
-                      <span
-                        className="proj-ic"
-                        style={{
-                          background: projectColor(state.project.color),
-                        }}
-                      >
-                        {state.project.name
-                          .charAt(0)
-                          .toLocaleUpperCase("pt-BR")}
-                      </span>
-                      <div className="grow col">
-                        <b>{state.project.name}</b>
-                        <span className="xs muted">
-                          {state.project.description}
-                        </span>
-                      </div>
-                      <span className="avs">
-                        {state.members.slice(0, 4).map((member) => (
-                          <Avatar
-                            email={member.email}
-                            id={member.accountId}
-                            key={member.accountId}
-                            size="sm"
-                          />
-                        ))}
-                      </span>
-                    </div>
-                    <div className="row">
-                      <Pbar
-                        on={
-                          tasks.length > 0
-                            ? Math.round((done / tasks.length) * 10)
-                            : 0
-                        }
-                        total={10}
-                      />
-                      <span className="xs muted num">
-                        {done}/{tasks.length}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-          <section className="card pad">
-            <h2 className="h2">Atividade recente</h2>
-            {feed.length === 0 ? (
-              <p className="muted sm" style={{ marginTop: 8 }}>
-                Sem novidades por aqui.
-              </p>
-            ) : (
-              <ul className="feed" style={{ marginTop: 6 }}>
-                {feed.map(({ item, state }) => {
-                  const owner =
-                    item.assigneeId === undefined
-                      ? undefined
-                      : people.get(item.assigneeId);
-                  return (
-                    <li key={item.id}>
-                      {owner === undefined ? (
-                        <NoAvatar size="sm" />
-                      ) : (
-                        <Avatar email={owner.email} id={owner.id} size="sm" />
-                      )}
-                      <span className="grow">
-                        <b>{item.title}</b> foi atualizada ·{" "}
-                        {state.project.name}
-                      </span>
-                      <time className="xs muted">{rel(item.updatedAt)}</time>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          <ProjectsCard account={account} loading={loading} />
+          <RecentActivity feed={recentActivity(items, 5)} />
         </div>
       </div>
     </Page>

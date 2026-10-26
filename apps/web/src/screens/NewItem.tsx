@@ -8,7 +8,7 @@ import { go } from "../design/router";
 import { blip } from "../design/sound";
 import { toast } from "../design/toast";
 import { can, useWorkspace } from "../workspace";
-import { PRIORITY_LABEL } from "./Home";
+import { PRIORITY_LABEL } from "./priority";
 import { useQuickCreate } from "./quickCreate";
 
 /** The full "new activity" dialog. */

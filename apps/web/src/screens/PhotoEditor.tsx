@@ -218,7 +218,7 @@ export function PhotoEditor({
               para a equipe.
             </p>
             {failed ? (
-              <p className="xs" role="alert" style={{ color: "var(--danger)" }}>
+              <p className="xs st-danger" role="alert">
                 Não foi possível enviar a foto. Tente de novo.
               </p>
             ) : null}

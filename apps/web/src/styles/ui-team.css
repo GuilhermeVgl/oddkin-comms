@@ -1,1 +1,24 @@
 /* Classes for team, replacing inline styles. */
+.pill-tabs.tm-mb18 {
+  margin-bottom: 18px;
+}
+.h2.tm-h2-tight {
+  margin-bottom: 6px;
+}
+.tm-mt12 {
+  margin-top: 12px;
+}
+.tm-mt16 {
+  margin-top: 16px;
+}
+.tm-note {
+  margin: 12px 0;
+}
+.tm-label {
+  font-weight: 560;
+}
+.iconbtn.tm-swatch {
+  width: 34px;
+  height: 34px;
+  border-width: 2px;
+}

@@ -1,1 +1,58 @@
 /* Classes for settings, replacing inline styles. */
+.st-narrow {
+  max-width: 760px;
+}
+.st-flex {
+  display: flex;
+}
+.st-fit {
+  width: fit-content;
+}
+.st-mt6 {
+  margin-top: 6px;
+}
+.st-mt10 {
+  margin-top: 10px;
+}
+.st-mt12 {
+  margin-top: 12px;
+}
+.st-mb8 {
+  margin-bottom: 8px;
+}
+.st-ml6 {
+  margin-left: 6px;
+}
+.st-h2-tight {
+  margin-bottom: 6px;
+}
+.st-plain-list {
+  list-style: none;
+  padding: 0;
+}
+.av.tint {
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+.fp.st-fp-md {
+  font-size: 15px;
+  margin: 10px 0;
+}
+.fp.st-fp-lg {
+  font-size: 17px;
+  margin: 12px 0;
+}
+.iconbtn.st-sq32 {
+  width: 32px;
+  height: 32px;
+}
+.inp.st-h38 {
+  height: 38px;
+}
+.inp.st-cat {
+  width: 160px;
+  height: 38px;
+}
+.st-danger {
+  color: var(--danger);
+}
