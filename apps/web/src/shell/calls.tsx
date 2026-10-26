@@ -12,12 +12,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { blip } from "../design/sound";
 import { toast } from "../design/toast";
 import { csrfToken } from "../errors";
 import { useEvents } from "../events";
 import { CallRoom } from "../screens/Call";
-import { nameOf } from "../design/people";
+import { IncomingCalls } from "./IncomingCalls";
 import { useInbox } from "../inbox";
 import { useWorkspace } from "../workspace";
 
@@ -41,7 +40,6 @@ export function CallsProvider({ children }: { children: React.ReactNode }) {
   const { channels } = useInbox();
   const [invitations, setInvitations] = useState<CallInvitation[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
-  const known = useRef<Set<string> | null>(null);
   const channelList = useRef(channels);
   channelList.current = channels;
 
@@ -49,24 +47,6 @@ export function CallsProvider({ children }: { children: React.ReactNode }) {
     try {
       const list = await listCallInvitations(client);
       setInvitations(list);
-      const before = known.current;
-      known.current = new Set(list.map((entry) => entry.callId));
-      if (before === null) return;
-      for (const entry of list) {
-        if (before.has(entry.callId)) continue;
-        const channel = channelList.current.find(
-          (item) => item.id === entry.conversationId,
-        );
-        const where =
-          channel === undefined ? "uma conversa direta" : `#${channel.name}`;
-        const who = entry.startedBy === "" ? "Alguém" : nameOf(entry.startedBy);
-        blip("ok");
-        toast(`${who} está chamando em ${where}.`, {
-          icon: "phone",
-          ms: 6000,
-          act: ["Entrar", () => setOpenId(entry.callId)],
-        });
-      }
     } catch {
       // The next event reloads.
     }
@@ -103,6 +83,18 @@ export function CallsProvider({ children }: { children: React.ReactNode }) {
   return (
     <CallsContext.Provider value={value}>
       {children}
+      <IncomingCalls
+        busy={openId !== null}
+        invitations={invitations.filter((entry) => entry.callId !== openId)}
+        onAnswer={setOpenId}
+        onDecline={(callId) => void decline(callId)}
+        where={(conversationId) => {
+          const channel = channelList.current.find(
+            (item) => item.id === conversationId,
+          );
+          return channel === undefined ? "conversa direta" : `#${channel.name}`;
+        }}
+      />
       {openId === null ? null : (
         <CallRoom
           callId={openId}

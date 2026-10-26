@@ -254,3 +254,116 @@
   transform: translateX(-50%);
   z-index: 3;
 }
+
+/* Incoming call, like a phone ringing. */
+.ringstack {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, calc(100vw - 24px));
+}
+.ringcard {
+  background: var(--carvao, #202321);
+  color: #fff;
+  border-radius: var(--r-xl);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--sh-3);
+  animation: ringin var(--t-slow) var(--ease);
+}
+.ringcard .muted {
+  color: rgba(255, 255, 255, 0.7);
+}
+.ringcard .iconbtn {
+  color: #fff;
+}
+@keyframes ringin {
+  from {
+    transform: translateY(-24px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.ring-who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ring-who .col {
+  flex: 1;
+  min-width: 0;
+}
+.ring-name {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.ring-av {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+}
+.ring-av::before,
+.ring-av::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: ringwave 1.8s ease-out infinite;
+  pointer-events: none;
+}
+.ring-av::after {
+  animation-delay: 0.9s;
+}
+@keyframes ringwave {
+  from {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+.ring-acts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ring-acts .btn {
+  height: 44px;
+  justify-content: center;
+  font-weight: 700;
+  border: 0;
+}
+.ring-decline {
+  background: var(--danger);
+  color: #fff;
+}
+.ring-accept {
+  background: #2fae60;
+  color: #fff;
+}
+.ring-accept:disabled {
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-av::before,
+  .ring-av::after {
+    animation: none;
+    opacity: 0.6;
+  }
+  .ringcard {
+    animation: none;
+  }
+}
