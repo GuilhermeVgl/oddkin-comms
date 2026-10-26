@@ -225,7 +225,8 @@ export function Drawer({
       <div className="scrim dscrim" onClick={closeSoon} />
       <aside
         aria-label={`Detalhe da atividade: ${item.title}`}
-        className={`drawer${leaving ? " out" : ""}`}
+        aria-modal="true"
+        className={`itemdlg${leaving ? " out" : ""}`}
         role="dialog"
       >
         <div className="dh">
@@ -283,7 +284,7 @@ export function Drawer({
             <Icon name="x" />
           </button>
         </div>
-        <div className="db">
+        <div className="im-body">
           <div>
             <input
               aria-label="Título"
@@ -370,432 +371,470 @@ export function Drawer({
               )}
             </Banner>
           ) : null}
-          <dl className="props">
-            <dt>
-              <Icon name="board" size="sm" />
-              Estado
-            </dt>
-            <dd>
-              <select
-                aria-label="Estado"
-                className="inp"
-                disabled={!canMove}
-                onChange={(event) => void move(state, item, event.target.value)}
-                value={item.columnId}
-              >
-                {state.columns.map((column) => (
-                  <option key={column.id} value={column.id}>
-                    {column.name}
-                  </option>
-                ))}
-              </select>
-            </dd>
-            <dt>
-              <Icon name="user" size="sm" />
-              Responsável
-            </dt>
-            <dd>
-              <select
-                aria-label="Responsável"
-                className="inp"
-                disabled={!canEdit}
-                onChange={(event) =>
-                  void field(
-                    event.target.value === ""
-                      ? { clearAssignee: true }
-                      : { assigneeId: event.target.value },
-                  )
-                }
-                value={item.assigneeId ?? ""}
-              >
-                <option value="">Sem responsável</option>
-                {state.members.map((member) => (
-                  <option key={member.accountId} value={member.accountId}>
-                    {nameOf(member.email)}
-                  </option>
-                ))}
-              </select>
-            </dd>
-            <dt>
-              <Icon name="cal" size="sm" />
-              Prazo
-            </dt>
-            <dd>
-              <input
-                aria-label="Prazo"
-                className="inp"
-                disabled={!canEdit}
-                onChange={(event) =>
-                  void field(
-                    event.target.value === ""
-                      ? { clearDueDate: true }
-                      : { dueDate: event.target.value },
-                  )
-                }
-                type="date"
-                value={item.dueDate ?? ""}
-              />
-              {item.dueDate !== undefined &&
-              daysTo(item.dueDate) < 0 &&
-              !done ? (
-                <span className="tag danger">
-                  <Icon name="alert" size="sm" />
-                  Atrasada
-                </span>
-              ) : item.dueDate !== undefined ? (
-                <span className="xs muted">{dueLabel(item.dueDate)}</span>
-              ) : null}
-            </dd>
-            <dt>
-              <Icon name="flag" size="sm" />
-              Prioridade
-            </dt>
-            <dd>
-              <select
-                aria-label="Prioridade"
-                className="inp"
-                disabled={!canEdit}
-                onChange={(event) =>
-                  void field({
-                    priority: event.target.value as WorkItem["priority"],
-                  })
-                }
-                value={item.priority}
-              >
-                {(Object.keys(PRIORITY_LABEL) as WorkItem["priority"][]).map(
-                  (key) => (
-                    <option key={key} value={key}>
-                      {PRIORITY_LABEL[key]}
-                    </option>
-                  ),
-                )}
-              </select>
-              <span className={`prio ${item.priority}`}>
-                <Icon name={PRIORITY_ICON[item.priority]} size="sm" />
-              </span>
-            </dd>
-            <dt>
-              <Icon name="layers" size="sm" />
-              Épico
-            </dt>
-            <dd>
-              <select
-                aria-label="Épico"
-                className="inp"
-                disabled={!canPlan}
-                onChange={(event) =>
-                  void field(
-                    event.target.value === ""
-                      ? { clearEpic: true }
-                      : { epicId: event.target.value },
-                  )
-                }
-                value={item.epicId ?? ""}
-              >
-                <option value="">Sem épico</option>
-                {state.epics.map((epic) => (
-                  <option key={epic.id} value={epic.id}>
-                    {epic.title}
-                  </option>
-                ))}
-              </select>
-            </dd>
-            <dt>
-              <Icon name="clock" size="sm" />
-              Sprint
-            </dt>
-            <dd>
-              <select
-                aria-label="Sprint"
-                className="inp"
-                disabled={!canPlan}
-                onChange={(event) =>
-                  void field(
-                    event.target.value === ""
-                      ? { clearSprint: true }
-                      : { sprintId: event.target.value },
-                  )
-                }
-                value={item.sprintId ?? ""}
-              >
-                <option value="">Backlog</option>
-                {sprints
-                  .filter(
-                    (value) =>
-                      value.state !== "closed" || value.id === item.sprintId,
-                  )
-                  .map((value) => (
-                    <option key={value.id} value={value.id}>
-                      {value.name}
-                      {value.state === "active" ? " (ativa)" : ""}
+          <dl className="im-props">
+            <div className="im-tile">
+              <dt>
+                <Icon name="board" size="sm" />
+                Estado
+              </dt>
+              <dd>
+                <select
+                  aria-label="Estado"
+                  className="inp"
+                  disabled={!canMove}
+                  onChange={(event) =>
+                    void move(state, item, event.target.value)
+                  }
+                  value={item.columnId}
+                >
+                  {state.columns.map((column) => (
+                    <option key={column.id} value={column.id}>
+                      {column.name}
                     </option>
                   ))}
-              </select>
-            </dd>
-          </dl>
-          <div className="field">
-            <label htmlFor="ds">Descrição</label>
-            <textarea
-              className="inp"
-              id="ds"
-              maxLength={50000}
-              onBlur={() => void saveText("description", description)}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Sem descrição"
-              readOnly={!canEdit}
-              rows={4}
-              value={description}
-            />
-            <span className="hint">
-              Até 50 mil caracteres
-              {encrypted ? " · cifrado neste dispositivo" : ""}
-            </span>
-          </div>
-          <section aria-labelledby="sth">
-            <div className="row" style={{ marginBottom: 8 }}>
-              <h3 className="h2" id="sth">
-                Subtarefas
-              </h3>
-              <span className="xs muted num">
-                {finished}/{subs.length}
-              </span>
-              <Pbar
-                block={8}
-                on={
-                  subs
-                    .slice(0, 10)
-                    .filter((sub) => isDone(state.columns, sub.columnId)).length
-                }
-                total={Math.min(10, subs.length)}
-              />
+                </select>
+              </dd>
             </div>
-            <div className="col">
-              {subs.map((sub) => {
-                const subDone = isDone(state.columns, sub.columnId);
-                const owner =
-                  sub.assigneeId === undefined
-                    ? undefined
-                    : people.get(sub.assigneeId);
-                return (
-                  <div
-                    className="row"
-                    key={sub.id}
-                    style={{
-                      padding: "8px 0",
-                      borderTop: "1px solid var(--line)",
-                    }}
-                  >
-                    <button
-                      aria-checked={subDone}
-                      aria-label={`Concluir subtarefa ${sub.title}`}
-                      className="chk sq"
-                      disabled={!canMove}
-                      onClick={(event) =>
-                        void toggleSub(sub, event.currentTarget)
-                      }
-                      role="checkbox"
-                      style={{ margin: 0 }}
-                      type="button"
-                    >
-                      <Icon name="check" />
-                    </button>
-                    <span
-                      className="grow"
-                      style={
-                        subDone
-                          ? {
-                              textDecoration: "line-through",
-                              color: "var(--ink-2)",
-                            }
-                          : undefined
-                      }
-                    >
-                      {sub.title}
-                    </span>
-                    {sub.dueDate === undefined ? null : (
-                      <span className="xs muted">
-                        <Icon name="cal" size="sm" /> {fmtD(sub.dueDate)}
-                      </span>
-                    )}
-                    {owner === undefined ? (
-                      <NoAvatar size="sm" />
-                    ) : (
-                      <Avatar email={owner.email} id={owner.id} size="sm" />
-                    )}
-                  </div>
-                );
-              })}
-              {can(state, "work.create") && readable ? (
-                <form
-                  className="row"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const value = subtask.trim();
-                    if (value === "") return;
-                    void run(async () => {
-                      await createItem(
-                        client,
-                        csrfToken(),
-                        state.crypto,
-                        state.project.id,
-                        {
-                          kind: "subtask",
-                          parentId: item.id,
-                          title: value,
-                          ...(item.assigneeId === undefined
-                            ? {}
-                            : { assigneeId: item.assigneeId }),
-                        },
-                      );
-                      setSubtask("");
-                    });
-                  }}
-                  style={{ paddingTop: 10, borderTop: "1px solid var(--line)" }}
-                >
-                  <input
-                    aria-label="Nova subtarefa"
-                    className="inp"
-                    maxLength={200}
-                    onChange={(event) => setSubtask(event.target.value)}
-                    placeholder="Adicionar subtarefa"
-                    style={{ height: 36 }}
-                    value={subtask}
-                  />
-                  <button className="btn sm" type="submit">
-                    <Icon name="plus" size="sm" />
-                    Adicionar
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          </section>
-          <Attachments
-            canUpload={can(state, "files.upload")}
-            client={client}
-            context={{
-              contextType: "work_item",
-              contextId: item.id,
-              projectId: item.projectId,
-            }}
-          />
-          <section>
-            <h3 className="h2" style={{ marginBottom: 10 }}>
-              Comentários
-            </h3>
-            <div className="col gap12" id="cmts">
-              {comments === null ? (
-                <p className="muted sm">Carregando…</p>
-              ) : null}
-              {comments !== null && comments.length === 0 ? (
-                <p className="muted sm">Seja a primeira pessoa a comentar.</p>
-              ) : null}
-              {(comments ?? []).map((entryComment) => (
-                <div
-                  className="row"
-                  key={entryComment.id}
-                  style={{ alignItems: "flex-start", gap: 12 }}
-                >
-                  <Avatar
-                    email={entryComment.authorEmail}
-                    id={entryComment.authorId ?? entryComment.authorEmail}
-                    size="lg"
-                  />
-                  <div className="grow">
-                    <div className="row gap8">
-                      <b>{nameOf(entryComment.authorEmail)}</b>
-                      <time className="xs muted">
-                        {new Date(entryComment.createdAt).toLocaleString(
-                          "pt-BR",
-                          {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          },
-                        )}
-                      </time>
-                    </div>
-                    <div style={{ marginTop: 2, lineHeight: 1.5 }}>
-                      <Rich mentions={mentionable} text={entryComment.body} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {canComment ? (
-              <form
-                className="col gap8"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const value = comment.trim();
-                  if (value === "") return;
-                  void run(async () => {
-                    await createCommentContent(
-                      client,
-                      csrfToken(),
-                      state.crypto,
-                      item.id,
-                      value,
-                    );
-                    setComment("");
-                    await load();
-                    blip("ok");
-                  });
-                }}
-                style={{ marginTop: 14 }}
-              >
-                <textarea
-                  aria-label="Novo comentário"
-                  className="inp"
-                  maxLength={10000}
-                  onChange={(event) => setComment(event.target.value)}
-                  placeholder="Comente. Use @ para mencionar quem tem acesso ao projeto."
-                  rows={2}
-                  value={comment}
-                />
-                <div className="row">
-                  <span className="xs muted grow">
-                    <Icon name="lock" size="sm" /> Cifrado antes de sair do
-                    navegador
-                  </span>
-                  <button className="btn primary sm" type="submit">
-                    Comentar
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <p className="muted sm" style={{ marginTop: 12 }}>
-                Seu perfil não permite comentar.
-              </p>
-            )}
-          </section>
-          <details>
-            <summary className="h2" style={{ cursor: "pointer" }}>
-              Histórico
-            </summary>
-            <ul className="feed" style={{ marginTop: 8 }}>
-              <li>
+            <div className="im-tile">
+              <dt>
+                <Icon name="user" size="sm" />
+                Responsável
+              </dt>
+              <dd>
                 {assignee === undefined ? (
                   <NoAvatar size="sm" />
                 ) : (
                   <Avatar email={assignee.email} id={assignee.id} size="sm" />
                 )}
-                <span>
-                  Versão atual <b className="mono">v{item.version}</b>
-                  {sprint === undefined ? "" : ` · ${sprint.name}`}
+                <select
+                  aria-label="Responsável"
+                  className="inp"
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    void field(
+                      event.target.value === ""
+                        ? { clearAssignee: true }
+                        : { assigneeId: event.target.value },
+                    )
+                  }
+                  value={item.assigneeId ?? ""}
+                >
+                  <option value="">Sem responsável</option>
+                  {state.members.map((member) => (
+                    <option key={member.accountId} value={member.accountId}>
+                      {nameOf(member.email)}
+                    </option>
+                  ))}
+                </select>
+              </dd>
+            </div>
+            <div className="im-tile">
+              <dt>
+                <Icon name="cal" size="sm" />
+                Prazo
+              </dt>
+              <dd>
+                <input
+                  aria-label="Prazo"
+                  className="inp"
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    void field(
+                      event.target.value === ""
+                        ? { clearDueDate: true }
+                        : { dueDate: event.target.value },
+                    )
+                  }
+                  type="date"
+                  value={item.dueDate ?? ""}
+                />
+                {item.dueDate !== undefined &&
+                daysTo(item.dueDate) < 0 &&
+                !done ? (
+                  <span className="tag danger">
+                    <Icon name="alert" size="sm" />
+                    Atrasada
+                  </span>
+                ) : item.dueDate !== undefined ? (
+                  <span className="xs muted">{dueLabel(item.dueDate)}</span>
+                ) : null}
+              </dd>
+            </div>
+            <div className="im-tile">
+              <dt>
+                <Icon name="flag" size="sm" />
+                Prioridade
+              </dt>
+              <dd>
+                <select
+                  aria-label="Prioridade"
+                  className="inp"
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    void field({
+                      priority: event.target.value as WorkItem["priority"],
+                    })
+                  }
+                  value={item.priority}
+                >
+                  {(Object.keys(PRIORITY_LABEL) as WorkItem["priority"][]).map(
+                    (key) => (
+                      <option key={key} value={key}>
+                        {PRIORITY_LABEL[key]}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <span className={`prio ${item.priority}`}>
+                  <Icon name={PRIORITY_ICON[item.priority]} size="sm" />
                 </span>
-              </li>
-              <li>
-                <span className="xs muted">
-                  Criada em{" "}
-                  {new Date(item.createdAt).toLocaleDateString("pt-BR")} ·
-                  atualizada em{" "}
-                  {new Date(item.updatedAt).toLocaleDateString("pt-BR")}.
-                  Valores antigos de texto não ficam em claro no servidor.
+              </dd>
+            </div>
+            <div className="im-tile">
+              <dt>
+                <Icon name="layers" size="sm" />
+                Épico
+              </dt>
+              <dd>
+                <select
+                  aria-label="Épico"
+                  className="inp"
+                  disabled={!canPlan}
+                  onChange={(event) =>
+                    void field(
+                      event.target.value === ""
+                        ? { clearEpic: true }
+                        : { epicId: event.target.value },
+                    )
+                  }
+                  value={item.epicId ?? ""}
+                >
+                  <option value="">Sem épico</option>
+                  {state.epics.map((epic) => (
+                    <option key={epic.id} value={epic.id}>
+                      {epic.title}
+                    </option>
+                  ))}
+                </select>
+              </dd>
+            </div>
+            <div className="im-tile">
+              <dt>
+                <Icon name="clock" size="sm" />
+                Sprint
+              </dt>
+              <dd>
+                <select
+                  aria-label="Sprint"
+                  className="inp"
+                  disabled={!canPlan}
+                  onChange={(event) =>
+                    void field(
+                      event.target.value === ""
+                        ? { clearSprint: true }
+                        : { sprintId: event.target.value },
+                    )
+                  }
+                  value={item.sprintId ?? ""}
+                >
+                  <option value="">Backlog</option>
+                  {sprints
+                    .filter(
+                      (value) =>
+                        value.state !== "closed" || value.id === item.sprintId,
+                    )
+                    .map((value) => (
+                      <option key={value.id} value={value.id}>
+                        {value.name}
+                        {value.state === "active" ? " (ativa)" : ""}
+                      </option>
+                    ))}
+                </select>
+              </dd>
+            </div>
+          </dl>
+          <div className="im-cols">
+            <div className="im-left">
+              <div className="field">
+                <label htmlFor="ds">Descrição</label>
+                <textarea
+                  className="inp"
+                  id="ds"
+                  maxLength={50000}
+                  onBlur={() => void saveText("description", description)}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Sem descrição"
+                  readOnly={!canEdit}
+                  rows={4}
+                  value={description}
+                />
+                <span className="hint">
+                  Até 50 mil caracteres
+                  {encrypted ? " · cifrado neste dispositivo" : ""}
                 </span>
-              </li>
-            </ul>
-          </details>
+              </div>
+              <section aria-labelledby="sth">
+                <div className="row" style={{ marginBottom: 8 }}>
+                  <h3 className="h2" id="sth">
+                    Subtarefas
+                  </h3>
+                  <span className="xs muted num">
+                    {finished}/{subs.length}
+                  </span>
+                  <Pbar
+                    block={8}
+                    on={
+                      subs
+                        .slice(0, 10)
+                        .filter((sub) => isDone(state.columns, sub.columnId))
+                        .length
+                    }
+                    total={Math.min(10, subs.length)}
+                  />
+                </div>
+                <div className="col">
+                  {subs.map((sub) => {
+                    const subDone = isDone(state.columns, sub.columnId);
+                    const owner =
+                      sub.assigneeId === undefined
+                        ? undefined
+                        : people.get(sub.assigneeId);
+                    return (
+                      <div
+                        className="row"
+                        key={sub.id}
+                        style={{
+                          padding: "8px 0",
+                          borderTop: "1px solid var(--line)",
+                        }}
+                      >
+                        <button
+                          aria-checked={subDone}
+                          aria-label={`Concluir subtarefa ${sub.title}`}
+                          className="chk sq"
+                          disabled={!canMove}
+                          onClick={(event) =>
+                            void toggleSub(sub, event.currentTarget)
+                          }
+                          role="checkbox"
+                          style={{ margin: 0 }}
+                          type="button"
+                        >
+                          <Icon name="check" />
+                        </button>
+                        <span
+                          className="grow"
+                          style={
+                            subDone
+                              ? {
+                                  textDecoration: "line-through",
+                                  color: "var(--ink-2)",
+                                }
+                              : undefined
+                          }
+                        >
+                          {sub.title}
+                        </span>
+                        {sub.dueDate === undefined ? null : (
+                          <span className="xs muted">
+                            <Icon name="cal" size="sm" /> {fmtD(sub.dueDate)}
+                          </span>
+                        )}
+                        {owner === undefined ? (
+                          <NoAvatar size="sm" />
+                        ) : (
+                          <Avatar email={owner.email} id={owner.id} size="sm" />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {can(state, "work.create") && readable ? (
+                    <form
+                      className="row"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const value = subtask.trim();
+                        if (value === "") return;
+                        void run(async () => {
+                          await createItem(
+                            client,
+                            csrfToken(),
+                            state.crypto,
+                            state.project.id,
+                            {
+                              kind: "subtask",
+                              parentId: item.id,
+                              title: value,
+                              ...(item.assigneeId === undefined
+                                ? {}
+                                : { assigneeId: item.assigneeId }),
+                            },
+                          );
+                          setSubtask("");
+                        });
+                      }}
+                      style={{
+                        paddingTop: 10,
+                        borderTop: "1px solid var(--line)",
+                      }}
+                    >
+                      <input
+                        aria-label="Nova subtarefa"
+                        className="inp"
+                        maxLength={200}
+                        onChange={(event) => setSubtask(event.target.value)}
+                        placeholder="Adicionar subtarefa"
+                        style={{ height: 36 }}
+                        value={subtask}
+                      />
+                      <button className="btn sm" type="submit">
+                        <Icon name="plus" size="sm" />
+                        Adicionar
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </section>
+              <Attachments
+                canUpload={can(state, "files.upload")}
+                client={client}
+                context={{
+                  contextType: "work_item",
+                  contextId: item.id,
+                  projectId: item.projectId,
+                }}
+              />
+            </div>
+            <div className="im-right">
+              <section>
+                <h3 className="h2" style={{ marginBottom: 10 }}>
+                  Comentários
+                </h3>
+                <div className="col gap12" id="cmts">
+                  {comments === null ? (
+                    <p className="muted sm">Carregando…</p>
+                  ) : null}
+                  {comments !== null && comments.length === 0 ? (
+                    <p className="muted sm">
+                      Seja a primeira pessoa a comentar.
+                    </p>
+                  ) : null}
+                  {(comments ?? []).map((entryComment) => (
+                    <div
+                      className="row"
+                      key={entryComment.id}
+                      style={{ alignItems: "flex-start", gap: 12 }}
+                    >
+                      <Avatar
+                        email={entryComment.authorEmail}
+                        id={entryComment.authorId ?? entryComment.authorEmail}
+                        size="lg"
+                      />
+                      <div className="grow">
+                        <div className="row gap8">
+                          <b>{nameOf(entryComment.authorEmail)}</b>
+                          <time className="xs muted">
+                            {new Date(entryComment.createdAt).toLocaleString(
+                              "pt-BR",
+                              {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}
+                          </time>
+                        </div>
+                        <div style={{ marginTop: 2, lineHeight: 1.5 }}>
+                          <Rich
+                            mentions={mentionable}
+                            text={entryComment.body}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {canComment ? (
+                  <form
+                    className="col gap8"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const value = comment.trim();
+                      if (value === "") return;
+                      void run(async () => {
+                        await createCommentContent(
+                          client,
+                          csrfToken(),
+                          state.crypto,
+                          item.id,
+                          value,
+                        );
+                        setComment("");
+                        await load();
+                        blip("ok");
+                      });
+                    }}
+                    style={{ marginTop: 14 }}
+                  >
+                    <textarea
+                      aria-label="Novo comentário"
+                      className="inp"
+                      maxLength={10000}
+                      onChange={(event) => setComment(event.target.value)}
+                      placeholder="Comente. Use @ para mencionar quem tem acesso ao projeto."
+                      rows={2}
+                      value={comment}
+                    />
+                    <div className="row">
+                      <span className="xs muted grow">
+                        <Icon name="lock" size="sm" /> Cifrado antes de sair do
+                        navegador
+                      </span>
+                      <button className="btn primary sm" type="submit">
+                        Comentar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p className="muted sm" style={{ marginTop: 12 }}>
+                    Seu perfil não permite comentar.
+                  </p>
+                )}
+              </section>
+              <details>
+                <summary className="h2" style={{ cursor: "pointer" }}>
+                  Histórico
+                </summary>
+                <ul className="feed" style={{ marginTop: 8 }}>
+                  <li>
+                    {assignee === undefined ? (
+                      <NoAvatar size="sm" />
+                    ) : (
+                      <Avatar
+                        email={assignee.email}
+                        id={assignee.id}
+                        size="sm"
+                      />
+                    )}
+                    <span>
+                      Versão atual <b className="mono">v{item.version}</b>
+                      {sprint === undefined ? "" : ` · ${sprint.name}`}
+                    </span>
+                  </li>
+                  <li>
+                    <span className="xs muted">
+                      Criada em{" "}
+                      {new Date(item.createdAt).toLocaleDateString("pt-BR")} ·
+                      atualizada em{" "}
+                      {new Date(item.updatedAt).toLocaleDateString("pt-BR")}.
+                      Valores antigos de texto não ficam em claro no servidor.
+                    </span>
+                  </li>
+                </ul>
+              </details>
+            </div>
+          </div>
         </div>
         <div className="df row">
           {encrypted ? (
