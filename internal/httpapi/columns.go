@@ -247,66 +247,51 @@ func (h *apiServer) RemoveProjectMember(w http.ResponseWriter, r *http.Request, 
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err = q.LockProject(ctx, pgUUID(projectId)); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	target := toPG(accountId)
-	targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if !found {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if targetAccess.access.Manager {
-		managers, countErr := q.CountProjectManagers(ctx, pgUUID(projectId))
-		if countErr != nil {
-			serverError(w, r, countErr)
-			return
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+		if !ok {
+			return errResponded
 		}
-		if managers <= 1 {
-			w.WriteHeader(http.StatusConflict)
-			return
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
 		}
-	}
-	// The person is still a recipient here, so their clients hear about it too.
-	recipients, err := projectRecipients(ctx, q, pgUUID(projectId), "")
-	if err == nil {
-		_, err = q.RemoveProjectMember(ctx, sqlc.RemoveProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target})
-	}
-	if err == nil {
-		err = emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)})
-	}
-	if err == nil {
-		err = refreshProjectDomains(ctx, q, pgUUID(projectId))
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		if access.archived {
+			return statusError(http.StatusConflict)
+		}
+		if err := q.LockProject(ctx, pgUUID(projectId)); err != nil {
+			return err
+		}
+		target := toPG(accountId)
+		targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return statusError(http.StatusNotFound)
+		}
+		if targetAccess.access.Manager {
+			managers, err := q.CountProjectManagers(ctx, pgUUID(projectId))
+			if err != nil {
+				return err
+			}
+			if managers <= 1 {
+				return statusError(http.StatusConflict)
+			}
+		}
+		// The person is still a recipient here, so their clients hear about it too.
+		recipients, err := projectRecipients(ctx, q, pgUUID(projectId), "")
+		if err != nil {
+			return err
+		}
+		if _, err = q.RemoveProjectMember(ctx, sqlc.RemoveProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target}); err != nil {
+			return err
+		}
+		if err = emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)}); err != nil {
+			return err
+		}
+		return refreshProjectDomains(ctx, q, pgUUID(projectId))
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -361,7 +346,7 @@ func (h *apiServer) FollowWorkItem(w http.ResponseWriter, r *http.Request, workI
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: item.ID, AccountID: account}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -375,7 +360,7 @@ func (h *apiServer) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, wor
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).UnfollowWorkItem(ctx, sqlc.UnfollowWorkItemParams{WorkItemID: item.ID, AccountID: account}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
