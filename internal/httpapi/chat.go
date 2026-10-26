@@ -248,97 +248,94 @@ func (h *apiServer) SendMessage(w http.ResponseWriter, r *http.Request, conversa
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	conversation, access, ok := conversationAccess(ctx, w, q, conversationId, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.send {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	// The row lock serializes senders, so sequence numbers have no gaps and a
-	// retried clientMutationId is detected before a new sequence is consumed.
-	if _, err = q.LockConversation(ctx, conversation.ID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	mutationID := toPG(payload.ClientMutationId)
-	existing, err := q.FindMessageByMutation(ctx, sqlc.FindMessageByMutationParams{
-		ConversationID: conversation.ID, AuthorID: session.AccountID, ClientMutationID: mutationID,
+	var (
+		status    int
+		message   sqlc.Message
+		reactions []sqlc.ListReactionsRow
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		conversation, access, ok := conversationAccess(ctx, w, q, conversationId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.send {
+			return statusError(http.StatusForbidden)
+		}
+		if access.archived {
+			return statusError(http.StatusConflict)
+		}
+		// The row lock serializes senders, so sequence numbers have no gaps and a
+		// retried clientMutationId is detected before a new sequence is consumed.
+		if _, err := q.LockConversation(ctx, conversation.ID); err != nil {
+			return err
+		}
+		mutationID := toPG(payload.ClientMutationId)
+		existing, err := q.FindMessageByMutation(ctx, sqlc.FindMessageByMutationParams{
+			ConversationID: conversation.ID, AuthorID: session.AccountID, ClientMutationID: mutationID,
+		})
+		status, message = http.StatusOK, existing
+		if errors.Is(err, pgx.ErrNoRows) {
+			status = http.StatusCreated
+			message, err = createChatMessage(ctx, w, q, conversation, session.AccountID, mutationID, payload)
+		}
+		if err != nil {
+			return err
+		}
+		reactions, err = q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{message.ID}})
+		return err
 	})
-	status := http.StatusOK
-	message := existing
-	if errors.Is(err, pgx.ErrNoRows) {
-		seq, seqErr := q.NextMessageSeq(ctx, conversation.ID)
-		if seqErr != nil {
-			serverError(w, r, seqErr)
-			return
-		}
-		var signerID *pgtype.UUID
-		if payload.SignerDeviceId != nil {
-			signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
-		}
-		writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
-		if domainErr == nil && fail == nil && encrypted {
-			fail = writer.verify(session.AccountID, messageResource(mutationID), 1, *payload.BodyEnc)
-		}
-		if domainErr != nil {
-			serverError(w, r, domainErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		if encrypted {
-			bodyEnc, _ := unb64(*payload.BodyEnc, 0)
-			message, err = q.CreateEncryptedMessage(ctx, sqlc.CreateEncryptedMessageParams{
-				ConversationID: conversation.ID, Seq: seq, AuthorID: session.AccountID, ClientMutationID: mutationID,
-				ReplyToID: optionalUUID(payload.ReplyToId), Encrypted: true, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
-			})
-		} else {
-			message, err = q.CreateMessage(ctx, sqlc.CreateMessageParams{
-				ConversationID: conversation.ID, Seq: seq, AuthorID: session.AccountID, Body: *payload.Body,
-				ClientMutationID: mutationID, ReplyToID: optionalUUID(payload.ReplyToId),
-			})
-		}
-		if isConstraintViolation(err) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		status = http.StatusCreated
-		if err == nil {
-			err = announceMessage(ctx, q, conversation, message, session.AccountID, payload.MentionIds)
-		}
-		if errors.Is(err, errInvalidMention) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	reactions, err := q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{message.ID}})
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, status, buildMessage(viewOf(message, session.EmailNormalized), toReactions(reactions, message.ID)))
+}
+
+// createChatMessage writes a new message inside the sender's transaction and
+// announces it. Refusals it answers itself return errResponded.
+func createChatMessage(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, conversation sqlc.Conversation, author, mutationID pgtype.UUID, payload gen.SendMessageRequest) (sqlc.Message, error) {
+	encrypted := payload.BodyEnc != nil
+	seq, err := q.NextMessageSeq(ctx, conversation.ID)
+	if err != nil {
+		return sqlc.Message{}, err
+	}
+	var signerID *pgtype.UUID
+	if payload.SignerDeviceId != nil {
+		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
+	}
+	writer, fail, err := channelDomainFailure(ctx, q, conversation, encrypted, author, signerID)
+	if err != nil {
+		return sqlc.Message{}, err
+	}
+	if fail == nil && encrypted {
+		fail = writer.verify(author, messageResource(mutationID), 1, *payload.BodyEnc)
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.Message{}, errResponded
+	}
+	var message sqlc.Message
+	if encrypted {
+		bodyEnc, _ := unb64(*payload.BodyEnc, 0)
+		message, err = q.CreateEncryptedMessage(ctx, sqlc.CreateEncryptedMessageParams{
+			ConversationID: conversation.ID, Seq: seq, AuthorID: author, ClientMutationID: mutationID,
+			ReplyToID: optionalUUID(payload.ReplyToId), Encrypted: true, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
+		})
+	} else {
+		message, err = q.CreateMessage(ctx, sqlc.CreateMessageParams{
+			ConversationID: conversation.ID, Seq: seq, AuthorID: author, Body: *payload.Body,
+			ClientMutationID: mutationID, ReplyToID: optionalUUID(payload.ReplyToId),
+		})
+	}
+	if isConstraintViolation(err) {
+		return message, statusError(http.StatusBadRequest)
+	}
+	if err == nil {
+		err = announceMessage(ctx, q, conversation, message, author, payload.MentionIds)
+	}
+	if errors.Is(err, errInvalidMention) {
+		return message, statusError(http.StatusBadRequest)
+	}
+	return message, err
 }
 
 // messageAccess locks the message and resolves the caller's rights in its conversation.
@@ -381,50 +378,64 @@ func (h *apiServer) EditMessage(w http.ResponseWriter, r *http.Request, messageI
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
+	var (
+		edited    sqlc.Message
+		reactions []sqlc.ListReactionsRow
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if message.AuthorID != session.AccountID || !access.send {
+			return statusError(http.StatusForbidden)
+		}
+		if message.DeletedAt.Valid || access.archived {
+			return statusError(http.StatusConflict)
+		}
+		var err error
+		if edited, err = writeMessageEdit(ctx, w, q, session.AccountID, message, payload); err != nil {
+			return err
+		}
+		if err = emitForMessage(ctx, q, "message.updated", edited); err != nil {
+			return err
+		}
+		reactions, err = q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{edited.ID}})
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
-	if !ok {
-		return
-	}
-	if message.AuthorID != session.AccountID || !access.send {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if message.DeletedAt.Valid || access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
+	writeJSON(w, http.StatusOK, buildMessage(viewOf(edited, session.EmailNormalized), toReactions(reactions, edited.ID)))
+}
+
+// writeMessageEdit validates and stores a new body for a message the caller
+// may edit. Refusals it answers itself return errResponded.
+func writeMessageEdit(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, message sqlc.Message, payload gen.EditMessageRequest) (sqlc.Message, error) {
+	encrypted := payload.BodyEnc != nil
 	conversation, err := q.GetConversation(ctx, message.ConversationID)
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return sqlc.Message{}, err
 	}
 	var signerID *pgtype.UUID
 	if payload.SignerDeviceId != nil {
 		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
 	}
-	writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
-	if domainErr == nil && fail == nil && encrypted {
+	writer, fail, err := channelDomainFailure(ctx, q, conversation, encrypted, account, signerID)
+	if err != nil {
+		return sqlc.Message{}, err
+	}
+	if fail == nil && encrypted {
 		revision := int32(*payload.ContentRevision)
 		if revision != message.ContentRevision+1 {
 			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 		} else {
-			fail = writer.verify(session.AccountID, messageResource(message.ClientMutationID), revision, *payload.BodyEnc)
+			fail = writer.verify(account, messageResource(message.ClientMutationID), revision, *payload.BodyEnc)
 		}
-	}
-	if domainErr != nil {
-		serverError(w, r, domainErr)
-		return
 	}
 	if fail != nil {
 		fail.write(w)
-		return
+		return sqlc.Message{}, errResponded
 	}
 	var edited sqlc.Message
 	if encrypted {
@@ -433,33 +444,15 @@ func (h *apiServer) EditMessage(w http.ResponseWriter, r *http.Request, messageI
 			ID: message.ID, BodyEnc: bodyEnc, ContentRevision: int32(*payload.ContentRevision), ContentSignerDeviceID: writer.signer.ID,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
-			w.WriteHeader(http.StatusConflict)
-			return
+			return edited, statusError(http.StatusConflict)
 		}
 	} else {
 		edited, err = q.EditMessage(ctx, sqlc.EditMessageParams{ID: message.ID, Body: *payload.Body})
 	}
 	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return edited, statusError(http.StatusBadRequest)
 	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	err = emitForMessage(ctx, q, "message.updated", edited)
-	var reactions []sqlc.ListReactionsRow
-	if err == nil {
-		reactions, err = q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{edited.ID}})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, buildMessage(viewOf(edited, session.EmailNormalized), toReactions(reactions, edited.ID)))
+	return edited, err
 }
 
 func (h *apiServer) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
@@ -469,36 +462,27 @@ func (h *apiServer) DeleteMessage(w http.ResponseWriter, r *http.Request, messag
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
-	if !ok {
-		return
-	}
-	// Managers moderate channels only; nobody moderates a DM they did not write.
-	if message.AuthorID != session.AccountID && !access.manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if !message.DeletedAt.Valid {
-		if err = q.DeleteMessage(ctx, message.ID); err == nil {
-			err = q.DeleteMessageReactions(ctx, message.ID)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
+		if !ok {
+			return errResponded
 		}
-		if err == nil {
-			err = emitForMessage(ctx, q, "message.deleted", message)
+		// Managers moderate channels only; nobody moderates a DM they did not write.
+		if message.AuthorID != session.AccountID && !access.manager {
+			return statusError(http.StatusForbidden)
 		}
-		if err != nil {
-			serverError(w, r, err)
-			return
+		if message.DeletedAt.Valid {
+			return nil
 		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		if err := q.DeleteMessage(ctx, message.ID); err != nil {
+			return err
+		}
+		if err := q.DeleteMessageReactions(ctx, message.ID); err != nil {
+			return err
+		}
+		return emitForMessage(ctx, q, "message.deleted", message)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -515,48 +499,37 @@ func (h *apiServer) ToggleReaction(w http.ResponseWriter, r *http.Request, messa
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.send {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if message.DeletedAt.Valid || access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	added, err := q.AddReaction(ctx, sqlc.AddReactionParams{MessageID: message.ID, AccountID: session.AccountID, Emoji: payload.Emoji})
-	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err == nil && added == 0 {
-		_, err = q.RemoveReaction(ctx, sqlc.RemoveReactionParams{MessageID: message.ID, AccountID: session.AccountID, Emoji: payload.Emoji})
-	}
-	if err == nil {
-		err = emitForMessage(ctx, q, "reaction.changed", message)
-	}
 	var reactions []sqlc.ListReactionsRow
-	if err == nil {
-		reactions, err = q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{message.ID}})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		message, access, ok := messageAccess(ctx, w, q, messageId, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.send {
+			return statusError(http.StatusForbidden)
+		}
+		if message.DeletedAt.Valid || access.archived {
+			return statusError(http.StatusConflict)
+		}
+		added, err := q.AddReaction(ctx, sqlc.AddReactionParams{MessageID: message.ID, AccountID: session.AccountID, Emoji: payload.Emoji})
+		if isConstraintViolation(err) {
+			return statusError(http.StatusBadRequest)
+		}
+		if err == nil && added == 0 {
+			_, err = q.RemoveReaction(ctx, sqlc.RemoveReactionParams{MessageID: message.ID, AccountID: session.AccountID, Emoji: payload.Emoji})
+		}
+		if err == nil {
+			err = emitForMessage(ctx, q, "reaction.changed", message)
+		}
+		if err == nil {
+			reactions, err = q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{message.ID}})
+		}
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, toReactions(reactions, message.ID))
+	writeJSON(w, http.StatusOK, toReactions(reactions, toPG(messageId)))
 }
 
 func (h *apiServer) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
@@ -687,7 +660,7 @@ func announceMessage(ctx context.Context, q *sqlc.Queries, conversation sqlc.Con
 	return nil
 }
 
-// UpdateConversation encrypts a channel's name (project managers only).
+// UpdateConversation renames a channel or sets its encrypted name (project managers only).
 func (h *apiServer) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
@@ -699,108 +672,88 @@ func (h *apiServer) UpdateConversation(w http.ResponseWriter, r *http.Request, c
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		conversation, err := q.GetConversationForUpdate(ctx, toPG(conversationId))
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && conversation.Kind != "channel") {
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		access, ok := loadAccess(ctx, w, q, conversation.ProjectID, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
+		}
+		if payload.Name != nil {
+			return renameChannel(ctx, w, q, conversation, payload)
+		}
+		return setChannelNameEncrypted(ctx, w, q, conversation, session.AccountID, payload)
+	})
+	if respondError(w, r, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// renameChannel changes the plaintext name of a channel that is not encrypted.
+func renameChannel(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, conversation sqlc.Conversation, payload gen.UpdateConversationRequest) error {
+	if payload.NameEnc != nil || conversation.Encrypted {
+		return statusError(http.StatusBadRequest)
+	}
+	name, valid := validColumnName(*payload.Name)
+	if !valid {
+		return statusError(http.StatusBadRequest)
+	}
+	fail, err := requirePlaintextAllowed(ctx, q, conversation.ProjectID, "chat")
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	conversation, err := q.GetConversationForUpdate(ctx, toPG(conversationId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && conversation.Kind != "channel") {
-		w.WriteHeader(http.StatusNotFound)
-		return
+	if fail != nil {
+		fail.write(w)
+		return errResponded
+	}
+	changed, err := q.SetConversationName(ctx, sqlc.SetConversationNameParams{ID: conversation.ID, Name: name})
+	if isUniqueViolation(err) || (err == nil && changed == 0) {
+		return statusError(http.StatusConflict)
 	}
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return err
 	}
-	access, ok := loadAccess(ctx, w, q, conversation.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if payload.Name != nil {
-		if payload.NameEnc != nil || conversation.Encrypted {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		name, valid := validColumnName(*payload.Name)
-		if !valid {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		fail, planErr := requirePlaintextAllowed(ctx, q, conversation.ProjectID, "chat")
-		if planErr != nil {
-			serverError(w, r, planErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		changed, nameErr := q.SetConversationName(ctx, sqlc.SetConversationNameParams{ID: conversation.ID, Name: name})
-		if isUniqueViolation(nameErr) {
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if nameErr == nil && changed == 0 {
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if nameErr == nil {
-			nameErr = announceProjectChanged(ctx, q, conversation.ProjectID)
-		}
-		if nameErr == nil {
-			nameErr = tx.Commit(ctx)
-		}
-		if nameErr != nil {
-			serverError(w, r, nameErr)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+	return announceProjectChanged(ctx, q, conversation.ProjectID)
+}
+
+// setChannelNameEncrypted stores the encrypted name of a channel.
+func setChannelNameEncrypted(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, conversation sqlc.Conversation, account pgtype.UUID, payload gen.UpdateConversationRequest) error {
 	if payload.NameEnc == nil || payload.SignerDeviceId == nil || payload.ContentRevision == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return statusError(http.StatusBadRequest)
 	}
 	revision := int32(*payload.ContentRevision)
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+	writer, fail, err := prepareEncrypted(ctx, q, account, conversation.ProjectID, "chat", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 	if err == nil && fail == nil && revision != conversation.ContentRevision+1 {
 		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 	}
 	if err == nil && fail == nil {
-		fail = writer.verify(session.AccountID, channelResource(conversation.ID), revision, *payload.NameEnc)
+		fail = writer.verify(account, channelResource(conversation.ID), revision, *payload.NameEnc)
 	}
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return err
 	}
 	if fail != nil {
 		fail.write(w)
-		return
+		return errResponded
 	}
 	nameEnc, _ := unb64(*payload.NameEnc, 0)
 	changed, err := q.SetConversationContent(ctx, sqlc.SetConversationContentParams{
-		ID: conversation.ID, NameEnc: nameEnc, ContentRevision: revision, ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		ID: conversation.ID, NameEnc: nameEnc, ContentRevision: revision, ContentAuthorID: account, ContentSignerDeviceID: writer.signer.ID,
 	})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		err = announceProjectChanged(ctx, q, conversation.ProjectID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if changed == 0 {
+		return statusError(http.StatusConflict)
+	}
+	return announceProjectChanged(ctx, q, conversation.ProjectID)
 }

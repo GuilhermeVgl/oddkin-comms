@@ -104,44 +104,34 @@ func (h *apiServer) SetPersonActive(w http.ResponseWriter, r *http.Request, acco
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	target := toPG(accountId)
-	person, err := q.GetOrganizationPerson(ctx, sqlc.GetOrganizationPersonParams{OrganizationID: membership.OrganizationID, ID: target})
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if !payload.Active && person.IsAdmin && person.Active {
-		admins, countErr := q.CountActiveAdmins(ctx, membership.OrganizationID)
-		if countErr != nil {
-			serverError(w, r, countErr)
-			return
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
+		if err != nil {
+			return err
 		}
-		if admins <= 1 {
-			w.WriteHeader(http.StatusConflict)
-			return
+		target := toPG(accountId)
+		person, err := q.GetOrganizationPerson(ctx, sqlc.GetOrganizationPersonParams{OrganizationID: membership.OrganizationID, ID: target})
+		if err != nil {
+			return statusError(http.StatusNotFound)
 		}
-	}
-	err = q.SetAccountActive(ctx, sqlc.SetAccountActiveParams{ID: target, Active: payload.Active})
-	if err == nil && !payload.Active {
-		_, err = q.RevokeAllAccountSessions(ctx, target)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		if !payload.Active && person.IsAdmin && person.Active {
+			admins, countErr := q.CountActiveAdmins(ctx, membership.OrganizationID)
+			if countErr != nil {
+				return countErr
+			}
+			if admins <= 1 {
+				return statusError(http.StatusConflict)
+			}
+		}
+		if err = q.SetAccountActive(ctx, sqlc.SetAccountActiveParams{ID: target, Active: payload.Active}); err != nil {
+			return err
+		}
+		if !payload.Active {
+			_, err = q.RevokeAllAccountSessions(ctx, target)
+		}
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -165,7 +155,7 @@ func (h *apiServer) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).SetHistoryMode(ctx, sqlc.SetHistoryModeParams{AccountID: session.AccountID, HistoryMode: string(payload.Mode)}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

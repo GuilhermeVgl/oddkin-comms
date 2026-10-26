@@ -5,9 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
-	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,6 +18,7 @@ import (
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -98,28 +97,15 @@ func NewAppHandlerWithConfig(pool *pgxpool.Pool, config AppConfig) (http.Handler
 
 func (h *apiServer) Login(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errAuthNotConfigured)
 		return
 	}
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	var payload gen.LoginRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		w.WriteHeader(http.StatusBadRequest)
+	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
 	email, err := identity.NormalizeEmail(string(payload.Email))
@@ -251,7 +237,7 @@ func (h *apiServer) revoke(w http.ResponseWriter, r *http.Request, all bool) {
 
 func (h *apiServer) activeSession(r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, int) {
 	if h.auth == nil {
-		return sqlc.FindActiveSessionByTokenHashRow{}, http.StatusServiceUnavailable
+		return sqlc.FindActiveSessionByTokenHashRow{}, sessionUnavailable(r, errAuthNotConfigured)
 	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
@@ -268,9 +254,27 @@ func (h *apiServer) activeSession(r *http.Request) (sqlc.FindActiveSessionByToke
 		return sqlc.FindActiveSessionByTokenHashRow{}, http.StatusUnauthorized
 	}
 	if err != nil {
-		return sqlc.FindActiveSessionByTokenHashRow{}, http.StatusServiceUnavailable
+		return sqlc.FindActiveSessionByTokenHashRow{}, sessionUnavailable(r, err)
 	}
 	return session, http.StatusOK
+}
+
+// sessionUnavailable records why the session could not be checked and returns
+// the status to answer with. Callers of activeSession only see the status, so
+// the cause is logged here, by SQLSTATE for database errors as serverError does.
+func sessionUnavailable(r *http.Request, err error) int {
+	attrs := []any{"route", r.Pattern, "error", "session lookup failed"}
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr):
+		attrs = append(attrs, "sqlstate", pgErr.Code)
+	case errors.Is(err, errAuthNotConfigured):
+		attrs = append(attrs, "cause", errAuthNotConfigured.Error())
+	default:
+		attrs = append(attrs, "cause", err.Error())
+	}
+	slog.ErrorContext(r.Context(), "request failed", attrs...)
+	return http.StatusServiceUnavailable
 }
 
 func sameOrigin(r *http.Request) bool {

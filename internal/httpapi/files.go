@@ -149,12 +149,48 @@ func randomObjectKey() (string, error) {
 	return "o/" + hex.EncodeToString(raw), nil
 }
 
-func (h *apiServer) storage(w http.ResponseWriter) (objectstore.Store, bool) {
+var errStorageNotConfigured = errors.New("object storage is not configured")
+
+func (h *apiServer) storage(w http.ResponseWriter, r *http.Request) (objectstore.Store, bool) {
 	if h.auth == nil || h.auth.store == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errStorageNotConfigured)
 		return nil, false
 	}
 	return h.auth.store, true
+}
+
+// checkUploadRequest validates the shape and size of an upload request and
+// returns the status to answer with, or 0 when the request is acceptable.
+func checkUploadRequest(payload gen.CreateUploadRequest) int {
+	if payload.Size < 1 {
+		return http.StatusBadRequest
+	}
+	bodyEncrypted := payload.BodyEncrypted != nil && *payload.BodyEncrypted
+	if payload.Size > MaxFileBytes+maxFileOverhead || (!bodyEncrypted && payload.Size > MaxFileBytes) {
+		return http.StatusRequestEntityTooLarge
+	}
+	if bodyEncrypted {
+		original, valid := plaintextSizeFor(payload.Size)
+		if !valid {
+			return http.StatusBadRequest
+		}
+		if original > MaxFileBytes {
+			return http.StatusRequestEntityTooLarge
+		}
+		// The manifest is bound to the attachment id, so the client chooses it first.
+		if payload.SignerDeviceId == nil || payload.Id == nil {
+			return http.StatusBadRequest
+		}
+	}
+	encryptedName := payload.NameEnc != nil
+	if encryptedName == (payload.Name != nil) || (encryptedName && (payload.Id == nil || payload.SignerDeviceId == nil)) {
+		return http.StatusBadRequest
+	}
+	return 0
+}
+
+func uploadPartCount(size int64) int32 {
+	return int32((size + uploadPartSize - 1) / uploadPartSize)
 }
 
 func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +198,7 @@ func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	store, ok := h.storage(w)
+	store, ok := h.storage(w, r)
 	if !ok {
 		return
 	}
@@ -170,36 +206,39 @@ func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-	if payload.Size < 1 {
-		w.WriteHeader(http.StatusBadRequest)
+	if status := checkUploadRequest(payload); status != 0 {
+		w.WriteHeader(status)
 		return
 	}
-	bodyEncrypted := payload.BodyEncrypted != nil && *payload.BodyEncrypted
-	if payload.Size > MaxFileBytes+maxFileOverhead || (!bodyEncrypted && payload.Size > MaxFileBytes) {
-		w.WriteHeader(http.StatusRequestEntityTooLarge)
+	key, err := randomObjectKey()
+	if err != nil {
+		serverError(w, r, err)
 		return
 	}
-	if bodyEncrypted {
-		original, valid := plaintextSizeFor(payload.Size)
-		if !valid {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if original > MaxFileBytes {
-			w.WriteHeader(http.StatusRequestEntityTooLarge)
-			return
-		}
-		// The manifest is bound to the attachment id, so the client chooses it first.
-		if payload.SignerDeviceId == nil || payload.Id == nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	}
-	encryptedName := payload.NameEnc != nil
-	if encryptedName == (payload.Name != nil) || (encryptedName && (payload.Id == nil || payload.SignerDeviceId == nil)) {
-		w.WriteHeader(http.StatusBadRequest)
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	// Step 1: reserve quota and the single upload slot in the database.
+	var attachment sqlc.Attachment
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		var reserveErr error
+		attachment, reserveErr = h.reserveUpload(ctx, w, q, session.AccountID, payload, key)
+		return reserveErr
+	})
+	if respondError(w, r, err) {
 		return
 	}
+	// Step 2: external effect outside any database lock; reconcile on failure.
+	if err = h.startMultipart(ctx, store, attachment); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, gen.Upload{Id: fromPG(attachment.ID), PartSize: uploadPartSize, PartCount: int(uploadPartCount(payload.Size))})
+}
+
+// reserveUpload checks the caller's rights and the content rules, then books
+// the quota and the person's single upload slot, inside the caller's
+// transaction. Refusals it answers itself return errResponded.
+func (h *apiServer) reserveUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, payload gen.CreateUploadRequest, key string) (sqlc.Attachment, error) {
 	attachmentID := pgUUID(uuid.New())
 	if payload.Id != nil {
 		attachmentID = toPG(*payload.Id)
@@ -215,120 +254,92 @@ func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	case gen.CreateUploadRequestContextTypeConversation:
 		conversationID = toPG(payload.ContextId)
 	}
-	key, err := randomObjectKey()
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	partCount := int32((payload.Size + uploadPartSize - 1) / uploadPartSize)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	// Step 1: reserve quota and the single upload slot in the database.
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	target, ok := resolveFileContext(ctx, w, q, session.AccountID, workItemID, conversationID)
+	target, ok := resolveFileContext(ctx, w, q, account, workItemID, conversationID)
 	if !ok {
-		return
+		return sqlc.Attachment{}, errResponded
 	}
 	if !target.canUpload {
-		w.WriteHeader(http.StatusForbidden)
-		return
+		return sqlc.Attachment{}, statusError(http.StatusForbidden)
 	}
 	if target.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
+		return sqlc.Attachment{}, statusError(http.StatusConflict)
 	}
 	var signerID *pgtype.UUID
+	var contentSigner pgtype.UUID
 	if payload.SignerDeviceId != nil {
 		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
+		contentSigner = *signerID
 	}
 	var nameEnvelope *string
 	if payload.NameEnc != nil {
 		value := string(*payload.NameEnc)
 		nameEnvelope = &value
 	}
-	failure, err := attachmentDomainFailure(ctx, q, target, encryptedName, session.AccountID, attachmentID, signerID, nameEnvelope)
+	bodyEncrypted := payload.BodyEncrypted != nil && *payload.BodyEncrypted
+	failure, bodySigner, err := uploadEncryptionFailure(ctx, q, target, account, attachmentID, signerID, nameEnvelope, payload, bodyEncrypted)
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return sqlc.Attachment{}, err
 	}
 	if failure != nil {
 		failure.write(w)
-		return
-	}
-	var bodySigner pgtype.UUID
-	domain, found, err := bodyDomain(ctx, q, target)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if failure = bodyEncryptionFailure(domain, found, bodyEncrypted); failure == nil && bodyEncrypted {
-		bodySigner = toPG(*payload.SignerDeviceId)
-		_, failure, err = prepareEncryptedWith(ctx, q, session.AccountID, domain, found, &bodySigner)
-		if err != nil {
-			serverError(w, r, err)
-			return
-		}
-	}
-	if failure != nil {
-		failure.write(w)
-		return
+		return sqlc.Attachment{}, errResponded
 	}
 	if err = q.LockOrganization(ctx, target.organizationID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+		return sqlc.Attachment{}, err
 	}
 	reserved, err := q.ReservedStorage(ctx, target.organizationID)
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return sqlc.Attachment{}, err
 	}
 	if reserved+payload.Size > h.auth.quota {
-		w.WriteHeader(http.StatusInsufficientStorage)
-		return
+		return sqlc.Attachment{}, statusError(http.StatusInsufficientStorage)
 	}
 	name := ""
 	if payload.Name != nil {
 		name = *payload.Name
 	}
 	var nameEnc []byte
-	if encryptedName {
+	if nameEnvelope != nil {
 		nameEnc, _ = unb64(*nameEnvelope, 0)
 	}
 	attachment, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
 		ID: attachmentID, OrganizationID: target.organizationID, ProjectID: target.projectID, WorkItemID: target.workItemID,
-		ConversationID: target.conversationID, UploaderID: session.AccountID, ObjectKey: key,
-		Name: name, Encrypted: encryptedName, NameEnc: nameEnc, ContentAuthorID: session.AccountID,
-		ContentSignerDeviceID: func() pgtype.UUID {
-			if signerID != nil {
-				return *signerID
-			}
-			return pgtype.UUID{}
-		}(),
-		ContentType: contentType, DeclaredSize: payload.Size, PartSize: uploadPartSize, PartCount: partCount,
+		ConversationID: target.conversationID, UploaderID: account, ObjectKey: key,
+		Name: name, Encrypted: nameEnvelope != nil, NameEnc: nameEnc, ContentAuthorID: account,
+		ContentSignerDeviceID: contentSigner,
+		ContentType:           contentType, DeclaredSize: payload.Size, PartSize: uploadPartSize, PartCount: uploadPartCount(payload.Size),
 		BodyEncrypted: bodyEncrypted, BodySignerDeviceID: bodySigner,
 	})
 	if isUniqueViolation(err) {
 		// The partial unique index allows one active upload per person.
-		w.WriteHeader(http.StatusConflict)
-		return
+		return attachment, statusError(http.StatusConflict)
 	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
+	return attachment, err
+}
 
-	// Step 2: external effect outside any database lock; reconcile on failure.
-	uploadID, err := store.CreateMultipart(ctx, key)
+// uploadEncryptionFailure applies the encryption rules to the file name and to
+// the body, and returns the body signer to store with the attachment.
+func uploadEncryptionFailure(ctx context.Context, q *sqlc.Queries, target fileContext, account, attachmentID pgtype.UUID, signerID *pgtype.UUID, nameEnvelope *string, payload gen.CreateUploadRequest, bodyEncrypted bool) (*encFailure, pgtype.UUID, error) {
+	var bodySigner pgtype.UUID
+	failure, err := attachmentDomainFailure(ctx, q, target, nameEnvelope != nil, account, attachmentID, signerID, nameEnvelope)
+	if err != nil || failure != nil {
+		return failure, bodySigner, err
+	}
+	domain, found, err := bodyDomain(ctx, q, target)
+	if err != nil {
+		return nil, bodySigner, err
+	}
+	if failure = bodyEncryptionFailure(domain, found, bodyEncrypted); failure == nil && bodyEncrypted {
+		bodySigner = toPG(*payload.SignerDeviceId)
+		_, failure, err = prepareEncryptedWith(ctx, q, account, domain, found, &bodySigner)
+	}
+	return failure, bodySigner, err
+}
+
+// startMultipart opens the bucket upload for a reserved attachment. When the
+// bucket refuses, the reservation is released so the person can retry.
+func (h *apiServer) startMultipart(ctx context.Context, store objectstore.Store, attachment sqlc.Attachment) error {
+	uploadID, err := store.CreateMultipart(ctx, attachment.ObjectKey)
 	pool := sqlc.New(h.auth.pool)
 	if err == nil {
 		err = pool.SetAttachmentUploadID(ctx, sqlc.SetAttachmentUploadIDParams{ID: attachment.ID, UploadID: uploadID})
@@ -336,10 +347,8 @@ func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		_ = pool.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "aborted"})
 		_ = pool.MarkAttachmentObjectRemoved(ctx, attachment.ID)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
 	}
-	writeJSON(w, http.StatusCreated, gen.Upload{Id: fromPG(attachment.ID), PartSize: uploadPartSize, PartCount: int(partCount)})
+	return err
 }
 
 // ownUpload returns the caller's active upload or answers 404/409.
@@ -365,7 +374,7 @@ func (h *apiServer) PresignUploadPart(w http.ResponseWriter, r *http.Request, up
 	if !ok {
 		return
 	}
-	store, ok := h.storage(w)
+	store, ok := h.storage(w, r)
 	if !ok {
 		return
 	}
@@ -425,7 +434,7 @@ func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploa
 	if !ok {
 		return
 	}
-	store, ok := h.storage(w)
+	store, ok := h.storage(w, r)
 	if !ok {
 		return
 	}
@@ -448,17 +457,10 @@ func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploa
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	if len(payload.Parts) != int(attachment.PartCount) {
+	parts, valid := completionParts(payload, attachment)
+	if !valid {
 		w.WriteHeader(http.StatusBadRequest)
 		return
-	}
-	parts := make([]objectstore.Part, len(payload.Parts))
-	for index, part := range payload.Parts {
-		if part.PartNumber != index+1 {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		parts[index] = objectstore.Part{Number: int32(part.PartNumber), ETag: part.Etag}
 	}
 	// The bucket call happens with no database lock held.
 	if err := store.Complete(ctx, attachment.ObjectKey, attachment.UploadID, parts); err != nil {
@@ -472,19 +474,8 @@ func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploa
 	}
 	// Stored bytes equal the reservation: the file for a plaintext body, the
 	// computed ciphertext size for an encrypted one.
-	discard := func(state string, status int, failure *encFailure) {
-		_ = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: state})
-		if store.Delete(ctx, attachment.ObjectKey) == nil {
-			_ = q.MarkAttachmentObjectRemoved(ctx, attachment.ID)
-		}
-		if failure != nil {
-			failure.write(w)
-			return
-		}
-		w.WriteHeader(status)
-	}
 	if size != attachment.DeclaredSize {
-		discard("deleted", http.StatusBadRequest, nil)
+		discardUpload(ctx, w, q, store, attachment, "deleted", http.StatusBadRequest, nil)
 		return
 	}
 	if attachment.BodyEncrypted {
@@ -494,7 +485,7 @@ func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploa
 			return
 		}
 		if failure != nil {
-			discard("aborted", http.StatusBadRequest, failure)
+			discardUpload(ctx, w, q, store, attachment, "aborted", http.StatusBadRequest, failure)
 			return
 		}
 	}
@@ -511,6 +502,36 @@ func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploa
 	writeJSON(w, http.StatusOK, toAttachment(attachment, session.EmailNormalized))
 }
 
+// completionParts checks that the client lists every part, in order, and
+// converts them for the bucket.
+func completionParts(payload gen.CompleteUploadRequest, attachment sqlc.Attachment) ([]objectstore.Part, bool) {
+	if len(payload.Parts) != int(attachment.PartCount) {
+		return nil, false
+	}
+	parts := make([]objectstore.Part, len(payload.Parts))
+	for index, part := range payload.Parts {
+		if part.PartNumber != index+1 {
+			return nil, false
+		}
+		parts[index] = objectstore.Part{Number: int32(part.PartNumber), ETag: part.Etag}
+	}
+	return parts, true
+}
+
+// discardUpload releases a finished object that failed its checks, frees the
+// reservation and answers with the failure (or the plain status).
+func discardUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, store objectstore.Store, attachment sqlc.Attachment, state string, status int, failure *encFailure) {
+	_ = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: state})
+	if store.Delete(ctx, attachment.ObjectKey) == nil {
+		_ = q.MarkAttachmentObjectRemoved(ctx, attachment.ID)
+	}
+	if failure != nil {
+		failure.write(w)
+		return
+	}
+	w.WriteHeader(status)
+}
+
 func (h *apiServer) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
@@ -525,7 +546,7 @@ func (h *apiServer) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId
 	}
 	if attachment.State == "uploading" {
 		if err := q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "aborted"}); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 		attachment.State = "aborted"
@@ -550,7 +571,7 @@ func (h *apiServer) GetAttachmentDownload(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	store, ok := h.storage(w)
+	store, ok := h.storage(w, r)
 	if !ok {
 		return
 	}
@@ -608,7 +629,7 @@ func (h *apiServer) DeleteAttachment(w http.ResponseWriter, r *http.Request, att
 		return
 	}
 	if err = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "deleted"}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// The object stays 30 days (see ReleaseStorage) so a database restore still finds it.

@@ -15,12 +15,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+var errResetDeliveryNotConfigured = errors.New("password reset delivery is not configured")
+
 // RequestPasswordReset always answers 202, so nobody learns which e-mails have
 // an account. When one does, the link is sent by a job created in the same
 // transaction that stores the token's hash.
 func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errAuthNotConfigured)
 		return
 	}
 	if !sameOrigin(r) {
@@ -47,7 +49,7 @@ func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request)
 	h.auth.limiter.fail("reset-ip:"+ip, 20, now)
 	h.auth.limiter.fail(key, 3, now)
 	if len(h.auth.invitationDeliveryKey) != identity.InvitationDeliveryKeySize || h.auth.jobs == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errResetDeliveryNotConfigured)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -71,29 +73,21 @@ func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request)
 		serverError(w, r, err)
 		return
 	}
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	if err = q.RevokePendingPasswordResets(ctx, account.ID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	resetID, err := q.CreatePasswordReset(ctx, sqlc.CreatePasswordResetParams{
-		AccountID: account.ID, TokenHash: hash[:], TokenCiphertext: sealed,
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
-	})
-	if err == nil {
+	err = h.inTxPgx(ctx, func(tx pgx.Tx, q *sqlc.Queries) error {
+		if err := q.RevokePendingPasswordResets(ctx, account.ID); err != nil {
+			return err
+		}
+		resetID, err := q.CreatePasswordReset(ctx, sqlc.CreatePasswordResetParams{
+			AccountID: account.ID, TokenHash: hash[:], TokenCiphertext: sealed,
+			ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		})
+		if err != nil {
+			return err
+		}
 		_, err = h.auth.jobs.InsertTx(ctx, tx, jobs.PasswordResetEmailArgs{ResetID: uuid.UUID(resetID.Bytes).String()}, nil)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
@@ -104,7 +98,7 @@ func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request)
 // until this device is authorised again.
 func (h *apiServer) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errAuthNotConfigured)
 		return
 	}
 	if !sameOrigin(r) {
@@ -134,30 +128,22 @@ func (h *apiServer) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	accountID, err := q.ClaimPasswordReset(ctx, hash[:])
-	if errors.Is(err, pgx.ErrNoRows) {
-		h.auth.limiter.fail(ip, 10, now)
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err == nil {
-		err = q.SetAccountPassword(ctx, sqlc.SetAccountPasswordParams{ID: accountID, PasswordHash: passwordHash})
-	}
-	if err == nil {
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		accountID, err := q.ClaimPasswordReset(ctx, hash[:])
+		if errors.Is(err, pgx.ErrNoRows) {
+			h.auth.limiter.fail(ip, 10, now)
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if err = q.SetAccountPassword(ctx, sqlc.SetAccountPasswordParams{ID: accountID, PasswordHash: passwordHash}); err != nil {
+			return err
+		}
 		_, err = q.RevokeAllAccountSessions(ctx, accountID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
