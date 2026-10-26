@@ -60,3 +60,12 @@ LEFT JOIN invitation_delivery AS d ON d.invitation_id = i.id
 WHERE i.organization_id = $1 AND (i.revoked_at IS NULL OR i.consumed_at IS NOT NULL)
 ORDER BY i.created_at DESC, i.id
 LIMIT 100;
+
+-- name: ListProjectInvitations :many
+SELECT i.id, i.email_normalized, i.membership_kind, i.history_mode, i.project_id, i.expires_at,
+       i.consumed_at, i.revoked_at, i.created_at, COALESCE(d.state, 'pending')::text AS delivery_state
+FROM organization_invitation AS i
+LEFT JOIN invitation_delivery AS d ON d.invitation_id = i.id
+WHERE i.project_id = $1 AND (i.revoked_at IS NULL OR i.consumed_at IS NOT NULL)
+ORDER BY i.created_at DESC, i.id
+LIMIT 100;

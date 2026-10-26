@@ -948,7 +948,7 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 const createProject = `-- name: CreateProject :one
 INSERT INTO project (organization_id, name, description, color, icon, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+RETURNING id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id, invite_policy
 `
 
 type CreateProjectParams struct {
@@ -987,6 +987,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.InvitePolicy,
 	)
 	return i, err
 }
@@ -1872,7 +1873,7 @@ func (q *Queries) GetMessageForUpdate(ctx context.Context, id pgtype.UUID) (Mess
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id FROM project WHERE id = $1
+SELECT id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id, invite_policy FROM project WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, error) {
@@ -1895,6 +1896,7 @@ func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, erro
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.InvitePolicy,
 	)
 	return i, err
 }
@@ -1938,7 +1940,7 @@ func (q *Queries) GetProjectAccess(ctx context.Context, arg GetProjectAccessPara
 }
 
 const getProjectForUpdate = `-- name: GetProjectForUpdate :one
-SELECT id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id FROM project WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, name, description, color, icon, archived, version, created_by, created_at, encrypted, name_enc, description_enc, content_revision, content_author_id, content_signer_device_id, invite_policy FROM project WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetProjectForUpdate(ctx context.Context, id pgtype.UUID) (Project, error) {
@@ -1961,6 +1963,7 @@ func (q *Queries) GetProjectForUpdate(ctx context.Context, id pgtype.UUID) (Proj
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.InvitePolicy,
 	)
 	return i, err
 }
@@ -3616,7 +3619,7 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 }
 
 const listProjectsForAccount = `-- name: ListProjectsForAccount :many
-SELECT p.id, p.organization_id, p.name, p.description, p.color, p.icon, p.archived, p.version, p.created_by, p.created_at, p.encrypted, p.name_enc, p.description_enc, p.content_revision, p.content_author_id, p.content_signer_device_id, pm.is_manager, om.membership_kind,
+SELECT p.id, p.organization_id, p.name, p.description, p.color, p.icon, p.archived, p.version, p.created_by, p.created_at, p.encrypted, p.name_enc, p.description_enc, p.content_revision, p.content_author_id, p.content_signer_device_id, p.invite_policy, pm.is_manager, om.membership_kind,
        COALESCE(ep.permissions, ARRAY[]::text[])::text[] AS external_permissions
 FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
@@ -3648,6 +3651,7 @@ type ListProjectsForAccountRow struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	InvitePolicy          string
 	IsManager             bool
 	MembershipKind        string
 	ExternalPermissions   []string
@@ -3679,6 +3683,7 @@ func (q *Queries) ListProjectsForAccount(ctx context.Context, arg ListProjectsFo
 			&i.ContentRevision,
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
+			&i.InvitePolicy,
 			&i.IsManager,
 			&i.MembershipKind,
 			&i.ExternalPermissions,
@@ -4919,6 +4924,38 @@ func (q *Queries) SetProjectContent(ctx context.Context, arg SetProjectContentPa
 		arg.ContentAuthorID,
 		arg.ContentSignerDeviceID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProjectInvitePolicy = `-- name: SetProjectInvitePolicy :exec
+UPDATE project SET invite_policy = $2, version = version + 1 WHERE id = $1
+`
+
+type SetProjectInvitePolicyParams struct {
+	ID           pgtype.UUID
+	InvitePolicy string
+}
+
+func (q *Queries) SetProjectInvitePolicy(ctx context.Context, arg SetProjectInvitePolicyParams) error {
+	_, err := q.db.Exec(ctx, setProjectInvitePolicy, arg.ID, arg.InvitePolicy)
+	return err
+}
+
+const setProjectMemberManager = `-- name: SetProjectMemberManager :execrows
+UPDATE project_member SET is_manager = $3 WHERE project_id = $1 AND account_id = $2
+`
+
+type SetProjectMemberManagerParams struct {
+	ProjectID pgtype.UUID
+	AccountID pgtype.UUID
+	IsManager bool
+}
+
+func (q *Queries) SetProjectMemberManager(ctx context.Context, arg SetProjectMemberManagerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProjectMemberManager, arg.ProjectID, arg.AccountID, arg.IsManager)
 	if err != nil {
 		return 0, err
 	}

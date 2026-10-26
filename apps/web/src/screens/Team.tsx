@@ -1,6 +1,9 @@
 import {
   addMember,
   createInvitation,
+  setInvitePolicy,
+  setMemberRole,
+  type InvitePolicy,
   listInvitations,
   type InvitationStatus,
   getExternalPolicy,
@@ -274,14 +277,18 @@ function InviteDialog({
   onClose: () => void;
   onInvited?: () => void;
 }) {
-  const { client, reload } = useWorkspace();
+  const { client, reload, account } = useWorkspace();
   const [email, setEmail] = useState("");
-  const [kind, setKind] = useState<MembershipKind>("internal");
+  // Only administrators bring in people from inside the organization.
+  const [kind, setKind] = useState<MembershipKind>(
+    account.isAdmin ? "internal" : "external",
+  );
   const [invalid, setInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
   const e2ee = useOptionalE2EE();
   // Asked only where there is encryption to give access to.
-  const askHistory = e2ee !== null && e2ee.phase !== "not_configured";
+  const askHistory =
+    account.isAdmin && e2ee !== null && e2ee.phase !== "not_configured";
   const canGrant =
     e2ee?.canApproveWithRoot === true && e2ee.phase === "unlocked";
   const [history, setHistory] = useState<"yes" | "no">("yes");
@@ -377,7 +384,13 @@ function InviteDialog({
             <div aria-labelledby="vl" className="seg" role="group">
               <button
                 aria-pressed={kind === "internal"}
+                disabled={!account.isAdmin}
                 onClick={() => setKind("internal")}
+                title={
+                  account.isAdmin
+                    ? undefined
+                    : "Só a administração convida pessoas internas"
+                }
                 type="button"
               >
                 Interno
@@ -456,15 +469,27 @@ export function Team({ account }: { account: CurrentAccount }) {
   const [editing, setEditing] = useState(false);
   const [rotation, setRotation] = useState<"" | "pending" | "done">("");
   const manager = current?.project.isManager === true || account.isAdmin;
+  const invitePolicy = current?.project.invitePolicy ?? "admins";
+  // Mirrors what the server decides: administrators always, then managers and
+  // members as far as the project's policy goes; externals never.
+  const canInvite =
+    current !== null &&
+    (account.isAdmin ||
+      (account.membershipKind === "internal" &&
+        (current.project.isManager
+          ? invitePolicy === "managers" || invitePolicy === "members"
+          : invitePolicy === "members")));
+  const projectId = current?.project.id;
   const [invitations, setInvitations] = useState<InvitationStatus[] | null>(
     null,
   );
+  const sees = account.isAdmin || current?.project.isManager === true;
   const loadInvitations = useCallback(() => {
-    if (!account.isAdmin) return;
-    listInvitations(client)
+    if (!sees) return;
+    listInvitations(client, account.isAdmin ? undefined : projectId)
       .then(setInvitations)
       .catch(() => setInvitations([]));
-  }, [client, account.isAdmin]);
+  }, [client, account.isAdmin, sees, projectId]);
   useEffect(loadInvitations, [loadInvitations]);
   // Someone accepting shows up here without reloading.
   useEvents((event) => {
@@ -606,10 +631,45 @@ export function Team({ account }: { account: CurrentAccount }) {
     }
   }
 
+  async function changePolicy(policy: InvitePolicy) {
+    if (current === null || policy === invitePolicy) return;
+    try {
+      await setInvitePolicy(client, csrfToken(), current.project.id, policy);
+      toast("Regra de convites atualizada.", { icon: "check" });
+      await reload();
+    } catch (error) {
+      toast(describeError(error), { kind: "err" });
+    }
+  }
+
+  async function changeRole(accountId: string, makeManager: boolean) {
+    if (current === null) return;
+    try {
+      await setMemberRole(
+        client,
+        csrfToken(),
+        current.project.id,
+        accountId,
+        makeManager,
+      );
+      toast(makeManager ? "Agora é gestor." : "Deixou de ser gestor.", {
+        icon: "check",
+      });
+      await reload();
+    } catch (error) {
+      toast(
+        error instanceof ApiStatusError && error.status === 409
+          ? "O projeto precisa de ao menos um gestor."
+          : describeError(error),
+        { kind: "err" },
+      );
+    }
+  }
+
   return (
     <Page
       cta={
-        manager ? (
+        manager || canInvite ? (
           <>
             {current?.project.isManager ? (
               <button
@@ -620,14 +680,15 @@ export function Team({ account }: { account: CurrentAccount }) {
                 <Icon name="edit" size="sm" /> Editar projeto
               </button>
             ) : null}
-            <button
-              className="btn primary"
-              disabled={current === null}
-              onClick={() => setInvite(true)}
-              type="button"
-            >
-              <Icon name="plus" /> Convidar
-            </button>
+            {canInvite ? (
+              <button
+                className="btn primary"
+                onClick={() => setInvite(true)}
+                type="button"
+              >
+                <Icon name="plus" /> Convidar
+              </button>
+            ) : null}
           </>
         ) : null
       }
@@ -690,6 +751,18 @@ export function Team({ account }: { account: CurrentAccount }) {
                       {member.email}
                     </span>
                   </div>
+                  {current.project.isManager &&
+                  member.membershipKind === "internal" ? (
+                    <button
+                      className="btn sm ghost"
+                      onClick={() =>
+                        void changeRole(member.accountId, !member.isManager)
+                      }
+                      type="button"
+                    >
+                      {member.isManager ? "Tirar de gestor" : "Tornar gestor"}
+                    </button>
+                  ) : null}
                   {manager &&
                   member.accountId !== account.id &&
                   !member.isManager ? (
@@ -706,9 +779,39 @@ export function Team({ account }: { account: CurrentAccount }) {
                 </div>
               ))}
             </section>
-            {account.isAdmin &&
-            invitations !== null &&
-            invitations.length > 0 ? (
+            {current.project.isManager ? (
+              <section className="card pad col gap8">
+                <h2 className="h2">Quem pode convidar</h2>
+                <p className="xs muted">
+                  A administração sempre pode. Gestores e membros só convidam
+                  pessoas externas para este projeto; quem é de dentro da
+                  organização entra pelo convite da administração.
+                </p>
+                <div
+                  aria-label="Quem pode convidar"
+                  className="seg"
+                  role="group"
+                >
+                  {(
+                    [
+                      ["admins", "Só a administração"],
+                      ["managers", "Gestores"],
+                      ["members", "Todos os membros"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      aria-pressed={invitePolicy === value}
+                      key={value}
+                      onClick={() => void changePolicy(value)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {sees && invitations !== null && invitations.length > 0 ? (
               <section className="card pad">
                 <h2 className="h2" style={{ marginBottom: 6 }}>
                   Convites

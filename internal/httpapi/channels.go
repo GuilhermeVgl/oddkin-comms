@@ -207,3 +207,56 @@ func (h *healthHandler) SetProjectArchived(w http.ResponseWriter, r *http.Reques
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// SetInvitePolicy lets the managers decide who else may invite or add people.
+func (h *healthHandler) SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	var payload gen.SetInvitePolicyRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	if !payload.Policy.Valid() {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
+		if err := q.SetProjectInvitePolicy(ctx, sqlc.SetProjectInvitePolicyParams{ID: pgUUID(projectId), InvitePolicy: string(payload.Policy)}); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, nil
+	})
+}
+
+// SetMemberRole promotes an internal member to manager or steps one down. The
+// project always keeps a manager, and externals never become managers.
+func (h *healthHandler) SetMemberRole(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+	var payload gen.SetMemberRoleRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
+		target := pgUUID(uuidFrom(accountId))
+		targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
+		if err != nil {
+			return 0, nil, err
+		}
+		if !found {
+			return http.StatusNotFound, nil, nil
+		}
+		if targetAccess.access.Kind != "internal" {
+			return http.StatusBadRequest, nil, nil
+		}
+		if !payload.IsManager && targetAccess.access.Manager {
+			managers, countErr := q.CountProjectManagers(ctx, pgUUID(projectId))
+			if countErr != nil {
+				return 0, nil, countErr
+			}
+			if managers <= 1 {
+				return http.StatusConflict, nil, nil
+			}
+		}
+		if _, err = q.SetProjectMemberManager(ctx, sqlc.SetProjectMemberManagerParams{ProjectID: pgUUID(projectId), AccountID: target, IsManager: payload.IsManager}); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, nil
+	})
+}

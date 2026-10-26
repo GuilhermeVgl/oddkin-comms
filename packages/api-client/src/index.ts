@@ -225,8 +225,11 @@ export async function setHistoryMode(
 
 export async function listInvitations(
   client: ReturnType<typeof createApiClient>,
+  projectId?: string,
 ): Promise<InvitationStatus[]> {
-  const { data, response } = await client.GET("/api/v1/invitations");
+  const { data, response } = await client.GET("/api/v1/invitations", {
+    params: { query: projectId === undefined ? {} : { projectId } },
+  });
   if (response.status === 200 && data !== undefined) return data;
   throw new Error(`Unexpected invitations status: ${response.status}`);
 }

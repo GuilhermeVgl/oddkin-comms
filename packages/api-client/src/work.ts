@@ -975,6 +975,41 @@ export async function renameChannel(
     throw new ApiStatusError(response.status, "renameChannel");
 }
 
+export type InvitePolicy = "admins" | "managers" | "members";
+
+export async function setInvitePolicy(
+  client: Client,
+  token: string,
+  projectId: string,
+  policy: InvitePolicy,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/invite-policy",
+    { params: { path: { projectId } }, body: { policy }, headers: csrf(token) },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setInvitePolicy");
+}
+
+export async function setMemberRole(
+  client: Client,
+  token: string,
+  projectId: string,
+  accountId: string,
+  isManager: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/members/{accountId}",
+    {
+      params: { path: { projectId, accountId } },
+      body: { isManager },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setMemberRole");
+}
+
 export async function createChannel(
   client: Client,
   token: string,

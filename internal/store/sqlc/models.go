@@ -327,6 +327,7 @@ type Project struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	InvitePolicy          string
 }
 
 type ProjectMember struct {

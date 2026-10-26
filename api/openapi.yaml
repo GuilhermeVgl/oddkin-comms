@@ -66,9 +66,14 @@ paths:
   /api/v1/invitations:
     get:
       operationId: listInvitations
-      summary: Invitations of the organization and whether they were accepted (administrators)
+      summary: Invitations and whether they were accepted; all of them for administrators, one project's for its managers
       security:
         - sessionCookie: []
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
       responses:
         "200":
           description: Invitations, newest first
@@ -507,6 +512,31 @@ paths:
           description: Unknown or inaccessible project
         "409":
           description: Project is archived
+  /api/v1/projects/{projectId}/invite-policy:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: setInvitePolicy
+      summary: Choose who may invite or add people to the project (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetInvitePolicyRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
   /api/v1/projects/{projectId}/members/{accountId}:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -514,6 +544,30 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    put:
+      operationId: setMemberRole
+      summary: Make an internal member a manager of the project, or not (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMemberRoleRequest"
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Only internal members can manage a project
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown project, or the account is not a member
+        "409":
+          description: The last manager cannot step down, or the project is archived
     delete:
       operationId: removeProjectMember
       summary: Remove a member; access ends at once and the project keys are rotated (managers)
@@ -2893,6 +2947,10 @@ components:
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         acceptedAt: { type: string, format: date-time }
+    InvitePolicy:
+      type: string
+      enum: [admins, managers, members]
+      description: Who may invite or add people to the project besides organization administrators
     HistoryMode:
       type: string
       enum: [ask, auto, none]
@@ -2967,6 +3025,7 @@ components:
         ]
       additionalProperties: false
       properties:
+        invitePolicy: { $ref: "#/components/schemas/InvitePolicy" }
         archived: { type: boolean }
         nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
@@ -3138,6 +3197,18 @@ components:
       additionalProperties: false
       properties:
         mode: { $ref: "#/components/schemas/HistoryMode" }
+    SetInvitePolicyRequest:
+      type: object
+      required: [policy]
+      additionalProperties: false
+      properties:
+        policy: { $ref: "#/components/schemas/InvitePolicy" }
+    SetMemberRoleRequest:
+      type: object
+      required: [isManager]
+      additionalProperties: false
+      properties:
+        isManager: { type: boolean }
     BoardColumn:
       type: object
       required: [id, name, position, category]

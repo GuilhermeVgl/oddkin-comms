@@ -132,6 +132,7 @@ type projectFields struct {
 	Name, Description, Color, Icon         string
 	Version, ContentRevision               int32
 	Manager, Encrypted, Archived           bool
+	InvitePolicy                           string
 	NameEnc, DescriptionEnc                []byte
 	ContentAuthorID, ContentSignerDeviceID pgtype.UUID
 	Permissions                            []string
@@ -140,7 +141,7 @@ type projectFields struct {
 func toProject(f projectFields) gen.Project {
 	project := gen.Project{
 		Id: fromPG(f.ID), Name: f.Name, Description: f.Description, Color: f.Color, Icon: f.Icon, Version: int(f.Version),
-		IsManager: f.Manager, Encrypted: f.Encrypted, Archived: &f.Archived, ContentRevision: int(f.ContentRevision),
+		IsManager: f.Manager, Encrypted: f.Encrypted, Archived: &f.Archived, InvitePolicy: invitePolicyOf(f.InvitePolicy), ContentRevision: int(f.ContentRevision),
 		Permissions: f.Permissions,
 	}
 	if f.Encrypted {
@@ -162,7 +163,7 @@ func fieldsOf(p sqlc.Project, access work.Access) projectFields {
 	return projectFields{
 		Permissions: access.Permissions(),
 		ID:          p.ID, Name: p.Name, Description: p.Description, Color: p.Color, Icon: p.Icon, Version: p.Version, Manager: manager,
-		Archived: p.Archived, Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
+		Archived: p.Archived, InvitePolicy: p.InvitePolicy, Encrypted: p.Encrypted, NameEnc: p.NameEnc, DescriptionEnc: p.DescriptionEnc, ContentRevision: p.ContentRevision,
 		ContentAuthorID: p.ContentAuthorID, ContentSignerDeviceID: p.ContentSignerDeviceID,
 	}
 }
@@ -183,7 +184,7 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request, par
 	for _, row := range rows {
 		projects = append(projects, toProject(projectFields{
 			ID: row.ID, Name: row.Name, Description: row.Description, Color: row.Color, Icon: row.Icon, Version: row.Version, Manager: row.IsManager,
-			Archived: row.Archived, Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
+			Archived: row.Archived, InvitePolicy: row.InvitePolicy, Encrypted: row.Encrypted, NameEnc: row.NameEnc, DescriptionEnc: row.DescriptionEnc, ContentRevision: row.ContentRevision,
 			ContentAuthorID: row.ContentAuthorID, ContentSignerDeviceID: row.ContentSignerDeviceID,
 			Permissions: work.Access{Kind: row.MembershipKind, Manager: row.IsManager, External: row.ExternalPermissions}.Permissions(),
 		}))
@@ -328,7 +329,11 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	if !access.access.Manager {
+	policy := "admins"
+	if project, projectErr := q.GetProject(ctx, pgUUID(projectId)); projectErr == nil {
+		policy = project.InvitePolicy
+	}
+	if !access.access.Manager && !mayBringPeopleIn(policy, access.access, false) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -345,8 +350,13 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	// Only a manager brings in an external person; the policy lets others add internal colleagues.
+	if !access.access.Manager && target.MembershipKind != "internal" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	// A project manager never promotes an external member to manager.
-	manager := payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
+	manager := access.access.Manager && payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -1243,4 +1253,27 @@ func announceProjectChanged(ctx context.Context, q *sqlc.Queries, projectID pgty
 		return err
 	}
 	return emitEvent(ctx, q, members, eventSpec{Type: "project.changed", ResourceID: projectID, ProjectID: projectID})
+}
+
+func invitePolicyOf(policy string) *gen.InvitePolicy {
+	value := gen.InvitePolicy(policy)
+	if !value.Valid() {
+		value = gen.Admins
+	}
+	return &value
+}
+
+// mayBringPeopleIn says whether someone may invite or add people to a project
+// under its invite policy. Organization administrators always may; externals never.
+func mayBringPeopleIn(policy string, access work.Access, orgAdmin bool) bool {
+	switch {
+	case orgAdmin:
+		return true
+	case access.Kind != "internal":
+		return false
+	case access.Manager:
+		return policy == "managers" || policy == "members"
+	default:
+		return policy == "members"
+	}
 }

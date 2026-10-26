@@ -874,3 +874,9 @@ SELECT recipient_device_id FROM call_key_envelope WHERE call_id = $1 AND generat
 
 -- name: ListCallKeyEnvelopes :many
 SELECT * FROM call_key_envelope WHERE call_id = $1 AND recipient_device_id = $2 ORDER BY generation;
+
+-- name: SetProjectInvitePolicy :exec
+UPDATE project SET invite_policy = $2, version = version + 1 WHERE id = $1;
+
+-- name: SetProjectMemberManager :execrows
+UPDATE project_member SET is_manager = $3 WHERE project_id = $1 AND account_id = $2;

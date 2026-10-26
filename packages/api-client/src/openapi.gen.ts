@@ -46,7 +46,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Invitations of the organization and whether they were accepted (administrators) */
+    /** Invitations and whether they were accepted; all of them for administrators, one project's for its managers */
     get: operations["listInvitations"];
     put?: never;
     /** Invite a person to the organization */
@@ -342,6 +342,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/invite-policy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Choose who may invite or add people to the project (project managers) */
+    put: operations["setInvitePolicy"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/members/{accountId}": {
     parameters: {
       query?: never;
@@ -353,7 +372,8 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put?: never;
+    /** Make an internal member a manager of the project, or not (project managers) */
+    put: operations["setMemberRole"];
     post?: never;
     /** Remove a member; access ends at once and the project keys are rotated (managers) */
     delete: operations["removeProjectMember"];
@@ -1832,6 +1852,11 @@ export interface components {
       acceptedAt?: string;
     };
     /**
+     * @description Who may invite or add people to the project besides organization administrators
+     * @enum {string}
+     */
+    InvitePolicy: "admins" | "managers" | "members";
+    /**
      * @description ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
      * @enum {string}
      */
@@ -1865,6 +1890,7 @@ export interface components {
       historyMode: components["schemas"]["HistoryMode"];
     };
     Project: {
+      invitePolicy?: components["schemas"]["InvitePolicy"];
       archived?: boolean;
       nameEnc?: components["schemas"]["EncryptedBlob"];
       descriptionEnc?: components["schemas"]["EncryptedBlob"];
@@ -1993,6 +2019,12 @@ export interface components {
     };
     SetHistoryModeRequest: {
       mode: components["schemas"]["HistoryMode"];
+    };
+    SetInvitePolicyRequest: {
+      policy: components["schemas"]["InvitePolicy"];
+    };
+    SetMemberRoleRequest: {
+      isManager: boolean;
     };
     BoardColumn: {
       /** Format: uuid */
@@ -2782,7 +2814,9 @@ export interface operations {
   };
   listInvitations: {
     parameters: {
-      query?: never;
+      query?: {
+        projectId?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -3685,6 +3719,118 @@ export interface operations {
         content?: never;
       };
       /** @description Project is archived */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setInvitePolicy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetInvitePolicyRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Project is archived */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setMemberRole: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetMemberRoleRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Only internal members can manage a project */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown project, or the account is not a member */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The last manager cannot step down, or the project is archived */
       409: {
         headers: {
           [name: string]: unknown;

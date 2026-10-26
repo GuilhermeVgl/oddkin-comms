@@ -201,3 +201,133 @@ func TestInvitationFromAProjectAddsThePersonAndTellsTheAdministrator(t *testing.
 		t.Fatalf("only administrators list invitations: %d", code)
 	}
 }
+
+// Managers (and, if the project allows, members) can bring people into their
+// project; the policy and the roles are theirs to change.
+func TestProjectInvitePolicyAndRoles(t *testing.T) {
+	f := newE2EEFixture(t, "7f000000-0000-4000-8000-000000000001", "pp", []string{"admin", "mgr", "mem", "ana", "external-ext"})
+	deliveryKey := bytes.Repeat([]byte{0x53}, identity.InvitationDeliveryKeySize)
+	handler, err := httpapi.NewAppHandlerWithConfig(f.pool, httpapi.AppConfig{InvitationDeliveryKey: deliveryKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.handler = handler
+	for _, client := range f.clients {
+		client.handler = handler
+	}
+	admin, mgr, mem, ext := f.clients["admin"], f.clients["mgr"], f.clients["mem"], f.clients["external-ext"]
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM river_job WHERE kind = 'invitation_email' AND args->>'invitation_id' IN (SELECT id::text FROM organization_invitation WHERE email_normalized LIKE 'pp-%')`)
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM account WHERE email_normalized LIKE 'pp-%@example.test'`)
+	})
+	var project struct {
+		Id           string
+		InvitePolicy string
+	}
+	admin.do(http.MethodPost, "/api/v1/projects", `{"name":"Politica"}`, &project)
+	base := "/api/v1/projects/" + project.Id
+	admin.do(http.MethodPost, base+"/members", `{"email":"pp-mgr@example.test","isManager":true}`, nil)
+	admin.do(http.MethodPost, base+"/members", `{"email":"pp-mem@example.test"}`, nil)
+	admin.do(http.MethodPost, base+"/members", `{"email":"pp-external-ext@example.test"}`, nil)
+	invite := func(client *workClient, email, kind, extra string) int {
+		code, _ := postJSON(handler, client, "/api/v1/invitations", fmt.Sprintf(`{"email":%q,"membershipKind":%q,"projectId":%q%s}`, email, kind, project.Id, extra))
+		return code
+	}
+
+	// By default only administrators bring people in.
+	if code := invite(mgr, "pp-a@example.test", "external", ""); code != http.StatusForbidden {
+		t.Fatalf("a manager under the default policy: %d", code)
+	}
+	if code := invite(admin, "pp-a@example.test", "internal", ""); code != http.StatusCreated {
+		t.Fatalf("administrator: %d", code)
+	}
+	// Managers choose the policy; no one else does.
+	for who, client := range map[string]*workClient{"member": mem, "external": ext} {
+		if code := client.do(http.MethodPut, base+"/invite-policy", `{"policy":"members"}`, nil); code != http.StatusForbidden {
+			t.Fatalf("%s changing the policy: %d", who, code)
+		}
+	}
+	if code := mgr.do(http.MethodPut, base+"/invite-policy", `{"policy":"everyone"}`, nil); code != http.StatusBadRequest {
+		t.Fatalf("unknown policy: %d", code)
+	}
+	if code := mgr.do(http.MethodPut, base+"/invite-policy", `{"policy":"managers"}`, nil); code != http.StatusNoContent {
+		t.Fatalf("set managers: %d", code)
+	}
+	admin.do(http.MethodGet, base, "", &project)
+	if project.InvitePolicy != "managers" {
+		t.Fatalf("policy not shown: %+v", project)
+	}
+	// A manager may invite externals to this project, and only that.
+	if code := invite(mgr, "pp-b@example.test", "external", ""); code != http.StatusCreated {
+		t.Fatalf("manager inviting an external: %d", code)
+	}
+	if code := invite(mgr, "pp-c@example.test", "internal", ""); code != http.StatusForbidden {
+		t.Fatalf("a manager cannot make someone internal: %d", code)
+	}
+	if code := invite(mgr, "pp-d@example.test", "external", `,"historyMode":"auto","linkExtra":"k=a"`); code != http.StatusBadRequest {
+		t.Fatalf("only the administrator can include history: %d", code)
+	}
+	if code, _ := postJSON(handler, mgr, "/api/v1/invitations", `{"email":"pp-e@example.test","membershipKind":"external"}`); code != http.StatusForbidden {
+		t.Fatalf("an invitation outside any project: %d", code)
+	}
+	if code := invite(mem, "pp-f@example.test", "external", ""); code != http.StatusForbidden {
+		t.Fatalf("a plain member under managers: %d", code)
+	}
+	// Members are allowed once the policy says so; externals never are.
+	mgr.do(http.MethodPut, base+"/invite-policy", `{"policy":"members"}`, nil)
+	if code := invite(mem, "pp-f@example.test", "external", ""); code != http.StatusCreated {
+		t.Fatalf("a member under members: %d", code)
+	}
+	if code := invite(ext, "pp-g@example.test", "external", ""); code != http.StatusForbidden {
+		t.Fatalf("an external can never invite: %d", code)
+	}
+	// Adding someone already in the organization follows the same policy, without handing out the manager role.
+	if code := mem.do(http.MethodPost, base+"/members", `{"email":"pp-ana@example.test","isManager":true}`, nil); code != http.StatusNoContent {
+		t.Fatalf("a member adding a colleague: %d", code)
+	}
+	var members []struct {
+		Email     string
+		IsManager bool
+		AccountId string
+	}
+	admin.do(http.MethodGet, base+"/members", "", &members)
+	ids := map[string]string{}
+	for _, entry := range members {
+		ids[entry.Email] = entry.AccountId
+		if entry.Email == "pp-ana@example.test" && entry.IsManager {
+			t.Fatal("only a manager can hand out the manager role")
+		}
+	}
+
+	// Roles: promote, demote, never the last manager, never an external.
+	role := func(client *workClient, email string, manager bool) int {
+		return client.do(http.MethodPut, base+"/members/"+ids[email], fmt.Sprintf(`{"isManager":%v}`, manager), nil)
+	}
+	if code := role(mem, "pp-mem@example.test", true); code != http.StatusForbidden {
+		t.Fatalf("a member promoting themselves: %d", code)
+	}
+	if code := role(mgr, "pp-external-ext@example.test", true); code != http.StatusBadRequest {
+		t.Fatalf("an external manager: %d", code)
+	}
+	if code := role(mgr, "pp-mem@example.test", true); code != http.StatusNoContent {
+		t.Fatalf("promote: %d", code)
+	}
+	if code := role(mem, "pp-mgr@example.test", false); code != http.StatusNoContent {
+		t.Fatalf("the new manager steps another down: %d", code)
+	}
+	if code := role(mem, "pp-ana@example.test", false); code != http.StatusNoContent {
+		t.Fatalf("demoting a plain member is harmless: %d", code)
+	}
+	if code := role(admin, "pp-mem@example.test", false); code != http.StatusConflict && code != http.StatusNoContent {
+		t.Fatalf("unexpected: %d", code)
+	}
+
+	// Each project's managers see its invitations.
+	var listed []struct{ State string }
+	if code := admin.do(http.MethodGet, "/api/v1/invitations?projectId="+project.Id, "", &listed); code != http.StatusOK || len(listed) < 3 {
+		t.Fatalf("project invitations for the administrator: %d %+v", code, listed)
+	}
+	if code := mgr.do(http.MethodGet, "/api/v1/invitations?projectId="+project.Id, "", nil); code != http.StatusForbidden {
+		t.Fatalf("a member who is no longer a manager: %d", code)
+	}
+}

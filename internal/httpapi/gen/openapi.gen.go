@@ -564,6 +564,27 @@ func (e InvitationStatusState) Valid() bool {
 	}
 }
 
+// Defines values for InvitePolicy.
+const (
+	Admins   InvitePolicy = "admins"
+	Managers InvitePolicy = "managers"
+	Members  InvitePolicy = "members"
+)
+
+// Valid indicates whether the value is a known member of the InvitePolicy enum.
+func (e InvitePolicy) Valid() bool {
+	switch e {
+	case Admins:
+		return true
+	case Managers:
+		return true
+	case Members:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KeyDomainKind.
 const (
 	KeyDomainKindChat   KeyDomainKind = "chat"
@@ -1372,6 +1393,9 @@ type InvitationStatusMembershipKind string
 // InvitationStatusState failed = the e-mail could not be delivered
 type InvitationStatusState string
 
+// InvitePolicy Who may invite or add people to the project besides organization administrators
+type InvitePolicy string
+
 // JoinCallRequest defines model for JoinCallRequest.
 type JoinCallRequest struct {
 	// DeviceId Your active device; media is end-to-end encrypted with keys sealed for it
@@ -1524,8 +1548,11 @@ type Project struct {
 	Encrypted      bool               `json:"encrypted"`
 	Icon           string             `json:"icon"`
 	Id             openapi_types.UUID `json:"id"`
-	IsManager      bool               `json:"isManager"`
-	Name           string             `json:"name"`
+
+	// InvitePolicy Who may invite or add people to the project besides organization administrators
+	InvitePolicy *InvitePolicy `json:"invitePolicy,omitempty"`
+	IsManager    bool          `json:"isManager"`
+	Name         string        `json:"name"`
 
 	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
 	NameEnc *EncryptedBlob `json:"nameEnc,omitempty"`
@@ -1651,6 +1678,17 @@ type SetActiveRequest struct {
 type SetHistoryModeRequest struct {
 	// Mode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
 	Mode HistoryMode `json:"mode"`
+}
+
+// SetInvitePolicyRequest defines model for SetInvitePolicyRequest.
+type SetInvitePolicyRequest struct {
+	// Policy Who may invite or add people to the project besides organization administrators
+	Policy InvitePolicy `json:"policy"`
+}
+
+// SetMemberRoleRequest defines model for SetMemberRoleRequest.
+type SetMemberRoleRequest struct {
+	IsManager bool `json:"isManager"`
 }
 
 // SetTrustRootRequest defines model for SetTrustRootRequest.
@@ -1919,6 +1957,11 @@ type ListMessagesParams struct {
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListInvitationsParams defines parameters for ListInvitations.
+type ListInvitationsParams struct {
+	ProjectId *openapi_types.UUID `form:"projectId,omitempty" json:"projectId,omitempty"`
+}
+
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
 	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
@@ -2041,11 +2084,17 @@ type CreateEpicJSONRequestBody = CreateEpicRequest
 // UpdateExternalPolicyJSONRequestBody defines body for UpdateExternalPolicy for application/json ContentType.
 type UpdateExternalPolicyJSONRequestBody = UpdateExternalPolicyRequest
 
+// SetInvitePolicyJSONRequestBody defines body for SetInvitePolicy for application/json ContentType.
+type SetInvitePolicyJSONRequestBody = SetInvitePolicyRequest
+
 // CreateKeyDomainJSONRequestBody defines body for CreateKeyDomain for application/json ContentType.
 type CreateKeyDomainJSONRequestBody = CreateKeyDomainRequest
 
 // AddProjectMemberJSONRequestBody defines body for AddProjectMember for application/json ContentType.
 type AddProjectMemberJSONRequestBody = AddProjectMemberRequest
+
+// SetMemberRoleJSONRequestBody defines body for SetMemberRole for application/json ContentType.
+type SetMemberRoleJSONRequestBody = SetMemberRoleRequest
 
 // CreateWorkItemJSONRequestBody defines body for CreateWorkItem for application/json ContentType.
 type CreateWorkItemJSONRequestBody = CreateWorkItemRequest
@@ -2220,9 +2269,9 @@ type ServerInterface interface {
 	// GetReadiness Check whether the API can access its required database
 	// (GET /api/v1/health/ready)
 	GetReadiness(w http.ResponseWriter, r *http.Request)
-	// ListInvitations Invitations of the organization and whether they were accepted (administrators)
+	// ListInvitations Invitations and whether they were accepted; all of them for administrators, one project's for its managers
 	// (GET /api/v1/invitations)
-	ListInvitations(w http.ResponseWriter, r *http.Request)
+	ListInvitations(w http.ResponseWriter, r *http.Request, params ListInvitationsParams)
 	// CreateInvitation Invite a person to the organization
 	// (POST /api/v1/invitations)
 	CreateInvitation(w http.ResponseWriter, r *http.Request)
@@ -2340,6 +2389,9 @@ type ServerInterface interface {
 	// UpdateExternalPolicy Replace the external permission profile (managers)
 	// (PUT /api/v1/projects/{projectId}/external-policy)
 	UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// SetInvitePolicy Choose who may invite or add people to the project (project managers)
+	// (PUT /api/v1/projects/{projectId}/invite-policy)
+	SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListKeyDomains Key domains of a project
 	// (GET /api/v1/projects/{projectId}/key-domains)
 	ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2355,6 +2407,9 @@ type ServerInterface interface {
 	// RemoveProjectMember Remove a member; access ends at once and the project keys are rotated (managers)
 	// (DELETE /api/v1/projects/{projectId}/members/{accountId})
 	RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId ProjectId, accountId openapi_types.UUID)
+	// SetMemberRole Make an internal member a manager of the project, or not (project managers)
+	// (PUT /api/v1/projects/{projectId}/members/{accountId})
+	SetMemberRole(w http.ResponseWriter, r *http.Request, projectId ProjectId, accountId openapi_types.UUID)
 	// ListWorkItems List non-archived tasks and subtasks
 	// (GET /api/v1/projects/{projectId}/work-items)
 	ListWorkItems(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -3502,8 +3557,27 @@ func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.R
 // ListInvitations operation middleware
 func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInvitationsParams
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListInvitations(w, r)
+		siw.Handler.ListInvitations(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4460,6 +4534,32 @@ func (siw *ServerInterfaceWrapper) UpdateExternalPolicy(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// SetInvitePolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetInvitePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetInvitePolicy(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListKeyDomains operation middleware
 func (siw *ServerInterfaceWrapper) ListKeyDomains(w http.ResponseWriter, r *http.Request) {
 
@@ -4590,6 +4690,41 @@ func (siw *ServerInterfaceWrapper) RemoveProjectMember(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveProjectMember(w, r, projectId, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMemberRole operation middleware
+func (siw *ServerInterfaceWrapper) SetMemberRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMemberRole(w, r, projectId, accountId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5332,7 +5467,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/appearance", wrapper.SetProjectAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.ListProjectMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/members", wrapper.AddProjectMember)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/invite-policy", wrapper.SetInvitePolicy)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{projectId}/members/{accountId}", wrapper.RemoveProjectMember)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/members/{accountId}", wrapper.SetMemberRole)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.GetExternalPolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/external-policy", wrapper.UpdateExternalPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/columns", wrapper.ListBoardColumns)

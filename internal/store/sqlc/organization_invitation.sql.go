@@ -213,6 +213,60 @@ func (q *Queries) ListOrganizationInvitations(ctx context.Context, organizationI
 	return items, nil
 }
 
+const listProjectInvitations = `-- name: ListProjectInvitations :many
+SELECT i.id, i.email_normalized, i.membership_kind, i.history_mode, i.project_id, i.expires_at,
+       i.consumed_at, i.revoked_at, i.created_at, COALESCE(d.state, 'pending')::text AS delivery_state
+FROM organization_invitation AS i
+LEFT JOIN invitation_delivery AS d ON d.invitation_id = i.id
+WHERE i.project_id = $1 AND (i.revoked_at IS NULL OR i.consumed_at IS NOT NULL)
+ORDER BY i.created_at DESC, i.id
+LIMIT 100
+`
+
+type ListProjectInvitationsRow struct {
+	ID              pgtype.UUID
+	EmailNormalized string
+	MembershipKind  string
+	HistoryMode     string
+	ProjectID       pgtype.UUID
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+	RevokedAt       pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	DeliveryState   string
+}
+
+func (q *Queries) ListProjectInvitations(ctx context.Context, projectID pgtype.UUID) ([]ListProjectInvitationsRow, error) {
+	rows, err := q.db.Query(ctx, listProjectInvitations, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectInvitationsRow
+	for rows.Next() {
+		var i ListProjectInvitationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmailNormalized,
+			&i.MembershipKind,
+			&i.HistoryMode,
+			&i.ProjectID,
+			&i.ExpiresAt,
+			&i.ConsumedAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.DeliveryState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markInvitationDeliveryFailed = `-- name: MarkInvitationDeliveryFailed :execrows
 UPDATE invitation_delivery
 SET state = 'failed', updated_at = clock_timestamp()

@@ -55,7 +55,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	membership, err := sqlc.New(h.auth.pool).GetOrganizationMembershipForAccount(ctx, session.AccountID)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!membership.IsAdmin || membership.MembershipKind != "internal")) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -63,10 +63,12 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	orgAdmin := membership.IsAdmin && membership.MembershipKind == "internal"
 
 	var projectID pgtype.UUID
 	if payload.ProjectId != nil {
-		project, projectErr := sqlc.New(h.auth.pool).GetProject(ctx, pgUUID(uuidFrom(*payload.ProjectId)))
+		q := sqlc.New(h.auth.pool)
+		project, projectErr := q.GetProject(ctx, pgUUID(uuidFrom(*payload.ProjectId)))
 		if errors.Is(projectErr, pgx.ErrNoRows) || (projectErr == nil && project.OrganizationID != membership.OrganizationID) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -75,11 +77,35 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		if !orgAdmin {
+			access, found, accessErr := lookupAccess(ctx, q, project.ID, session.AccountID)
+			if accessErr != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if !found || !mayBringPeopleIn(project.InvitePolicy, access.access, false) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
 		if project.Archived {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 		projectID = project.ID
+	}
+	if !orgAdmin {
+		// Outside the administration an invitation always belongs to a project the
+		// inviter may open, brings an external person, and cannot carry history
+		// (only the administrator's browser can vouch for that).
+		if !projectID.Valid || payload.MembershipKind != gen.CreateInvitationRequestMembershipKindExternal {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if payload.HistoryMode != nil && *payload.HistoryMode == gen.Auto {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	historyMode := "ask"
 	if payload.HistoryMode != nil {
@@ -307,13 +333,9 @@ func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, payload any, li
 
 // ListInvitations tells administrators which invitations are still waiting and
 // which were accepted.
-func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request) {
+func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, params gen.ListInvitationsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
-		return
-	}
-	if !session.IsAdmin {
-		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -324,9 +346,46 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	rows, err := q.ListOrganizationInvitations(ctx, membership.OrganizationID)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	type invitationRow struct {
+		ID, ProjectID                      pgtype.UUID
+		Email, Kind, HistoryMode, Delivery string
+		ExpiresAt, CreatedAt               time.Time
+		ConsumedAt                         pgtype.Timestamptz
+	}
+	var rows []invitationRow
+	switch {
+	case params.ProjectId != nil:
+		projectID := pgUUID(uuidFrom(*params.ProjectId))
+		if !session.IsAdmin {
+			access, found, accessErr := lookupAccess(ctx, q, projectID, session.AccountID)
+			if accessErr != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			if !found || !access.access.Manager {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		list, listErr := q.ListProjectInvitations(ctx, projectID)
+		if listErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		for _, row := range list {
+			rows = append(rows, invitationRow{row.ID, row.ProjectID, row.EmailNormalized, row.MembershipKind, row.HistoryMode, row.DeliveryState, row.ExpiresAt.Time, row.CreatedAt.Time, row.ConsumedAt})
+		}
+	case session.IsAdmin:
+		list, listErr := q.ListOrganizationInvitations(ctx, membership.OrganizationID)
+		if listErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		for _, row := range list {
+			rows = append(rows, invitationRow{row.ID, row.ProjectID, row.EmailNormalized, row.MembershipKind, row.HistoryMode, row.DeliveryState, row.ExpiresAt.Time, row.CreatedAt.Time, row.ConsumedAt})
+		}
+	default:
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	now := time.Now()
@@ -336,15 +395,15 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case row.ConsumedAt.Valid:
 			state = gen.InvitationStatusStateAccepted
-		case row.ExpiresAt.Time.Before(now):
+		case row.ExpiresAt.Before(now):
 			state = gen.InvitationStatusStateExpired
-		case row.DeliveryState == "failed":
+		case row.Delivery == "failed":
 			state = gen.InvitationStatusStateFailed
 		}
 		entry := gen.InvitationStatus{
-			Id: fromPG(row.ID), Email: openapi_types.Email(row.EmailNormalized), State: state,
-			MembershipKind: gen.InvitationStatusMembershipKind(row.MembershipKind), HistoryMode: gen.HistoryMode(row.HistoryMode),
-			ExpiresAt: row.ExpiresAt.Time, CreatedAt: row.CreatedAt.Time,
+			Id: fromPG(row.ID), Email: openapi_types.Email(row.Email), State: state,
+			MembershipKind: gen.InvitationStatusMembershipKind(row.Kind), HistoryMode: gen.HistoryMode(row.HistoryMode),
+			ExpiresAt: row.ExpiresAt, CreatedAt: row.CreatedAt,
 		}
 		if row.ProjectID.Valid {
 			project := fromPG(row.ProjectID)
