@@ -24,7 +24,7 @@ import {
 } from "react";
 import { blip } from "../../design/sound";
 import type { E2EEApi } from "../../e2ee/E2EE";
-import { e2eeWorker, keyBuffer, readCsrf, type Client } from "./environment";
+import { e2eeWorker, keyBuffer, type Client } from "./environment";
 import { publishLocalMedia } from "./localMedia";
 import { describeJoinError, isOtherDeviceConflict } from "./messages";
 
@@ -141,8 +141,6 @@ export function useRoomConnection(input: {
   }
 
   async function join(transfer: boolean) {
-    const token = readCsrf();
-    if (token === null) return;
     setPhase("joining");
     setMessage("");
     try {
@@ -150,13 +148,7 @@ export function useRoomConnection(input: {
         throw new Error("e2ee_unavailable");
       const device = await e2ee.openCall(callId);
       if (device === null) throw new Error("unlock_required");
-      const ticket = await joinCall(
-        client,
-        token,
-        callId,
-        device.deviceId,
-        transfer,
-      );
+      const ticket = await joinCall(client, callId, device.deviceId, transfer);
       const active = await getCall(client, callId);
       setCall(active);
       await provisionMediaKey(active);
@@ -197,18 +189,13 @@ export function useRoomConnection(input: {
   );
 
   async function leave(everyone: boolean) {
-    const token = readCsrf();
     room.current?.disconnect();
     room.current = null;
     keyProvider.current = null;
     mediaKey.current = null;
-    if (token !== null) {
-      await (
-        everyone
-          ? endCall(client, token, callId)
-          : leaveCall(client, token, callId)
-      ).catch(() => undefined);
-    }
+    await (
+      everyone ? endCall(client, callId) : leaveCall(client, callId)
+    ).catch(() => undefined);
     onClose();
   }
 

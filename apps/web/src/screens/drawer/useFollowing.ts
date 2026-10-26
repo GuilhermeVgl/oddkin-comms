@@ -1,7 +1,6 @@
 import { getFollowing, setFollowing } from "@crewstead/api-client";
 import { useCallback, useEffect, useState } from "react";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 
 /** Whether the person follows an activity, with an optimistic toggle that rolls back on failure. */
@@ -22,7 +21,7 @@ export function useFollowing(itemId: string) {
   const toggle = useCallback(() => {
     const next = !following;
     setFollowingState(next);
-    setFollowing(client, csrfToken(), itemId, next)
+    setFollowing(client, itemId, next)
       .then(() =>
         toast(
           next

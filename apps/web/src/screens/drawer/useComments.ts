@@ -2,7 +2,6 @@ import { listComments } from "@crewstead/api-client";
 import { useCallback, useEffect, useState } from "react";
 import { blip } from "../../design/sound";
 import { createCommentContent, decryptComments } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import type { ContentCrypto } from "../../e2ee/projectCrypto";
 import type { Comment } from "./types";
@@ -30,7 +29,7 @@ export function useComments(itemId: string, crypto: ContentCrypto | null) {
   const post = useCallback(
     (body: string, onPosted: () => void) =>
       run(async () => {
-        await createCommentContent(client, csrfToken(), crypto, itemId, body);
+        await createCommentContent(client, crypto, itemId, body);
         onPosted();
         await load();
         blip("ok");

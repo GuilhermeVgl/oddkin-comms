@@ -4,10 +4,9 @@ import { confirmDialog } from "../design/confirm";
 import { celebrate } from "../design/celebrate";
 import { celebrationSize } from "../design/gamify";
 import { doneColumn, startColumn } from "../columns";
-import { csrfToken } from "../errors";
 import { isDone, useWorkspace, type ProjectState } from "../workspace";
 
-type Patch = Parameters<typeof updateWorkItem>[3];
+type Patch = Parameters<typeof updateWorkItem>[2];
 
 export function subtasksOf(state: ProjectState, item: WorkItem): WorkItem[] {
   return state.items.filter((entry) => entry.parentId === item.id);
@@ -20,7 +19,7 @@ export function useItemActions() {
   const patch = useCallback(
     (item: WorkItem, changes: Omit<Patch, "version">) =>
       run(async () => {
-        const updated = await updateWorkItem(client, csrfToken(), item.id, {
+        const updated = await updateWorkItem(client, item.id, {
           version: item.version,
           ...changes,
         });

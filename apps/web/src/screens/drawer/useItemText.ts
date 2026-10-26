@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { blip } from "../../design/sound";
 import { toast, toastError } from "../../design/toast";
 import { saveItem } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { isVersionConflict, itemEdit, textSaveAction } from "./derive";
 import type { TextField } from "./derive";
@@ -26,13 +25,7 @@ export function useItemText({ item, state }: DrawerEntry, canEdit: boolean) {
     if (action === "restore-title") setTitle(item.title);
     if (action !== "save") return;
     try {
-      await saveItem(
-        client,
-        csrfToken(),
-        state.crypto,
-        item,
-        itemEdit(item, field, value),
-      );
+      await saveItem(client, state.crypto, item, itemEdit(item, field, value));
       toast("Salvo.", { ms: 1400 });
       await run(async () => undefined);
     } catch (error) {
@@ -59,7 +52,6 @@ export function useItemText({ item, state }: DrawerEntry, canEdit: boolean) {
     setConflict(null);
     void saveItem(
       client,
-      csrfToken(),
       state.crypto,
       item,
       itemEdit(item, kept.field, kept.mine),

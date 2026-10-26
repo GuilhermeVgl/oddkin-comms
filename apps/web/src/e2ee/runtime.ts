@@ -1,4 +1,4 @@
-import { createApiClient, readCookie } from "@crewstead/api-client";
+import { createApiClient } from "@crewstead/api-client";
 import {
   createCrypto,
   createKeystore,
@@ -21,10 +21,4 @@ export async function createRuntime(): Promise<Runtime> {
     vault: new Vault(crypto, createKeystore(sodium), store),
     store,
   };
-}
-
-export function csrf(): string {
-  const token = readCookie(document.cookie, "crewstead_csrf");
-  if (token === null) throw new Error("missing csrf cookie");
-  return token;
 }

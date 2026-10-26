@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { CallCrypto } from "./callCrypto";
-import { csrf } from "./runtime";
 import { ContentCrypto } from "./projectCrypto";
 import { scopeCacheKey } from "./phase";
 import type { E2EEApi } from "./types";
@@ -56,14 +55,7 @@ export function useContentAccess(session: Session): ContentAccess {
         const current = record.current;
         const ring = keyring.current;
         if (current === null || ring === null || !vault.unlocked) return null;
-        return new CallCrypto(
-          client,
-          crypto,
-          vault,
-          ring,
-          current.deviceId,
-          csrf,
-        );
+        return new CallCrypto(client, crypto, vault, ring, current.deviceId);
       },
     };
   }, [session]);

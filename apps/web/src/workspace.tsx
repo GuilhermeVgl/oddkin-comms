@@ -36,7 +36,7 @@ import {
   type ContentStatus,
 } from "./e2ee/content";
 import type { ContentCrypto } from "./e2ee/projectCrypto";
-import { csrfToken, describeError } from "./errors";
+import { describeError } from "./errors";
 import { useEvents } from "./events";
 import { localStore } from "./design/safeStorage";
 
@@ -351,5 +351,3 @@ export function WorkspaceProvider({
     </WorkspaceContext.Provider>
   );
 }
-
-export { csrfToken };

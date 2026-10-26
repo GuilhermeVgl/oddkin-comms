@@ -11,7 +11,7 @@ import {
   migrateProject,
   type MigrationReport,
 } from "../../e2ee/content";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 
 /** A status banner with the board's side margins. */
@@ -53,7 +53,7 @@ export function EncryptionBanner({ state }: { state: ProjectState }) {
     if (pc === null) return;
     setProgress("Ativando…");
     try {
-      await pc.enable(csrfToken);
+      await pc.enable();
       await reload();
       setProgress("");
       toast("Criptografia ativada neste projeto.", { icon: "shieldOk" });
@@ -72,14 +72,13 @@ export function EncryptionBanner({ state }: { state: ProjectState }) {
       );
       if (manager) {
         if (!state.project.encrypted)
-          await encryptProject(client, csrfToken(), pc, state.project);
+          await encryptProject(client, pc, state.project);
         const channel = channels[0];
         if (channel !== undefined && !channel.encrypted)
-          await encryptChannel(client, csrfToken(), pc, channel);
+          await encryptChannel(client, pc, channel);
       }
       const report: MigrationReport = await migrateProject(
         client,
-        csrfToken(),
         pc,
         {
           items: state.items,

@@ -4,7 +4,6 @@ import { blip } from "../../design/sound";
 import { toastError } from "../../design/toast";
 import { sendChannelMessage } from "../../e2ee/content";
 import type { ContentCrypto } from "../../e2ee/projectCrypto";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { mentionedAccountIds } from "../mentions";
 import { sendFailureMessage } from "./failures";
@@ -64,7 +63,6 @@ export function useComposer({
     try {
       await sendChannelMessage(
         client,
-        csrfToken(),
         crypto,
         conversationId,
         {

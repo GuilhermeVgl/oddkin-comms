@@ -10,7 +10,6 @@ import { confirmDialog } from "../../design/confirm";
 import { nameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { membershipLabel } from "./settingsRules";
 
@@ -42,7 +41,7 @@ export function PeopleTab({ account }: { account: CurrentAccount }) {
       if (ok !== true) return;
     }
     try {
-      await setPersonActive(client, csrfToken(), person.id, !person.active);
+      await setPersonActive(client, person.id, !person.active);
       toast(person.active ? "Conta desativada." : "Conta reativada.", {
         icon: "check",
       });

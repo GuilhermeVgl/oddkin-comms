@@ -19,7 +19,6 @@ import React, {
   useState,
 } from "react";
 import { decryptChannel } from "./e2ee/content";
-import { csrfToken } from "./errors";
 import { useEvents } from "./events";
 import { useWorkspace } from "./workspace";
 
@@ -139,16 +138,14 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
 
   const markNotification = useCallback(
     async (id: string) => {
-      await markNotificationRead(client, csrfToken(), id).catch(
-        () => undefined,
-      );
+      await markNotificationRead(client, id).catch(() => undefined);
       await reloadNotifications();
     },
     [client, reloadNotifications],
   );
 
   const markAllNotifications = useCallback(async () => {
-    await markAllNotificationsRead(client, csrfToken()).catch(() => undefined);
+    await markAllNotificationsRead(client).catch(() => undefined);
     await reloadNotifications();
   }, [client, reloadNotifications]);
 

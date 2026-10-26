@@ -5,7 +5,6 @@ import { Menu } from "../../design/Menu";
 import { Modal } from "../../design/Modal";
 import { go } from "../../design/router";
 import { toast } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 
 export function ColumnMenu({
@@ -82,13 +81,9 @@ function RenameColumn({
           if (value === "") return;
           onClose();
           void run(() =>
-            updateBoardColumn(
-              client,
-              csrfToken(),
-              state.project.id,
-              column.id,
-              { name: value },
-            ),
+            updateBoardColumn(client, state.project.id, column.id, {
+              name: value,
+            }),
           ).then((done) => done !== undefined && toast("Coluna renomeada."));
         }}
       >

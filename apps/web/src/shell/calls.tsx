@@ -13,7 +13,6 @@ import React, {
   useState,
 } from "react";
 import { toast } from "../design/toast";
-import { csrfToken } from "../errors";
 import { useEvents } from "../events";
 import { CallRoom } from "../screens/Call";
 import { IncomingCalls } from "./IncomingCalls";
@@ -68,7 +67,7 @@ export function CallsProvider({ children }: { children: React.ReactNode }) {
 
   const decline = useCallback(
     async (callId: string) => {
-      await declineCall(client, csrfToken(), callId).catch(() => undefined);
+      await declineCall(client, callId).catch(() => undefined);
       await reload();
       toast("Convite recusado.");
     },

@@ -5,7 +5,6 @@ import {
 } from "@crewstead/api-client";
 import { toBase64Url } from "@crewstead/crypto";
 import { recoveryEntry } from "./deviceRecord";
-import { csrf } from "./runtime";
 import type { Session } from "./useSession";
 import type { VaultRecord } from "./vault";
 
@@ -33,7 +32,7 @@ export async function rotateRecoveryIdentity(session: Session): Promise<void> {
   if (passphrase === undefined)
     throw new Error("this browser still has a passphrase of its own");
   const nextKeys = crypto.generateDeviceKeys();
-  const created = await registerDevice(client, csrf(), {
+  const created = await registerDevice(client, {
     name: "Identidade de recuperação",
     kind: "recovery",
     signPublicKey: toBase64Url(nextKeys.signPublicKey),
@@ -45,7 +44,7 @@ export async function rotateRecoveryIdentity(session: Session): Promise<void> {
     signPublicKey: nextKeys.signPublicKey,
     boxPublicKey: nextKeys.boxPublicKey,
   });
-  await authorizeDevice(client, csrf(), created.id, toBase64Url(certificate));
+  await authorizeDevice(client, created.id, toBase64Url(certificate));
   const restored = await ring.recoverGaps();
   if (restored.failed !== 0) {
     throw new Error("recovery envelopes could not be copied");
@@ -58,5 +57,5 @@ export async function rotateRecoveryIdentity(session: Session): Promise<void> {
   record.current = next;
   await vault.unlock(next, passphrase);
   await session.buildKeyring();
-  await revokeDevice(client, csrf(), previous.deviceId);
+  await revokeDevice(client, previous.deviceId);
 }

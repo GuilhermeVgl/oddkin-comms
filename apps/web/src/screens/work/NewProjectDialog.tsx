@@ -9,7 +9,7 @@ import { Banner } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
 import { useOptionalE2EE } from "../../e2ee/E2EE";
 import { encryptChannel, encryptProject } from "../../e2ee/content";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace } from "../../workspace";
 
 export function NewProjectDialog({ onClose }: { onClose: () => void }) {
@@ -23,11 +23,10 @@ export function NewProjectDialog({ onClose }: { onClose: () => void }) {
     try {
       const opened = await e2ee.openProject(project.id);
       if (opened === null) return;
-      await opened.enable(csrfToken);
-      await encryptProject(client, csrfToken(), opened, project);
+      await opened.enable();
+      await encryptProject(client, opened, project);
       for (const channel of await listConversations(client, project.id)) {
-        if (!channel.encrypted)
-          await encryptChannel(client, csrfToken(), opened, channel);
+        if (!channel.encrypted) await encryptChannel(client, opened, channel);
       }
     } catch {
       toastError(
@@ -39,7 +38,7 @@ export function NewProjectDialog({ onClose }: { onClose: () => void }) {
   async function create(value: string) {
     setBusy(true);
     try {
-      const project = await createProject(client, csrfToken(), value);
+      const project = await createProject(client, value);
       await encryptNew(project);
       await reload();
       setCurrentProjectId(project.id);

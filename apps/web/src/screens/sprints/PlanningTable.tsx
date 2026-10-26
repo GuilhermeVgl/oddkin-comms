@@ -2,7 +2,6 @@ import { updateWorkItem, type Sprint } from "@crewstead/api-client";
 import { Icon } from "../../design/icons";
 import { Menu, useMenu } from "../../design/Menu";
 import { toast } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { can, useWorkspace } from "../../workspace";
 import type { Row } from "./sprintRules";
 import { ProjectDot } from "../ProjectDot";
@@ -60,7 +59,7 @@ export function PlanningTable({
                   toSprint.close();
                   if (row === undefined) return;
                   void run(() =>
-                    updateWorkItem(client, csrfToken(), row.item.id, {
+                    updateWorkItem(client, row.item.id, {
                       version: row.item.version,
                       sprintId: sprint.id,
                     }),

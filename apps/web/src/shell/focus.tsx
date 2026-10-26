@@ -10,7 +10,6 @@ import { blip } from "../design/sound";
 import { burst } from "../design/sprites";
 import { Sprite } from "../design/Sprite";
 import { toast } from "../design/toast";
-import { csrfToken } from "../errors";
 import { useWorkspace } from "../workspace";
 import { useStats } from "./stats";
 import { localStore } from "../design/safeStorage";
@@ -83,12 +82,7 @@ export function FocusHost() {
       store.set({ focus: null });
       try {
         if (minutes >= (completed ? 1 : MIN_COUNTED_FOCUS)) {
-          await recordFocusSession(
-            client,
-            csrfToken(),
-            current.itemId,
-            minutes,
-          );
+          await recordFocusSession(client, current.itemId, minutes);
           await refresh();
           if (completed) {
             blip("win");

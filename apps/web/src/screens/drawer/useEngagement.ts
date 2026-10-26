@@ -6,7 +6,6 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { blip } from "../../design/sound";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useStats } from "../../shell/stats";
 import { useWorkspace } from "../../workspace";
 
@@ -46,7 +45,7 @@ export function useEngagement(
       kudosCount: engagement.kudosCount + (next ? 1 : -1),
     });
     try {
-      await setKudos(client, csrfToken(), itemId, next);
+      await setKudos(client, itemId, next);
       if (next) {
         blip("ok");
         toast("Agradecimento enviado.", { icon: "smile" });

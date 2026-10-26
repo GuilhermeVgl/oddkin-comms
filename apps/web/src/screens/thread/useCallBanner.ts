@@ -6,7 +6,6 @@ import {
 } from "@crewstead/api-client";
 import { useCallback, useEffect, useState } from "react";
 import { toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useEvents } from "../../events";
 import { useCalls } from "../../shell/calls";
 import { useWorkspace } from "../../workspace";
@@ -63,12 +62,7 @@ export function useCallBanner(conversationId: string, invitees: string[]) {
       return;
     }
     try {
-      const created = await startCall(
-        client,
-        csrfToken(),
-        conversationId,
-        invitees,
-      );
+      const created = await startCall(client, conversationId, invitees);
       openCall(created.id);
     } catch (error) {
       toastError(callFailureMessage(error));

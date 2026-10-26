@@ -136,7 +136,7 @@ export class ContentCrypto {
    * Turns encryption on for the scope: creates the domains and publishes
    * generation 1. From then on the server refuses plaintext for it.
    */
-  async enable(csrf: () => string): Promise<void> {
+  async enable(): Promise<void> {
     let created: KeyDomain[];
     switch (this.scope.type) {
       case "project":
@@ -150,7 +150,6 @@ export class ContentCrypto {
           )) ??
             (await createConversationKeyDomain(
               this.client,
-              csrf(),
               this.scope.conversationId,
             )),
         ];
@@ -158,7 +157,7 @@ export class ContentCrypto {
       case "organization":
         created = [
           (await getSprintKeyDomain(this.client).catch(() => null)) ??
-            (await createSprintKeyDomain(this.client, csrf())),
+            (await createSprintKeyDomain(this.client)),
         ];
         break;
     }

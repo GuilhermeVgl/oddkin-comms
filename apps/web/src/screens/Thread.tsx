@@ -9,7 +9,6 @@ import { Attachments } from "../Attachments";
 import { Banner } from "../design/primitives";
 import { useMenu } from "../design/Menu";
 import { editChannelMessage } from "../e2ee/content";
-import { csrfToken } from "../errors";
 import { useWorkspace } from "../workspace";
 import { mentionNames } from "./mentions";
 import { Composer } from "./thread/Composer";
@@ -114,14 +113,13 @@ export function Thread({
   const actions: MessageActions = {
     openReactions: (message, anchor) => emoji.toggle(anchor, message.id),
     toggleReaction: (message, symbol) =>
-      void act(() => toggleReaction(client, csrfToken(), message.id, symbol)),
+      void act(() => toggleReaction(client, message.id, symbol)),
     reply: (message) => {
       composer.setReplyTo(message);
       area.current?.focus();
     },
     edit: setEditing,
-    remove: (message) =>
-      act(() => deleteMessage(client, csrfToken(), message.id)),
+    remove: (message) => act(() => deleteMessage(client, message.id)),
   };
 
   function pickEmoji(symbol: string, to: EmojiTarget) {
@@ -129,7 +127,7 @@ export function Thread({
       composer.setDraft((value) => value + symbol);
       area.current?.focus();
     } else {
-      void act(() => toggleReaction(client, csrfToken(), to, symbol));
+      void act(() => toggleReaction(client, to, symbol));
     }
   }
 
@@ -226,14 +224,7 @@ export function Thread({
             const original = editing;
             setEditing(null);
             void act(() =>
-              editChannelMessage(
-                client,
-                csrfToken(),
-                crypto,
-                original,
-                body,
-                kind,
-              ),
+              editChannelMessage(client, crypto, original, body, kind),
             );
           }}
         />

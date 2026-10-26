@@ -10,7 +10,6 @@ import { useEvents } from "../events";
 import { Banner } from "../design/primitives";
 import { go, useRoute } from "../design/router";
 import { useOptionalE2EE } from "../e2ee/E2EE";
-import { csrfToken } from "../errors";
 import { toast } from "../design/toast";
 import { DeviceGate } from "../screens/Auth";
 import { Chat } from "../screens/Chat";
@@ -230,10 +229,9 @@ export function Workspace({
 
   async function leave() {
     try {
-      const token = csrfToken();
       // Keys are dropped from memory before the session ends.
       e2ee?.lock();
-      await logout(client, token);
+      await logout(client);
       onLogout();
     } catch {
       toast("Não foi possível encerrar a sessão.", { kind: "err" });

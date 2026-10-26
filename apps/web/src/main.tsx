@@ -2,7 +2,6 @@ import {
   createApiClient,
   fetchCurrentAccount,
   logout,
-  readCookie,
   type CurrentAccount,
 } from "@crewstead/api-client";
 import React, { useEffect, useMemo, useState } from "react";
@@ -134,9 +133,8 @@ function Authenticated({
   const phase = e2ee?.phase ?? "unlocked";
 
   async function leave() {
-    const token = readCookie(document.cookie, "crewstead_csrf");
     e2ee?.lock();
-    if (token !== null) await logout(client, token).catch(() => undefined);
+    await logout(client).catch(() => undefined);
     onLogout();
   }
 
@@ -251,13 +249,9 @@ function App() {
           onConsumed={() => setEntry(null)}
           onSignIn={() => setSigningIn(true)}
           onSwitchAccount={() => {
-            const token = readCookie(document.cookie, "crewstead_csrf");
-            const done = () => setSession({ status: "anonymous" });
-            if (token === null) done();
-            else
-              void logout(client, token)
-                .catch(() => undefined)
-                .then(done);
+            void logout(client)
+              .catch(() => undefined)
+              .then(() => setSession({ status: "anonymous" }));
           }}
         />
       );

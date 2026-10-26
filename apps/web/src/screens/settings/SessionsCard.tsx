@@ -6,7 +6,6 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { rel } from "../../design/format";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 
 export function SessionsCard({ onLogout }: { onLogout: () => void }) {
@@ -38,7 +37,7 @@ export function SessionsCard({ onLogout }: { onLogout: () => void }) {
               <button
                 className="btn sm"
                 onClick={() => {
-                  revokeSession(client, csrfToken(), entry.id)
+                  revokeSession(client, entry.id)
                     .then(() => {
                       if (entry.current) onLogout();
                       else {

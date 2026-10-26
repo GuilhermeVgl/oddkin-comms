@@ -3,7 +3,6 @@ import { Banner } from "../../design/primitives";
 import { confirmDialog } from "../../design/confirm";
 import { toastError } from "../../design/toast";
 import { useE2EE } from "../../e2ee/E2EE";
-import { csrfToken } from "../../errors";
 import { useShell } from "../../shell/context";
 import { useWorkspace } from "../../workspace";
 import { DeviceList, PendingApprovals } from "./DeviceRows";
@@ -92,7 +91,7 @@ function LogoutAllCard({ onLogout }: { onLogout: () => void }) {
             if (ok !== true) return;
             try {
               e2ee.lock();
-              await logout(client, csrfToken(), true);
+              await logout(client, true);
               onLogout();
             } catch {
               toastError("Não foi possível encerrar as sessões.");

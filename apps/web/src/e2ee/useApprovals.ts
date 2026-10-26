@@ -8,7 +8,7 @@ import { fromBase64Url, toBase64Url, type Crypto } from "@crewstead/crypto";
 import { useCallback, useState } from "react";
 import { collectApprovals, matchInviteSecret } from "./approvals";
 import { dropInviteSecret, loadInviteSecrets } from "./invitations";
-import { csrf, type Client } from "./runtime";
+import { type Client } from "./runtime";
 import type { KeyValueStore } from "./storage";
 import type { PendingApproval } from "./types";
 import type { Session } from "./useSession";
@@ -44,12 +44,7 @@ async function approveInvitedDevices(
         signPublicKey: fromBase64Url(entry.signPublicKey),
         boxPublicKey: fromBase64Url(entry.boxPublicKey),
       });
-      await authorizeDevice(
-        client,
-        csrf(),
-        entry.deviceId,
-        toBase64Url(certificate),
-      );
+      await authorizeDevice(client, entry.deviceId, toBase64Url(certificate));
       await dropInviteSecret(store, accountId, match.invitationId);
       remaining.splice(remaining.indexOf(entry), 1);
     } catch {

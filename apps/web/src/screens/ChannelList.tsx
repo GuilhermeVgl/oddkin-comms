@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Icon } from "../design/icons";
 import { toast, toastError } from "../design/toast";
 import { createChannelNamed, encryptChannel } from "../e2ee/content";
-import { csrfToken, describeError } from "../errors";
+import { describeError } from "../errors";
 import { useInbox, type Channel } from "../inbox";
 import { useWorkspace, type ProjectState } from "../workspace";
 import { idsAfterDrop, idsAfterMove } from "./channels/channelOrder";
@@ -54,7 +54,7 @@ export function ChannelList({
   }
 
   function reorder(ids: string[]) {
-    void act(() => reorderChannels(client, csrfToken(), state.project.id, ids));
+    void act(() => reorderChannels(client, state.project.id, ids));
   }
 
   function move(id: string, offset: number) {
@@ -91,9 +91,9 @@ export function ChannelList({
           encrypted: true,
           contentRevision: entry.contentRevision,
         };
-        await encryptChannel(client, csrfToken(), state.crypto, asConversation);
+        await encryptChannel(client, state.crypto, asConversation);
       } else {
-        await renameChannel(client, csrfToken(), entry.id, name);
+        await renameChannel(client, entry.id, name);
       }
     });
   }
@@ -103,14 +103,7 @@ export function ChannelList({
     const name = raw.trim();
     if (name === "") return;
     void act(
-      () =>
-        createChannelNamed(
-          client,
-          csrfToken(),
-          state.project.id,
-          state.crypto,
-          name,
-        ),
+      () => createChannelNamed(client, state.project.id, state.crypto, name),
       "Canal criado.",
     );
   }
@@ -212,12 +205,7 @@ export function ChannelList({
                       setEditing(null);
                       void act(
                         () =>
-                          setChannelArchived(
-                            client,
-                            csrfToken(),
-                            entry.id,
-                            !entry.archived,
-                          ),
+                          setChannelArchived(client, entry.id, !entry.archived),
                         entry.archived
                           ? "Canal restaurado."
                           : "Canal arquivado: agora é só leitura.",

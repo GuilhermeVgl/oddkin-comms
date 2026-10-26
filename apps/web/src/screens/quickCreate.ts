@@ -3,7 +3,6 @@ import { useCallback } from "react";
 import { blip } from "../design/sound";
 import { toast } from "../design/toast";
 import { createItem } from "../e2ee/content";
-import { csrfToken } from "../errors";
 import { useWorkspace, type ProjectState } from "../workspace";
 
 export type NewItemInput = {
@@ -29,18 +28,12 @@ export function useQuickCreate() {
     ): Promise<WorkItem | undefined> => {
       const { sprintId, ...fields } = input;
       const created = await run(async () => {
-        const item = await createItem(
-          client,
-          csrfToken(),
-          state.crypto,
-          state.project.id,
-          {
-            kind: "task",
-            ...fields,
-          },
-        );
+        const item = await createItem(client, state.crypto, state.project.id, {
+          kind: "task",
+          ...fields,
+        });
         if (sprintId !== undefined && internal) {
-          return updateWorkItem(client, csrfToken(), item.id, {
+          return updateWorkItem(client, item.id, {
             version: item.version,
             sprintId,
           });

@@ -3,7 +3,7 @@ import { fromBase64Url, toBase64Url, type Crypto } from "@crewstead/crypto";
 import type { MutableRefObject } from "react";
 import { newDeviceRecord } from "./deviceRecord";
 import { clearProvision, readProvision, sameFingerprint } from "./invitations";
-import { csrf, type Client } from "./runtime";
+import { type Client } from "./runtime";
 import type { Vault, VaultRecord } from "./vault";
 
 /**
@@ -36,7 +36,7 @@ export async function provisionFromInvitation(input: {
   try {
     const keys = crypto.generateDeviceKeys();
     const autoPassphrase = toBase64Url(crypto.generateDomainKey());
-    const created = await registerDevice(client, csrf(), {
+    const created = await registerDevice(client, {
       name: "Navegador",
       signPublicKey: toBase64Url(keys.signPublicKey),
       boxPublicKey: toBase64Url(keys.boxPublicKey),

@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { csrfToken } from "./errors";
 import { setDuoVisible } from "./design/duoVisibility";
 import { APP_NAME } from "./brand";
 
@@ -62,7 +61,7 @@ export function OrganizationGate({
   }, [client]);
 
   async function save(body: UpdateOrganizationBrandingRequest) {
-    const value = await updateOrganizationBranding(client, csrfToken(), body);
+    const value = await updateOrganizationBranding(client, body);
     setBranding(value);
     setDuoVisible(value.showDuo);
     setLogoVersion((version) => version + 1);

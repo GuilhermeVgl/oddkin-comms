@@ -8,7 +8,7 @@ import { confirmDialog } from "../../design/confirm";
 import { nameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 import { memberRoleLabel } from "./teamRules";
 
@@ -39,12 +39,7 @@ export function MembersCard({
     });
     if (ok !== true) return;
     try {
-      await removeProjectMember(
-        client,
-        csrfToken(),
-        current.project.id,
-        accountId,
-      );
+      await removeProjectMember(client, current.project.id, accountId);
       toast(
         `${nameOf(email)} removida. Mídia e escritas futuras usam nova chave.`,
         { icon: "lock" },
@@ -61,13 +56,7 @@ export function MembersCard({
 
   async function changeRole(accountId: string, makeManager: boolean) {
     try {
-      await setMemberRole(
-        client,
-        csrfToken(),
-        current.project.id,
-        accountId,
-        makeManager,
-      );
+      await setMemberRole(client, current.project.id, accountId, makeManager);
       toast(makeManager ? "Agora é gestor." : "Deixou de ser gestor.", {
         icon: "check",
       });

@@ -13,7 +13,6 @@ import { Icon } from "../../design/icons";
 import { nameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { roleOf } from "../../shell/Sidebar";
 import { useWorkspace } from "../../workspace";
 import { PhotoEditor } from "../PhotoEditor";
@@ -34,7 +33,7 @@ export function ProfilePhotoCard({ account }: { account: CurrentAccount }) {
 
   // Throws when the upload fails, so the editor stays open and says so.
   async function sendPhoto(photo: Blob) {
-    await putAvatar(csrfToken(), photo);
+    await putAvatar(photo);
     setAvatarVersions([
       ...others(),
       { accountId: account.id, version: (version ?? 0) + 1 },
@@ -46,7 +45,7 @@ export function ProfilePhotoCard({ account }: { account: CurrentAccount }) {
   async function removePhoto() {
     setBusyPhoto(true);
     try {
-      await deleteAvatar(client, csrfToken());
+      await deleteAvatar(client);
       setAvatarVersions(others());
       toast("Foto removida.", { icon: "check" });
     } catch {

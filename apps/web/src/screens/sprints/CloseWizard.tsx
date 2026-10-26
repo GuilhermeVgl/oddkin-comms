@@ -10,7 +10,7 @@ import { Icon } from "../../design/icons";
 import { Modal } from "../../design/Modal";
 import { blip } from "../../design/sound";
 import { toastError } from "../../design/toast";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useStats } from "../../shell/stats";
 import { useWorkspace } from "../../workspace";
 import {
@@ -86,7 +86,6 @@ export function CloseWizard({
     try {
       await closeSprint(
         client,
-        csrfToken(),
         sprint.id,
         closeDecisions(preview.pending, choices),
         needsNext ? destination : undefined,

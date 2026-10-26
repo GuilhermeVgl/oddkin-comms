@@ -3,7 +3,7 @@ import { fromBase64Url } from "@crewstead/crypto";
 import { useCallback, useMemo, useRef, type MutableRefObject } from "react";
 import { Keyring } from "./keyring";
 import type { ContentCrypto } from "./projectCrypto";
-import { createRuntime, csrf, type Client, type Runtime } from "./runtime";
+import { createRuntime, type Client, type Runtime } from "./runtime";
 import type { VaultRecord } from "./vault";
 
 /** What every part of the provider shares: the API client, the account and the live refs. */
@@ -43,7 +43,6 @@ export function useSession(account: CurrentAccount): Session {
       pinnedRoot: fromBase64Url(current.pinnedRoot),
       accountId: account.id,
       deviceId: current.deviceId,
-      csrf,
     });
     scopes.current.clear();
   }, [account.id, client, runtimeOf]);

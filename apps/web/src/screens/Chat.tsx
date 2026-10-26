@@ -9,7 +9,6 @@ import { go } from "../design/router";
 import { createStore } from "../design/store";
 import { Sprite } from "../design/Sprite";
 import { toast } from "../design/toast";
-import { csrfToken } from "../errors";
 import { useInbox } from "../inbox";
 import { Page } from "../shell/Page";
 import { can, useWorkspace } from "../workspace";
@@ -111,11 +110,7 @@ export function Chat({
 
   async function openContact(accountId: string) {
     try {
-      const created = await openDirectConversation(
-        client,
-        csrfToken(),
-        accountId,
-      );
+      const created = await openDirectConversation(client, accountId);
       await reloadChat();
       go(`chat/${created.id}`);
     } catch {

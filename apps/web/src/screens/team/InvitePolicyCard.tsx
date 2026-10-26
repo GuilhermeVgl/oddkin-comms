@@ -1,6 +1,6 @@
 import { setInvitePolicy, type InvitePolicy } from "@crewstead/api-client";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 import { INVITE_POLICIES } from "./teamRules";
 
@@ -16,7 +16,7 @@ export function InvitePolicyCard({
   async function changePolicy(policy: InvitePolicy) {
     if (policy === invitePolicy) return;
     try {
-      await setInvitePolicy(client, csrfToken(), current.project.id, policy);
+      await setInvitePolicy(client, current.project.id, policy);
       toast("Regra de convites atualizada.", { icon: "check" });
       await reload();
     } catch (error) {

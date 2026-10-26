@@ -7,7 +7,6 @@ import { confirmDialog } from "../../design/confirm";
 import { Modal } from "../../design/Modal";
 import { toast } from "../../design/toast";
 import { encryptProject } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 import { SWATCHES } from "./teamRules";
 
@@ -33,9 +32,9 @@ export function EditProjectDialog({
     onClose();
     void run(async () => {
       if (color.toUpperCase() !== project.color.toUpperCase())
-        await setProjectAppearance(client, csrfToken(), project.id, color);
+        await setProjectAppearance(client, project.id, color);
       if (canWriteText && textChanged && crypto !== null && name.trim() !== "")
-        await encryptProject(client, csrfToken(), crypto, {
+        await encryptProject(client, crypto, {
           ...project,
           name: name.trim(),
           description,
@@ -63,7 +62,7 @@ export function EditProjectDialog({
     }).then((ok) => {
       if (ok !== true) return;
       void run(async () => {
-        await setProjectArchived(client, csrfToken(), project.id, true);
+        await setProjectArchived(client, project.id, true);
         return true;
       }).then(
         (done) =>

@@ -217,7 +217,6 @@ function ring(
     pinnedRoot: root.signPublicKey,
     accountId: me.account,
     deviceId: me.deviceId,
-    csrf: () => "csrf",
   });
 }
 

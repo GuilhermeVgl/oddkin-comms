@@ -2,7 +2,6 @@ import { startSprint, type Sprint } from "@crewstead/api-client";
 import { fmtD } from "../../design/format";
 import { blip } from "../../design/sound";
 import { toast } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { doneCount, rowsOfSprint, type Row } from "./sprintRules";
 import { ProjectDot } from "../ProjectDot";
@@ -42,16 +41,16 @@ export function PlannedSprints({
                   className="btn sm"
                   disabled={active !== undefined}
                   onClick={() => {
-                    void run(() =>
-                      startSprint(client, csrfToken(), sprint.id),
-                    ).then((started) => {
-                      if (started === undefined) return;
-                      blip("ok");
-                      toast(`${sprint.name} iniciada.`, {
-                        mascot: "tela",
-                        pose: "wave",
-                      });
-                    });
+                    void run(() => startSprint(client, sprint.id)).then(
+                      (started) => {
+                        if (started === undefined) return;
+                        blip("ok");
+                        toast(`${sprint.name} iniciada.`, {
+                          mascot: "tela",
+                          pose: "wave",
+                        });
+                      },
+                    );
                   }}
                   title={
                     active === undefined

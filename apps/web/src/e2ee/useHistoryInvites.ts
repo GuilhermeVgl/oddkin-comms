@@ -3,7 +3,6 @@ import { toBase64Url } from "@crewstead/crypto";
 import { useMemo } from "react";
 import { saveInviteSecret } from "./invitations";
 import { historyInviteLink } from "./phase";
-import { csrf } from "./runtime";
 import type { E2EEApi } from "./types";
 import type { Session } from "./useSession";
 
@@ -50,7 +49,7 @@ export function useHistoryInvites(
       },
 
       async requestHistoryAccess() {
-        await setHistoryMode(client, csrf(), "ask");
+        await setHistoryMode(client, "ask");
         window.location.reload();
       },
     };

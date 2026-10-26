@@ -10,7 +10,7 @@ import { Modal } from "../../design/Modal";
 import { Banner } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
 import { useOptionalE2EE } from "../../e2ee/E2EE";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { isValidEmail } from "./teamRules";
 
@@ -87,7 +87,6 @@ export function InviteDialog({
       client,
       address,
       kind,
-      csrfToken(),
       askHistory
         ? grant
           ? { historyMode: "auto", linkExtra: grant.linkExtra }
@@ -111,7 +110,7 @@ export function InviteDialog({
     try {
       try {
         // Someone already in the organization only needs to join the project.
-        await addMember(client, csrfToken(), projectId, email.trim());
+        await addMember(client, projectId, email.trim());
         toast("Pessoa adicionada ao projeto.", { icon: "check" });
         await reload();
       } catch (error) {

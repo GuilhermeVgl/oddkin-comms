@@ -7,7 +7,6 @@ import {
 import { fromBase64Url, PassphraseError, toBase64Url } from "@crewstead/crypto";
 import { useMemo } from "react";
 import { newDeviceRecord } from "./deviceRecord";
-import { csrf } from "./runtime";
 import { setupOrganization } from "./setupOrganization";
 import type { E2EEApi, PendingApproval } from "./types";
 import type { Session } from "./useSession";
@@ -48,7 +47,7 @@ export function useDeviceActions(
       if (root === null) throw new Error("not configured");
       const keys = crypto.generateDeviceKeys();
       const autoPassphrase = toBase64Url(crypto.generateDomainKey());
-      const created = await registerDevice(client, csrf(), {
+      const created = await registerDevice(client, {
         name: "Navegador",
         signPublicKey: toBase64Url(keys.signPublicKey),
         boxPublicKey: toBase64Url(keys.boxPublicKey),
@@ -108,7 +107,6 @@ export function useDeviceActions(
       if (root !== undefined) {
         await authorizeDevice(
           client,
-          csrf(),
           approval.deviceId,
           toBase64Url(crypto.signDeviceCertificate(root, fields)),
         );
@@ -119,7 +117,6 @@ export function useDeviceActions(
         );
         await authorizeDevice(
           client,
-          csrf(),
           approval.deviceId,
           toBase64Url(certificate),
           current.deviceId,
@@ -160,7 +157,7 @@ export function useDeviceActions(
       approve,
 
       async revoke(deviceId: string) {
-        await revokeDevice(client, csrf(), deviceId);
+        await revokeDevice(client, deviceId);
         await refresh();
       },
 

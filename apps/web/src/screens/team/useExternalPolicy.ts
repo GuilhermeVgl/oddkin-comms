@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { blip } from "../../design/sound";
 import { toast, toastError } from "../../design/toast";
-import { csrfToken, describeError } from "../../errors";
+import { describeError } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 import {
   normalizePermissions,
@@ -59,15 +59,10 @@ export function useExternalPolicy(current: ProjectState) {
       (permission) => !normalized.has(permission),
     );
     try {
-      const saved = await updateExternalPolicy(
-        client,
-        csrfToken(),
-        current.project.id,
-        {
-          permissions: [...normalized],
-          version: policy.version,
-        },
-      );
+      const saved = await updateExternalPolicy(client, current.project.id, {
+        permissions: [...normalized],
+        version: policy.version,
+      });
       setPolicy(saved);
       setDraft([...saved.permissions]);
       blip("ok");

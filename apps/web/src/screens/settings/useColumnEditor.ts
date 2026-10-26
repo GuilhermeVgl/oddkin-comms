@@ -8,7 +8,6 @@ import {
 import { useState } from "react";
 import { blip } from "../../design/sound";
 import { toast } from "../../design/toast";
-import { csrfToken } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 import {
   columnOrderAfterMove,
@@ -42,7 +41,7 @@ export function useColumnEditor(state: ProjectState) {
   async function move(index: number, by: -1 | 1) {
     const order = columnOrderAfterMove(columns, index, by);
     if (order === null) return;
-    await ok(() => reorderBoardColumns(client, csrfToken(), projectId, order));
+    await ok(() => reorderBoardColumns(client, projectId, order));
   }
 
   async function remove(column: BoardColumn, index: number) {
@@ -58,9 +57,8 @@ export function useColumnEditor(state: ProjectState) {
     const held = count(column);
     if (held === 0) {
       if (
-        (await ok(() =>
-          deleteBoardColumn(client, csrfToken(), projectId, column.id),
-        )) !== undefined
+        (await ok(() => deleteBoardColumn(client, projectId, column.id))) !==
+        undefined
       )
         toast("Coluna excluída.");
       return;
@@ -75,7 +73,7 @@ export function useColumnEditor(state: ProjectState) {
       return;
     }
     void ok(() =>
-      updateBoardColumn(client, csrfToken(), projectId, column.id, {
+      updateBoardColumn(client, projectId, column.id, {
         name: value,
       }),
     ).then(
@@ -99,7 +97,7 @@ export function useColumnEditor(state: ProjectState) {
     setError("");
     const held = count(column);
     void ok(() =>
-      updateBoardColumn(client, csrfToken(), projectId, column.id, {
+      updateBoardColumn(client, projectId, column.id, {
         category,
       }),
     ).then(
@@ -116,7 +114,7 @@ export function useColumnEditor(state: ProjectState) {
 
   function add() {
     void ok(() =>
-      createBoardColumn(client, csrfToken(), projectId, {
+      createBoardColumn(client, projectId, {
         name: "Nova coluna",
         category: "in_progress",
       }),
@@ -128,13 +126,7 @@ export function useColumnEditor(state: ProjectState) {
     setDeleting(null);
     if (target === null || pending === null) return;
     void ok(() =>
-      deleteBoardColumn(
-        client,
-        csrfToken(),
-        projectId,
-        pending.column.id,
-        target,
-      ),
+      deleteBoardColumn(client, projectId, pending.column.id, target),
     ).then(
       (done) =>
         done !== undefined &&

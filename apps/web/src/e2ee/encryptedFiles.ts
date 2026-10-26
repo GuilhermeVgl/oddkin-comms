@@ -23,7 +23,6 @@ type Client = ReturnType<typeof createApiClient>;
 /** Encrypts a file in the browser and sends it straight to the bucket in parts. */
 export async function uploadEncryptedFile(input: {
   client: Client;
-  token: string;
   context: UploadContext;
   file: File;
   crypto: ContentCrypto;
@@ -42,7 +41,6 @@ export async function uploadEncryptedFile(input: {
   );
   const session = await createUpload(
     input.client,
-    input.token,
     input.context,
     { name: file.name, type: "", size: sealer.encryptedSize },
     input.nameEncryption,
@@ -74,14 +72,11 @@ export async function uploadEncryptedFile(input: {
     });
     return await completeUpload(
       input.client,
-      input.token,
       session.id,
       etags.map((etag, index) => ({ partNumber: index + 1, etag })),
     );
   } catch (error) {
-    await abortUpload(input.client, input.token, session.id).catch(
-      () => undefined,
-    );
+    await abortUpload(input.client, session.id).catch(() => undefined);
     throw error;
   }
 }

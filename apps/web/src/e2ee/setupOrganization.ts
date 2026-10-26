@@ -8,7 +8,7 @@ import {
 } from "@crewstead/api-client";
 import { fromBase64Url, toBase64Url, type Crypto } from "@crewstead/crypto";
 import { newSetupDraft } from "./deviceRecord";
-import { csrf, type Client } from "./runtime";
+import { type Client } from "./runtime";
 import type { Session } from "./useSession";
 import type { VaultRecord } from "./vault";
 
@@ -25,22 +25,20 @@ type DeviceSpec = {
  */
 async function ensureDevice(input: {
   client: Client;
-  token: string;
   crypto: Crypto;
   rootSecret: Uint8Array;
   accountId: string;
   existing: readonly Device[];
   spec: DeviceSpec;
 }): Promise<string> {
-  const { client, token, crypto, rootSecret, accountId, existing, spec } =
-    input;
+  const { client, crypto, rootSecret, accountId, existing, spec } = input;
   const found = existing.find(
     (entry) => entry.signPublicKey === spec.signPublicKey,
   );
   const id =
     found?.id ??
     (
-      await registerDevice(client, token, {
+      await registerDevice(client, {
         name: spec.name,
         kind: spec.kind,
         signPublicKey: spec.signPublicKey,
@@ -54,7 +52,7 @@ async function ensureDevice(input: {
       signPublicKey: fromBase64Url(spec.signPublicKey),
       boxPublicKey: fromBase64Url(spec.boxPublicKey),
     });
-    await authorizeDevice(client, token, id, toBase64Url(certificate));
+    await authorizeDevice(client, id, toBase64Url(certificate));
   }
   return id;
 }
@@ -66,7 +64,6 @@ async function ensureDevice(input: {
 export async function setupOrganization(session: Session): Promise<void> {
   const { client, account, record, runtimeOf } = session;
   const { vault, crypto } = await runtimeOf();
-  const token = csrf();
   // The keys are saved, wrapped, BEFORE the server hears about them: the
   // trust root can be set only once, so losing its private half to a
   // reload or a failed request would lock the organization out for good.
@@ -89,7 +86,7 @@ export async function setupOrganization(session: Session): Promise<void> {
     throw new Error("the saved setup is incomplete");
   const serverRoot = await getTrustRoot(client);
   if (serverRoot === null) {
-    await setTrustRoot(client, token, draft.pinnedRoot);
+    await setTrustRoot(client, draft.pinnedRoot);
   } else if (serverRoot.signPublicKey !== draft.pinnedRoot) {
     throw new Error("the organization already has another trust root");
   }
@@ -97,7 +94,6 @@ export async function setupOrganization(session: Session): Promise<void> {
   const existing = await listDevices(client);
   const shared = {
     client,
-    token,
     crypto,
     rootSecret,
     accountId: account.id,

@@ -4,7 +4,6 @@ import { go } from "../../design/router";
 import { toast } from "../../design/toast";
 import { useOptionalE2EE } from "../../e2ee/E2EE";
 import { encryptSprint } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 
 /** Tells how readable the sprint names are for this person and what to do about it. */
@@ -21,10 +20,9 @@ export function SprintBanners({
   async function encryptNames() {
     if (orgCrypto === null) return;
     await run(async () => {
-      await orgCrypto.enable(csrfToken);
+      await orgCrypto.enable();
       for (const sprint of sprints) {
-        if (!sprint.encrypted)
-          await encryptSprint(client, csrfToken(), orgCrypto, sprint);
+        if (!sprint.encrypted) await encryptSprint(client, orgCrypto, sprint);
       }
     });
     toast("Nomes e objetivos das sprints agora são cifrados.", {

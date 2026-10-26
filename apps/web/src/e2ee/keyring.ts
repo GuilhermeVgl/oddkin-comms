@@ -43,7 +43,6 @@ export type KeyringDeps = {
   pinnedRoot: Uint8Array;
   accountId: string;
   deviceId: string;
-  csrf: () => string;
 };
 
 function toRecord(device: DirectoryDevice): DirectoryRecord {
@@ -195,7 +194,6 @@ export class Keyring {
           );
         await grantRecoveryEnvelopes(
           this.deps.client,
-          this.deps.csrf(),
           first.domainId,
           first.generation,
           this.deps.deviceId,
@@ -248,12 +246,7 @@ export class Keyring {
     for (const kind of ["work", "chat", "files"] as const) {
       if (!domains.some((domain) => domain.kind === kind)) {
         try {
-          await createKeyDomain(
-            this.deps.client,
-            this.deps.csrf(),
-            projectId,
-            kind,
-          );
+          await createKeyDomain(this.deps.client, projectId, kind);
         } catch {
           // Someone else created it first, or this person may not create domains.
         }
@@ -285,7 +278,6 @@ export class Keyring {
       const envelopes = await this.seal(authorized, key, domain.id, generation);
       await publishKeyGeneration(
         this.deps.client,
-        this.deps.csrf(),
         domain.id,
         generation,
         deviceId,
@@ -316,7 +308,6 @@ export class Keyring {
       if (missing.length === 0) continue;
       await grantKeyEnvelopes(
         this.deps.client,
-        this.deps.csrf(),
         domain.id,
         generation,
         deviceId,

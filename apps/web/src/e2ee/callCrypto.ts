@@ -29,7 +29,6 @@ export class CallCrypto {
     private readonly vault: Vault,
     private readonly keyring: Keyring,
     readonly deviceId: string,
-    private readonly csrf: () => string,
   ) {}
 
   private readonly keys = new Map<string, Map<number, Uint8Array>>();
@@ -119,7 +118,6 @@ export class CallCrypto {
     try {
       await publishCallKey(
         this.client,
-        this.csrf(),
         call.id,
         generation,
         this.deviceId,

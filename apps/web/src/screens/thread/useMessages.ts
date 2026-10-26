@@ -6,7 +6,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { decryptMessages } from "../../e2ee/content";
 import type { ContentCrypto } from "../../e2ee/projectCrypto";
-import { csrfToken } from "../../errors";
 import { useEvents } from "../../events";
 import { useInbox } from "../../inbox";
 import { useWorkspace } from "../../workspace";
@@ -41,7 +40,7 @@ export function useMessages(
     if (lastSeq.current <= readSeq.current) return;
     readSeq.current = lastSeq.current;
     try {
-      await setReadCursor(client, csrfToken(), conversationId, lastSeq.current);
+      await setReadCursor(client, conversationId, lastSeq.current);
       window.setTimeout(() => clearUnread(conversationId), 1400);
     } catch {
       readSeq.current = 0;

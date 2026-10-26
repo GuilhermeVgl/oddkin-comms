@@ -4,7 +4,6 @@ import { Modal } from "../../design/Modal";
 import { Banner } from "../../design/primitives";
 import { toast } from "../../design/toast";
 import { createSprintContent } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { sprintDatesError } from "./sprintRules";
 
@@ -31,7 +30,7 @@ export function NewSprint({ onClose }: { onClose: () => void }) {
           }
           onClose();
           void run(() =>
-            createSprintContent(client, csrfToken(), orgCrypto, {
+            createSprintContent(client, orgCrypto, {
               name: name.trim() === "" ? "Sprint" : name.trim(),
               ...(goal.trim() === "" ? {} : { goal: goal.trim() }),
               startsOn: starts,

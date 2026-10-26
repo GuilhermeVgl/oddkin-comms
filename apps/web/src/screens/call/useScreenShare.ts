@@ -7,7 +7,7 @@ import {
 } from "livekit-client";
 import { useRef, useState, type MutableRefObject } from "react";
 import { blip } from "../../design/sound";
-import { readCsrf, type Client } from "./environment";
+import type { Client } from "./environment";
 import { canPublishScreen } from "./media";
 import { describeShareError } from "./messages";
 
@@ -79,19 +79,16 @@ export function useScreenShare(input: {
     if (publication.source !== Track.Source.ScreenShare) return;
     if (switching.current) return;
     setSharing(false);
-    const token = readCsrf();
-    if (token !== null)
-      void stopScreenShare(client, token, callId).catch(() => undefined);
+    void stopScreenShare(client, callId).catch(() => undefined);
   }
 
   async function toggleScreen(switchScreen = false) {
-    const token = readCsrf();
     const active = room.current;
-    if (token === null || active === null) return;
+    if (active === null) return;
     try {
       if (sharing && !switchScreen) {
         await active.localParticipant.setScreenShareEnabled(false);
-        await stopScreenShare(client, token, callId);
+        await stopScreenShare(client, callId);
         setSharing(false);
         return;
       }
@@ -111,13 +108,13 @@ export function useScreenShare(input: {
       // The server arbitrates the single slot and then lets LiveKit accept the
       // screen from this person, so they stay in the room: reconnecting would
       // make the server see them leave.
-      await startScreenShare(client, token, callId);
+      await startScreenShare(client, callId);
       try {
         await waitForScreenPermission(active);
         await publishScreen(active, shareAudio);
       } catch (error) {
         // The picker was cancelled or the browser refused: free the slot again.
-        await stopScreenShare(client, token, callId).catch(() => undefined);
+        await stopScreenShare(client, callId).catch(() => undefined);
         throw error;
       }
       setSharing(true);
@@ -126,7 +123,7 @@ export function useScreenShare(input: {
     } catch (error) {
       if (switchScreen) {
         // The old capture is already gone; the slot is still ours.
-        await stopScreenShare(client, token, callId).catch(() => undefined);
+        await stopScreenShare(client, callId).catch(() => undefined);
       }
       setSharing(false);
       setMessage(describeShareError(error));

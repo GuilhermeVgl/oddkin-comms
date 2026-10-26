@@ -1,10 +1,6 @@
-import { readCookie, type createApiClient } from "@crewstead/api-client";
+import type { createApiClient } from "@crewstead/api-client";
 
 export type Client = ReturnType<typeof createApiClient>;
-
-export function readCsrf(): string | null {
-  return readCookie(document.cookie, "crewstead_csrf");
-}
 
 /** Whether the browser can encrypt and decrypt media frames (insertable streams or script transforms). */
 export function supportsMediaE2EE(): boolean {

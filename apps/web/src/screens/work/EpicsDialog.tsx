@@ -5,7 +5,6 @@ import { Icon } from "../../design/icons";
 import { Modal } from "../../design/Modal";
 import { Pbar } from "../../design/primitives";
 import { createEpicContent } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace, type ProjectState } from "../../workspace";
 
 export function EpicsDialog({
@@ -53,7 +52,7 @@ export function EpicsDialog({
                 className="btn sm"
                 onClick={() =>
                   void run(() =>
-                    updateEpic(client, csrfToken(), epic.id, {
+                    updateEpic(client, epic.id, {
                       version: epic.version,
                       done: !epic.done,
                     }),
@@ -75,7 +74,6 @@ export function EpicsDialog({
             void run(async () => {
               await createEpicContent(
                 client,
-                csrfToken(),
                 state.crypto,
                 state.project.id,
                 value,

@@ -1,7 +1,6 @@
 import {
   deleteAttachment,
   getDownloadUrl,
-  readCookie,
   uploadFile,
   type Attachment,
   type UploadContext,
@@ -41,8 +40,6 @@ export function useAttachmentTransfer(input: {
   const [progress, setProgress] = useState<number | null>(null);
 
   async function upload(file: File) {
-    const csrf = readCookie(document.cookie, "crewstead_csrf");
-    if (csrf === null) return;
     if (!isUploadSizeAllowed(file.size)) {
       notify("Escolha um arquivo de até 500 MB.");
       return;
@@ -64,7 +61,6 @@ export function useAttachmentTransfer(input: {
         // Once the files domain has a key the server refuses plaintext bodies.
         await uploadEncryptedFile({
           client,
-          token: csrf,
           context,
           file,
           crypto,
@@ -75,7 +71,6 @@ export function useAttachmentTransfer(input: {
       } else {
         await uploadFile(
           client,
-          csrf,
           context,
           file,
           setProgress,
@@ -129,10 +124,8 @@ export function useAttachmentTransfer(input: {
   }
 
   async function remove(item: Attachment) {
-    const csrf = readCookie(document.cookie, "crewstead_csrf");
-    if (csrf === null) return;
     try {
-      await deleteAttachment(client, csrf, item.id);
+      await deleteAttachment(client, item.id);
       await reload();
     } catch {
       notify("Você não pode remover este arquivo.");

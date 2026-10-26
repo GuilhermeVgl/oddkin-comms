@@ -206,7 +206,6 @@ export async function decryptMessages(
 
 export async function createItem(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   projectId: string,
   input: {
@@ -229,7 +228,7 @@ export async function createItem(
     ...(input.columnId === undefined ? {} : { columnId: input.columnId }),
   };
   if (writeMode(pc, "work") === "plain" || pc === null) {
-    return createWorkItemRaw(client, token, projectId, {
+    return createWorkItemRaw(client, projectId, {
       kind: input.kind,
       title: input.title,
       ...(input.description === undefined
@@ -252,7 +251,7 @@ export async function createItem(
     1,
     input.description ?? "",
   );
-  return createWorkItemRaw(client, token, projectId, {
+  return createWorkItemRaw(client, projectId, {
     kind: input.kind,
     id,
     titleEnc: title.envelope,
@@ -265,7 +264,6 @@ export async function createItem(
 
 export async function saveItem(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   item: WorkItem,
   input: {
@@ -275,7 +273,7 @@ export async function saveItem(
   },
 ): Promise<WorkItem> {
   if (writeMode(pc, "work") === "plain" || pc === null) {
-    return updateWorkItemRaw(client, token, item.id, {
+    return updateWorkItemRaw(client, item.id, {
       version: item.version,
       ...input,
     });
@@ -293,7 +291,7 @@ export async function saveItem(
     revision,
     input.description,
   );
-  return updateWorkItemRaw(client, token, item.id, {
+  return updateWorkItemRaw(client, item.id, {
     version: item.version,
     priority: input.priority,
     titleEnc: title.envelope,
@@ -305,18 +303,17 @@ export async function saveItem(
 
 export async function createEpicContent(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   projectId: string,
   title: string,
 ): Promise<Epic> {
   if (writeMode(pc, "work") === "plain" || pc === null) {
-    return createEpicRaw(client, token, projectId, { title });
+    return createEpicRaw(client, projectId, { title });
   }
   const id = newId();
   const encrypted = pc.encrypt("work", resources.epic(id, "title"), 1, title);
   const description = pc.encrypt("work", resources.epic(id, "desc"), 1, "");
-  return createEpicRaw(client, token, projectId, {
+  return createEpicRaw(client, projectId, {
     id,
     titleEnc: encrypted.envelope,
     descriptionEnc: description.envelope,
@@ -326,17 +323,16 @@ export async function createEpicContent(
 
 export async function createCommentContent(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   workItemId: string,
   body: string,
 ): Promise<WorkItemComment> {
   if (writeMode(pc, "work") === "plain" || pc === null) {
-    return createCommentRaw(client, token, workItemId, { body });
+    return createCommentRaw(client, workItemId, { body });
   }
   const id = newId();
   const encrypted = pc.encrypt("work", resources.comment(id), 1, body);
-  return createCommentRaw(client, token, workItemId, {
+  return createCommentRaw(client, workItemId, {
     id,
     bodyEnc: encrypted.envelope,
     signerDeviceId: encrypted.signerDeviceId,
@@ -345,7 +341,6 @@ export async function createCommentContent(
 
 export async function sendChannelMessage(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   conversationId: string,
   input: {
@@ -361,7 +356,7 @@ export async function sendChannelMessage(
     ...(input.mentionIds === undefined ? {} : { mentionIds: input.mentionIds }),
   };
   if (pc === null || writeMode(pc, kind) === "plain") {
-    return sendMessageRaw(client, token, conversationId, {
+    return sendMessageRaw(client, conversationId, {
       clientMutationId: input.mutationId,
       body: input.body,
       ...extras,
@@ -373,7 +368,7 @@ export async function sendChannelMessage(
     1,
     input.body,
   );
-  return sendMessageRaw(client, token, conversationId, {
+  return sendMessageRaw(client, conversationId, {
     clientMutationId: input.mutationId,
     bodyEnc: encrypted.envelope,
     signerDeviceId: encrypted.signerDeviceId,
@@ -383,14 +378,13 @@ export async function sendChannelMessage(
 
 export async function editChannelMessage(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   message: Message,
   body: string,
   kind: "chat" | "dm" = "chat",
 ): Promise<Message> {
   if (pc === null || writeMode(pc, kind) === "plain") {
-    return editMessageRaw(client, token, message.id, { body });
+    return editMessageRaw(client, message.id, { body });
   }
   const revision = message.contentRevision + 1;
   const encrypted = pc.encrypt(
@@ -399,7 +393,7 @@ export async function editChannelMessage(
     revision,
     body,
   );
-  return editMessageRaw(client, token, message.id, {
+  return editMessageRaw(client, message.id, {
     bodyEnc: encrypted.envelope,
     signerDeviceId: encrypted.signerDeviceId,
     contentRevision: revision,
@@ -421,7 +415,6 @@ export type MigrationReport = {
  */
 export async function migrateProject(
   client: Client,
-  token: string,
   pc: ProjectCrypto,
   data: {
     items: WorkItem[];
@@ -471,7 +464,7 @@ export async function migrateProject(
         1,
         item.description,
       );
-      await updateWorkItemRaw(client, token, item.id, {
+      await updateWorkItemRaw(client, item.id, {
         version: item.version,
         titleEnc: title.envelope,
         descriptionEnc: description.envelope,
@@ -491,7 +484,6 @@ export async function migrateProject(
         );
         await encryptComment(
           client,
-          token,
           comment.id,
           encrypted.envelope,
           encrypted.signerDeviceId,
@@ -516,7 +508,7 @@ export async function migrateProject(
         1,
         epic.description,
       );
-      await updateEpicRaw(client, token, epic.id, {
+      await updateEpicRaw(client, epic.id, {
         version: epic.version,
         titleEnc: title.envelope,
         descriptionEnc: description.envelope,
@@ -528,7 +520,6 @@ export async function migrateProject(
   if (data.channelId !== undefined) {
     const result = await migrateOwnMessages(
       client,
-      token,
       pc,
       data.channelId,
       me.email,
@@ -571,7 +562,6 @@ export async function decryptProject(
 
 export async function encryptProject(
   client: Client,
-  token: string,
   pc: ProjectCrypto,
   project: Project,
 ): Promise<void> {
@@ -588,7 +578,7 @@ export async function encryptProject(
     revision,
     project.description,
   );
-  await updateProjectContent(client, token, project.id, {
+  await updateProjectContent(client, project.id, {
     nameEnc: name.envelope,
     descriptionEnc: description.envelope,
     signerDeviceId: name.signerDeviceId,
@@ -613,7 +603,6 @@ export async function decryptChannel(
 
 export async function encryptChannel(
   client: Client,
-  token: string,
   pc: ProjectCrypto,
   channel: Conversation,
 ): Promise<void> {
@@ -624,7 +613,7 @@ export async function encryptChannel(
     revision,
     channel.name,
   );
-  await updateConversationContent(client, token, channel.id, {
+  await updateConversationContent(client, channel.id, {
     nameEnc: name.envelope,
     signerDeviceId: name.signerDeviceId,
     contentRevision: revision,
@@ -634,7 +623,6 @@ export async function encryptChannel(
 /** Creates a channel; with a key for chat the name is encrypted under an id chosen here. */
 export async function createChannelNamed(
   client: Client,
-  token: string,
   projectId: string,
   pc: ProjectCrypto | null,
   name: string,
@@ -642,14 +630,14 @@ export async function createChannelNamed(
   if (pc !== null && pc.canWrite("chat")) {
     const id = crypto.randomUUID();
     const sealed = pc.encrypt("chat", resources.channel(id), 1, name);
-    await createChannel(client, token, projectId, {
+    await createChannel(client, projectId, {
       id,
       nameEnc: sealed.envelope,
       signerDeviceId: sealed.signerDeviceId,
     });
     return;
   }
-  await createChannel(client, token, projectId, { name });
+  await createChannel(client, projectId, { name });
 }
 
 export async function decryptSprints(
@@ -685,12 +673,11 @@ export async function decryptSprints(
 
 export async function createSprintContent(
   client: Client,
-  token: string,
   pc: ProjectCrypto | null,
   input: { name: string; goal?: string; startsOn: string; endsOn: string },
 ): Promise<Sprint> {
   if (pc === null || writeMode(pc, "sprint") === "plain") {
-    return createSprintRaw(client, token, input);
+    return createSprintRaw(client, input);
   }
   const id = newId();
   const name = pc.encrypt(
@@ -705,7 +692,7 @@ export async function createSprintContent(
     1,
     input.goal ?? "",
   );
-  return createSprintRaw(client, token, {
+  return createSprintRaw(client, {
     id,
     startsOn: input.startsOn,
     endsOn: input.endsOn,
@@ -717,7 +704,6 @@ export async function createSprintContent(
 
 export async function encryptSprint(
   client: Client,
-  token: string,
   pc: ProjectCrypto,
   sprint: Sprint,
 ): Promise<void> {
@@ -734,7 +720,7 @@ export async function encryptSprint(
     revision,
     sprint.goal,
   );
-  await updateSprintContent(client, token, sprint.id, {
+  await updateSprintContent(client, sprint.id, {
     nameEnc: name.envelope,
     goalEnc: goal.envelope,
     signerDeviceId: name.signerDeviceId,
@@ -747,7 +733,6 @@ type ContentLike = ProjectCrypto | null;
 /** Encrypts the legacy plaintext messages this person wrote in a conversation. */
 export async function migrateOwnMessages(
   client: Client,
-  token: string,
   pc: ProjectCrypto,
   conversationId: string,
   email: string,
@@ -770,7 +755,7 @@ export async function migrateOwnMessages(
           1,
           message.body,
         );
-        await editMessageRaw(client, token, message.id, {
+        await editMessageRaw(client, message.id, {
           bodyEnc: encrypted.envelope,
           signerDeviceId: encrypted.signerDeviceId,
           contentRevision: 1,

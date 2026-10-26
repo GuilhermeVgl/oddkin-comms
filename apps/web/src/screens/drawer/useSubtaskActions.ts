@@ -4,7 +4,6 @@ import { blip } from "../../design/sound";
 import { burst } from "../../design/sprites";
 import { toast } from "../../design/toast";
 import { createItem } from "../../e2ee/content";
-import { csrfToken } from "../../errors";
 import { useWorkspace } from "../../workspace";
 import { useItemActions } from "../itemActions";
 import { allSubtasksDoneWith, subtaskTarget } from "./derive";
@@ -52,7 +51,7 @@ export function useSubtaskActions(
   /** Creates a subtask assigned to the same person; `onAdded` runs once it exists. */
   function add(title: string, onAdded: () => void) {
     return run(async () => {
-      await createItem(client, csrfToken(), state.crypto, state.project.id, {
+      await createItem(client, state.crypto, state.project.id, {
         kind: "subtask",
         parentId: item.id,
         title,
