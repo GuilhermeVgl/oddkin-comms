@@ -1390,7 +1390,7 @@ export interface paths {
     /** Key domains of a project */
     get: operations["listKeyDomains"];
     put?: never;
-    /** Create the work or chat key domain (it waits for its first generation) */
+    /** Create the work, chat or files key domain (it waits for its first generation) */
     post: operations["createKeyDomain"];
     delete?: never;
     options?: never;
@@ -2285,6 +2285,8 @@ export interface components {
       /** Format: uuid */
       signerDeviceId?: string;
       contentType?: string;
+      /** @description The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required */
+      bodyEncrypted?: boolean;
       /** Format: int64 */
       size: number;
     };
@@ -2317,6 +2319,12 @@ export interface components {
       contentType: string;
       /** Format: int64 */
       size: number;
+      bodyEncrypted?: boolean;
+      /**
+       * Format: int64
+       * @description Size of the original file; equals size unless the body is encrypted
+       */
+      contentSize?: number;
       uploaderEmail: string;
       /** Format: date-time */
       createdAt: string;
@@ -2458,7 +2466,7 @@ export interface components {
     };
     CreateKeyDomainRequest: {
       /** @enum {string} */
-      kind: "work" | "chat";
+      kind: "work" | "chat" | "files";
     };
     KeyDomain: {
       /** Format: uuid */
@@ -2470,7 +2478,7 @@ export interface components {
       /** Format: uuid */
       conversationId?: string;
       /** @enum {string} */
-      kind: "work" | "chat" | "dm" | "sprint";
+      kind: "work" | "chat" | "files" | "dm" | "sprint";
       currentGeneration: number;
       /** @enum {string} */
       state: "ok" | "pending_keys" | "rotation_required";
@@ -2555,7 +2563,7 @@ export interface components {
       /** Format: uuid */
       domainId: string;
       /** @enum {string} */
-      kind: "work" | "chat" | "dm" | "sprint";
+      kind: "work" | "chat" | "files" | "dm" | "sprint";
       /** Format: uuid */
       projectId?: string;
       /** Format: uuid */

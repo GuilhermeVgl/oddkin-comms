@@ -239,14 +239,17 @@ func (e CreateInvitationRequestMembershipKind) Valid() bool {
 
 // Defines values for CreateKeyDomainRequestKind.
 const (
-	CreateKeyDomainRequestKindChat CreateKeyDomainRequestKind = "chat"
-	CreateKeyDomainRequestKindWork CreateKeyDomainRequestKind = "work"
+	CreateKeyDomainRequestKindChat  CreateKeyDomainRequestKind = "chat"
+	CreateKeyDomainRequestKindFiles CreateKeyDomainRequestKind = "files"
+	CreateKeyDomainRequestKindWork  CreateKeyDomainRequestKind = "work"
 )
 
 // Valid indicates whether the value is a known member of the CreateKeyDomainRequestKind enum.
 func (e CreateKeyDomainRequestKind) Valid() bool {
 	switch e {
 	case CreateKeyDomainRequestKindChat:
+		return true
+	case CreateKeyDomainRequestKindFiles:
 		return true
 	case CreateKeyDomainRequestKindWork:
 		return true
@@ -502,6 +505,7 @@ func (e InvitationMembershipKind) Valid() bool {
 const (
 	KeyDomainKindChat   KeyDomainKind = "chat"
 	KeyDomainKindDm     KeyDomainKind = "dm"
+	KeyDomainKindFiles  KeyDomainKind = "files"
 	KeyDomainKindSprint KeyDomainKind = "sprint"
 	KeyDomainKindWork   KeyDomainKind = "work"
 )
@@ -512,6 +516,8 @@ func (e KeyDomainKind) Valid() bool {
 	case KeyDomainKindChat:
 		return true
 	case KeyDomainKindDm:
+		return true
+	case KeyDomainKindFiles:
 		return true
 	case KeyDomainKindSprint:
 		return true
@@ -613,6 +619,7 @@ func (e ProjectMemberMembershipKind) Valid() bool {
 const (
 	RecoveryGapKindChat   RecoveryGapKind = "chat"
 	RecoveryGapKindDm     RecoveryGapKind = "dm"
+	RecoveryGapKindFiles  RecoveryGapKind = "files"
 	RecoveryGapKindSprint RecoveryGapKind = "sprint"
 	RecoveryGapKindWork   RecoveryGapKind = "work"
 )
@@ -623,6 +630,8 @@ func (e RecoveryGapKind) Valid() bool {
 	case RecoveryGapKindChat:
 		return true
 	case RecoveryGapKindDm:
+		return true
+	case RecoveryGapKindFiles:
 		return true
 	case RecoveryGapKindSprint:
 		return true
@@ -808,12 +817,16 @@ type ArchiveRequest struct {
 
 // Attachment defines model for Attachment.
 type Attachment struct {
+	BodyEncrypted   *bool               `json:"bodyEncrypted,omitempty"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
-	ContentType     string              `json:"contentType"`
-	CreatedAt       time.Time           `json:"createdAt"`
-	Encrypted       bool                `json:"encrypted"`
-	Id              openapi_types.UUID  `json:"id"`
-	Name            string              `json:"name"`
+
+	// ContentSize Size of the original file; equals size unless the body is encrypted
+	ContentSize *int64             `json:"contentSize,omitempty"`
+	ContentType string             `json:"contentType"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Encrypted   bool               `json:"encrypted"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
 
 	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
 	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
@@ -1044,9 +1057,11 @@ type CreateSprintRequest struct {
 
 // CreateUploadRequest defines model for CreateUploadRequest.
 type CreateUploadRequest struct {
-	ContentType *string                        `json:"contentType,omitempty"`
-	ContextId   openapi_types.UUID             `json:"contextId"`
-	ContextType CreateUploadRequestContextType `json:"contextType"`
+	// BodyEncrypted The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required
+	BodyEncrypted *bool                          `json:"bodyEncrypted,omitempty"`
+	ContentType   *string                        `json:"contentType,omitempty"`
+	ContextId     openapi_types.UUID             `json:"contextId"`
+	ContextType   CreateUploadRequestContextType `json:"contextType"`
 
 	// Id Client-chosen ID, required when nameEnc is present so the envelope can bind to the attachment
 	Id   *openapi_types.UUID `json:"id,omitempty"`
@@ -2197,7 +2212,7 @@ type ServerInterface interface {
 	// ListKeyDomains Key domains of a project
 	// (GET /api/v1/projects/{projectId}/key-domains)
 	ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId ProjectId)
-	// CreateKeyDomain Create the work or chat key domain (it waits for its first generation)
+	// CreateKeyDomain Create the work, chat or files key domain (it waits for its first generation)
 	// (POST /api/v1/projects/{projectId}/key-domains)
 	CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListProjectMembers List project members

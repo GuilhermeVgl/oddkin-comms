@@ -255,9 +255,10 @@ func (q *Queries) CountWorkItemsInColumn(ctx context.Context, arg CountWorkItems
 
 const createAttachment = `-- name: CreateAttachment :one
 INSERT INTO attachment (id, organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
-                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at
+                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count,
+                        body_encrypted, body_signer_device_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+RETURNING id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at, body_encrypted, body_signer_device_id
 `
 
 type CreateAttachmentParams struct {
@@ -277,6 +278,8 @@ type CreateAttachmentParams struct {
 	DeclaredSize          int64
 	PartSize              int32
 	PartCount             int32
+	BodyEncrypted         bool
+	BodySignerDeviceID    pgtype.UUID
 }
 
 func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (Attachment, error) {
@@ -297,6 +300,8 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		arg.DeclaredSize,
 		arg.PartSize,
 		arg.PartCount,
+		arg.BodyEncrypted,
+		arg.BodySignerDeviceID,
 	)
 	var i Attachment
 	err := row.Scan(
@@ -323,6 +328,8 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
 		&i.ReleasedAt,
+		&i.BodyEncrypted,
+		&i.BodySignerDeviceID,
 	)
 	return i, err
 }
@@ -1427,7 +1434,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id pgtype.UUID) (GetAccoun
 }
 
 const getAttachment = `-- name: GetAttachment :one
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at FROM attachment WHERE id = $1
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at, body_encrypted, body_signer_device_id FROM attachment WHERE id = $1
 `
 
 func (q *Queries) GetAttachment(ctx context.Context, id pgtype.UUID) (Attachment, error) {
@@ -1457,12 +1464,14 @@ func (q *Queries) GetAttachment(ctx context.Context, id pgtype.UUID) (Attachment
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
 		&i.ReleasedAt,
+		&i.BodyEncrypted,
+		&i.BodySignerDeviceID,
 	)
 	return i, err
 }
 
 const getAttachmentForUpdate = `-- name: GetAttachmentForUpdate :one
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at FROM attachment WHERE id = $1 FOR UPDATE
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at, body_encrypted, body_signer_device_id FROM attachment WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetAttachmentForUpdate(ctx context.Context, id pgtype.UUID) (Attachment, error) {
@@ -1492,6 +1501,8 @@ func (q *Queries) GetAttachmentForUpdate(ctx context.Context, id pgtype.UUID) (A
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
 		&i.ReleasedAt,
+		&i.BodyEncrypted,
+		&i.BodySignerDeviceID,
 	)
 	return i, err
 }
@@ -2752,7 +2763,7 @@ func (q *Queries) ListChannelIDs(ctx context.Context, projectID pgtype.UUID) ([]
 }
 
 const listConversationAttachments = `-- name: ListConversationAttachments :many
-SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, a.released_at, COALESCE(u.email_normalized, '')::text AS uploader_email
+SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, a.released_at, a.body_encrypted, a.body_signer_device_id, COALESCE(u.email_normalized, '')::text AS uploader_email
 FROM attachment AS a
 LEFT JOIN account AS u ON u.id = a.uploader_id
 WHERE a.conversation_id = $1 AND a.state = 'ready'
@@ -2783,6 +2794,8 @@ type ListConversationAttachmentsRow struct {
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
 	ReleasedAt            pgtype.Timestamptz
+	BodyEncrypted         bool
+	BodySignerDeviceID    pgtype.UUID
 	UploaderEmail         string
 }
 
@@ -2819,6 +2832,8 @@ func (q *Queries) ListConversationAttachments(ctx context.Context, conversationI
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
 			&i.ReleasedAt,
+			&i.BodyEncrypted,
+			&i.BodySignerDeviceID,
 			&i.UploaderEmail,
 		); err != nil {
 			return nil, err
@@ -3494,7 +3509,7 @@ func (q *Queries) ListPendingDevices(ctx context.Context, organizationID pgtype.
 }
 
 const listPendingRelease = `-- name: ListPendingRelease :many
-SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at FROM attachment
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at, body_encrypted, body_signer_device_id FROM attachment
 WHERE NOT object_removed
   AND (state = 'aborted' OR (state = 'deleted' AND released_at < now() - interval '30 days'))
 ORDER BY created_at
@@ -3534,6 +3549,8 @@ func (q *Queries) ListPendingRelease(ctx context.Context) ([]Attachment, error) 
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
 			&i.ReleasedAt,
+			&i.BodyEncrypted,
+			&i.BodySignerDeviceID,
 		); err != nil {
 			return nil, err
 		}
@@ -3997,7 +4014,7 @@ func (q *Queries) ListUserEvents(ctx context.Context, arg ListUserEventsParams) 
 }
 
 const listWorkItemAttachments = `-- name: ListWorkItemAttachments :many
-SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, a.released_at, COALESCE(u.email_normalized, '')::text AS uploader_email
+SELECT a.id, a.organization_id, a.project_id, a.work_item_id, a.conversation_id, a.uploader_id, a.state, a.object_key, a.upload_id, a.name, a.content_type, a.declared_size, a.part_size, a.part_count, a.stored_size, a.object_removed, a.created_at, a.ready_at, a.encrypted, a.name_enc, a.content_author_id, a.content_signer_device_id, a.released_at, a.body_encrypted, a.body_signer_device_id, COALESCE(u.email_normalized, '')::text AS uploader_email
 FROM attachment AS a
 LEFT JOIN account AS u ON u.id = a.uploader_id
 WHERE a.work_item_id = $1 AND a.state = 'ready'
@@ -4028,6 +4045,8 @@ type ListWorkItemAttachmentsRow struct {
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
 	ReleasedAt            pgtype.Timestamptz
+	BodyEncrypted         bool
+	BodySignerDeviceID    pgtype.UUID
 	UploaderEmail         string
 }
 
@@ -4064,6 +4083,8 @@ func (q *Queries) ListWorkItemAttachments(ctx context.Context, workItemID pgtype
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
 			&i.ReleasedAt,
+			&i.BodyEncrypted,
+			&i.BodySignerDeviceID,
 			&i.UploaderEmail,
 		); err != nil {
 			return nil, err

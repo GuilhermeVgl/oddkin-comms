@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: CREWSTEAD API
+  title: Crewstead API
   version: 0.1.0
   description: Operational and account session endpoints.
 paths:
@@ -2197,7 +2197,7 @@ paths:
           description: Unknown or inaccessible project
     post:
       operationId: createKeyDomain
-      summary: Create the work or chat key domain (it waits for its first generation)
+      summary: Create the work, chat or files key domain (it waits for its first generation)
       security:
         - sessionCookie: []
       requestBody:
@@ -3468,6 +3468,9 @@ components:
           $ref: "#/components/schemas/EncryptedBlob"
         signerDeviceId: { type: string, format: uuid }
         contentType: { type: string, maxLength: 255 }
+        bodyEncrypted:
+          type: boolean
+          description: The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required
         size: { type: integer, format: int64, minimum: 1 }
     Upload:
       type: object
@@ -3514,6 +3517,11 @@ components:
         signerDeviceId: { type: string, format: uuid }
         contentType: { type: string }
         size: { type: integer, format: int64 }
+        bodyEncrypted: { type: boolean }
+        contentSize:
+          type: integer
+          format: int64
+          description: Size of the original file; equals size unless the body is encrypted
         uploaderEmail: { type: string }
         createdAt: { type: string, format: date-time }
     StartCallRequest:
@@ -3711,7 +3719,7 @@ components:
       required: [kind]
       additionalProperties: false
       properties:
-        kind: { type: string, enum: [work, chat] }
+        kind: { type: string, enum: [work, chat, files] }
     KeyDomain:
       type: object
       required: [id, organizationId, kind, currentGeneration, state, writable]
@@ -3721,7 +3729,7 @@ components:
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
-        kind: { type: string, enum: [work, chat, dm, sprint] }
+        kind: { type: string, enum: [work, chat, files, dm, sprint] }
         currentGeneration: { type: integer }
         state: { type: string, enum: [ok, pending_keys, rotation_required] }
         writable:
@@ -3841,7 +3849,7 @@ components:
       additionalProperties: false
       properties:
         domainId: { type: string, format: uuid }
-        kind: { type: string, enum: [work, chat, dm, sprint] }
+        kind: { type: string, enum: [work, chat, files, dm, sprint] }
         projectId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
         generation: { type: integer }

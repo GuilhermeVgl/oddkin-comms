@@ -40,6 +40,8 @@ type Attachment struct {
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
 	ReleasedAt            pgtype.Timestamptz
+	BodyEncrypted         bool
+	BodySignerDeviceID    pgtype.UUID
 }
 
 type AuthSession struct {

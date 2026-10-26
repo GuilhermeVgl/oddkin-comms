@@ -10,15 +10,25 @@ import (
 // Memory is an in-process Store for tests: parts are "uploaded" through Put.
 type Memory struct {
 	mu      sync.Mutex
-	uploads map[string]map[int32]int64 // uploadID -> part -> size
-	keys    map[string]string          // uploadID -> key
-	objects map[string]int64
+	uploads map[string]map[int32]memPart // uploadID -> part
+	keys    map[string]string            // uploadID -> key
+	objects map[string]memObject
 	counter int
+}
+
+type memPart struct {
+	size int64
+	data []byte // nil when a test only cares about the size
+}
+
+type memObject struct {
+	size int64
+	data []byte // nil when the parts carried no bytes
 }
 
 // NewMemory returns an empty in-memory store.
 func NewMemory() *Memory {
-	return &Memory{uploads: map[string]map[int32]int64{}, keys: map[string]string{}, objects: map[string]int64{}}
+	return &Memory{uploads: map[string]map[int32]memPart{}, keys: map[string]string{}, objects: map[string]memObject{}}
 }
 
 func (m *Memory) CreateMultipart(_ context.Context, key string) (string, error) {
@@ -26,7 +36,7 @@ func (m *Memory) CreateMultipart(_ context.Context, key string) (string, error) 
 	defer m.mu.Unlock()
 	m.counter++
 	id := fmt.Sprintf("upload-%d", m.counter)
-	m.uploads[id] = map[int32]int64{}
+	m.uploads[id] = map[int32]memPart{}
 	m.keys[id] = key
 	return id, nil
 }
@@ -36,7 +46,16 @@ func (m *Memory) PutPart(uploadID string, part int32, size int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if parts, ok := m.uploads[uploadID]; ok {
-		parts[part] = size
+		parts[part] = memPart{size: size}
+	}
+}
+
+// PutPartData simulates the browser PUT of real bytes, so a test can read them back.
+func (m *Memory) PutPartData(uploadID string, part int32, data []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if parts, ok := m.uploads[uploadID]; ok {
+		parts[part] = memPart{size: int64(len(data)), data: append([]byte(nil), data...)}
 	}
 }
 
@@ -52,14 +71,24 @@ func (m *Memory) Complete(_ context.Context, key, uploadID string, parts []Part)
 		return ErrNotFound
 	}
 	var total int64
+	var data []byte
+	haveBytes := true
 	for _, part := range parts {
-		size, present := stored[part.Number]
+		piece, present := stored[part.Number]
 		if !present {
 			return fmt.Errorf("part %d was never uploaded", part.Number)
 		}
-		total += size
+		total += piece.size
+		if piece.data == nil {
+			haveBytes = false
+		} else if haveBytes {
+			data = append(data, piece.data...)
+		}
 	}
-	m.objects[key] = total
+	if !haveBytes {
+		data = nil
+	}
+	m.objects[key] = memObject{size: total, data: data}
 	delete(m.uploads, uploadID)
 	delete(m.keys, uploadID)
 	return nil
@@ -76,11 +105,25 @@ func (m *Memory) Abort(_ context.Context, _, uploadID string) error {
 func (m *Memory) Size(_ context.Context, key string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	size, ok := m.objects[key]
+	object, ok := m.objects[key]
 	if !ok {
 		return 0, ErrNotFound
 	}
-	return size, nil
+	return object.size, nil
+}
+
+func (m *Memory) ReadRange(_ context.Context, key string, offset, length int64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	object, ok := m.objects[key]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if offset >= int64(len(object.data)) {
+		return []byte{}, nil
+	}
+	end := min(offset+length, int64(len(object.data)))
+	return append([]byte(nil), object.data[offset:end]...), nil
 }
 
 func (m *Memory) PresignGet(_ context.Context, key string, ttl time.Duration) (string, error) {

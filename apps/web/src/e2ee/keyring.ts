@@ -27,7 +27,7 @@ import {
 import type { Vault } from "./vault";
 
 type Client = ReturnType<typeof createApiClient>;
-export type DomainKind = "work" | "chat" | "dm" | "sprint";
+export type DomainKind = "work" | "chat" | "dm" | "sprint" | "files";
 
 /** A device the server listed whose certificate chain does not reach the pinned root. */
 export class UntrustedDeviceError extends Error {

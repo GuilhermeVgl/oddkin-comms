@@ -25,6 +25,8 @@ type Store interface {
 	Complete(ctx context.Context, key, uploadID string, parts []Part) error
 	Abort(ctx context.Context, key, uploadID string) error
 	Size(ctx context.Context, key string) (int64, error)
+	// ReadRange returns length bytes from offset; a short object returns what exists.
+	ReadRange(ctx context.Context, key string, offset, length int64) ([]byte, error)
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
 	Delete(ctx context.Context, key string) error
 }
