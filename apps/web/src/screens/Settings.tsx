@@ -22,7 +22,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getAvatarVersions,
-  resizeToAvatar,
   setAvatarVersions,
   useAvatarVersion,
 } from "../design/avatars";
@@ -33,6 +32,7 @@ import { Modal } from "../design/Modal";
 import { nameOf } from "../design/people";
 import { getPrefs, setPrefs, usePrefs } from "../design/prefs";
 import { Avatar, Banner, Pbar } from "../design/primitives";
+import { PhotoEditor } from "./PhotoEditor";
 import { go } from "../design/router";
 import { blip } from "../design/sound";
 import { Duo } from "../design/Sprite";
@@ -101,6 +101,7 @@ function Profile({ account }: { account: CurrentAccount }) {
   const { client } = useWorkspace();
   const version = useAvatarVersion(account.id);
   const [busyPhoto, setBusyPhoto] = useState(false);
+  const [editing, setEditing] = useState<File | null>(null);
   const picker = useRef<HTMLInputElement>(null);
 
   // The photo list also refreshes on its own when the change event arrives;
@@ -110,23 +111,15 @@ function Profile({ account }: { account: CurrentAccount }) {
       .filter(([id]) => id !== account.id)
       .map(([id, value]) => ({ accountId: id, version: value }));
 
-  async function choose(file: File | undefined) {
-    if (file === undefined) return;
-    setBusyPhoto(true);
-    try {
-      await putAvatar(csrfToken(), await resizeToAvatar(file));
-      setAvatarVersions([
-        ...others(),
-        { accountId: account.id, version: (version ?? 0) + 1 },
-      ]);
-      toast("Foto atualizada.", { icon: "check" });
-    } catch {
-      toast("Não foi possível usar essa foto. Tente outra imagem.", {
-        kind: "err",
-      });
-    } finally {
-      setBusyPhoto(false);
-    }
+  // Throws when the upload fails, so the editor stays open and says so.
+  async function sendPhoto(photo: Blob) {
+    await putAvatar(csrfToken(), photo);
+    setAvatarVersions([
+      ...others(),
+      { accountId: account.id, version: (version ?? 0) + 1 },
+    ]);
+    setEditing(null);
+    toast("Foto atualizada.", { icon: "check" });
   }
 
   async function removePhoto() {
@@ -177,7 +170,7 @@ function Profile({ account }: { account: CurrentAccount }) {
                 aria-label="Escolher foto de perfil"
                 hidden
                 onChange={(event) => {
-                  void choose(event.target.files?.[0]);
+                  setEditing(event.target.files?.[0] ?? null);
                   event.target.value = "";
                 }}
                 ref={picker}
@@ -186,6 +179,13 @@ function Profile({ account }: { account: CurrentAccount }) {
             </div>
           </div>
         </div>
+        {editing === null ? null : (
+          <PhotoEditor
+            file={editing}
+            onCancel={() => setEditing(null)}
+            onSave={sendPhoto}
+          />
+        )}
         <p className="xs muted">
           E-mail e nome de perfil ficam acessíveis ao backend. O conteúdo de
           trabalho, não.

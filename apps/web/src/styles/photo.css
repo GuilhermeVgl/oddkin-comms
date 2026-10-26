@@ -1,0 +1,52 @@
+.photo-view {
+  position: relative;
+  margin: 4px auto 0;
+  max-width: 100%;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.photo-view canvas {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  max-width: 100%;
+}
+.photo-view canvas:active {
+  cursor: grabbing;
+}
+.photo-view canvas:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+/* Dims the corners so the round shape the photo will have is visible. */
+.photo-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    transparent 69.5%,
+    rgba(16, 18, 17, 0.55) 70%
+  );
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.photo-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted, inherit);
+}
+.photo-tools {
+  align-items: center;
+  justify-content: center;
+}
+.photo-zoom {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--brand);
+}
+.photo-left .i {
+  transform: scaleX(-1);
+}
