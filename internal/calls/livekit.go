@@ -65,6 +65,11 @@ type Rooms interface {
 	DeleteRoom(ctx context.Context, name string) error
 	Participants(ctx context.Context, name string) ([]string, error)
 	Remove(ctx context.Context, name, identity string) error
+	// SetScreenShare lets one person publish their screen in the room, or
+	// takes that back, without disconnecting them: reconnecting to change a
+	// token would make the server see them leave (and end a call they were
+	// alone in).
+	SetScreenShare(ctx context.Context, name, identity string, allowed bool) error
 }
 
 type remoteRooms struct {
@@ -135,6 +140,27 @@ func (r *remoteRooms) Remove(ctx context.Context, name, identity string) error {
 	}
 	_, err = r.client.RemoveParticipant(ctx, &livekit.RoomParticipantIdentity{Room: name, Identity: identity})
 	return ignoreMissing(err)
+}
+
+func (r *remoteRooms) SetScreenShare(ctx context.Context, name, identity string, allowed bool) error {
+	ctx, err := r.authorize(ctx, name)
+	if err != nil {
+		return err
+	}
+	_, err = r.client.UpdateParticipant(ctx, &livekit.UpdateParticipantRequest{
+		Room: name, Identity: identity, Permission: screenSharePermission(allowed),
+	})
+	return ignoreMissing(err)
+}
+
+// screenSharePermission is exactly what a join token grants, plus or minus the
+// screen: clients still cannot publish data, administer the room or record.
+func screenSharePermission(allowed bool) *livekit.ParticipantPermission {
+	sources := []livekit.TrackSource{livekit.TrackSource_MICROPHONE, livekit.TrackSource_CAMERA}
+	if allowed {
+		sources = append(sources, livekit.TrackSource_SCREEN_SHARE)
+	}
+	return &livekit.ParticipantPermission{CanSubscribe: true, CanPublish: true, CanPublishData: false, CanPublishSources: sources}
 }
 
 func ignoreMissing(err error) error {

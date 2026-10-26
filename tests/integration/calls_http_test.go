@@ -351,11 +351,26 @@ func TestCallsAdmissionLimitReconciliationAndPermissions(t *testing.T) {
 	if _, grants, verifyErr := verifier.Verify(liveKitTestConfig.APISecret); verifyErr != nil || !strings.Contains(strings.Join(grants.Video.CanPublishSources, ","), "screen_share") {
 		t.Fatalf("screen share token: %v %+v", verifyErr, grants)
 	}
+	// The permission is granted inside the room, so nobody has to disconnect
+	// (leaving would end a call the sharer is alone in).
+	var sharedRoom string
+	if err := pool.QueryRow(ctx, `SELECT room_name FROM call WHERE id = $1`, call.Id).Scan(&sharedRoom); err != nil {
+		t.Fatal(err)
+	}
+	if !rooms.MayShareScreen(sharedRoom, ids[emailA]) {
+		t.Fatal("the presenter must be allowed to publish a screen in the room")
+	}
 	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/screen-share", "", nil); code != http.StatusConflict {
 		t.Fatalf("second presenter: %d", code)
 	}
+	if rooms.MayShareScreen(sharedRoom, ids[emailB]) {
+		t.Fatal("a refused presenter must not get the permission")
+	}
 	if code := memberA.do(http.MethodDelete, "/api/v1/calls/"+call.Id+"/screen-share", "", nil); code != http.StatusNoContent {
 		t.Fatalf("release: %d", code)
+	}
+	if rooms.MayShareScreen(sharedRoom, ids[emailA]) {
+		t.Fatal("stopping must take the permission back")
 	}
 	if code := memberB.do(http.MethodPost, "/api/v1/calls/"+call.Id+"/screen-share", "", nil); code != http.StatusOK {
 		t.Fatalf("presenter switch: %d", code)

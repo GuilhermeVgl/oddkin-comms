@@ -731,6 +731,13 @@ func (h *healthHandler) StartScreenShare(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	// The slot is ours; now let LiveKit accept the screen from this person,
+	// outside any database lock. If it cannot, give the slot back.
+	if grantErr := h.auth.rooms.SetScreenShare(ctx, call.RoomName, uuid.UUID(session.AccountID.Bytes).String(), true); grantErr != nil {
+		_ = sqlc.New(h.auth.pool).ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID})
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	writeJSON(w, http.StatusOK, ticket)
 }
 
@@ -762,6 +769,9 @@ func (h *healthHandler) StopScreenShare(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
+	}
+	if h.auth.rooms != nil {
+		_ = h.auth.rooms.SetScreenShare(ctx, call.RoomName, uuid.UUID(session.AccountID.Bytes).String(), false)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

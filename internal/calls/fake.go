@@ -13,11 +13,13 @@ type FakeRooms struct {
 	Rooms   map[string]uint32
 	members map[string][]string
 	Removed []string
+	// Screen records who may currently publish a screen, per room.
+	Screen map[string]map[string]bool
 }
 
 // NewFakeRooms returns an empty fake.
 func NewFakeRooms() *FakeRooms {
-	return &FakeRooms{Rooms: map[string]uint32{}, members: map[string][]string{}}
+	return &FakeRooms{Rooms: map[string]uint32{}, members: map[string][]string{}, Screen: map[string]map[string]bool{}}
 }
 
 func (f *FakeRooms) CreateRoom(_ context.Context, name string, maxParticipants uint32) error {
@@ -56,4 +58,21 @@ func (f *FakeRooms) Join(name, identity string) {
 	if !slices.Contains(f.members[name], identity) {
 		f.members[name] = append(f.members[name], identity)
 	}
+}
+
+func (f *FakeRooms) SetScreenShare(_ context.Context, name, identity string, allowed bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Screen[name] == nil {
+		f.Screen[name] = map[string]bool{}
+	}
+	f.Screen[name][identity] = allowed
+	return nil
+}
+
+// MayShareScreen reports whether the identity was last granted the screen.
+func (f *FakeRooms) MayShareScreen(name, identity string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Screen[name][identity]
 }

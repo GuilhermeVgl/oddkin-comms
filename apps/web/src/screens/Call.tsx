@@ -243,6 +243,47 @@ function Clock({ since }: { since: number }) {
   );
 }
 
+/** LiveKit's numeric TrackSource for a shared screen (livekit.TrackSource.SCREEN_SHARE). */
+const SCREEN_SHARE_SOURCE = 3;
+
+/**
+ * The server grants the screen with a permission update that reaches the
+ * browser a moment after its answer; publishing before it arrives is refused.
+ */
+function waitForScreenPermission(room: Room, timeoutMs = 6000): Promise<void> {
+  const allowed = () => {
+    const sources = room.localParticipant.permissions?.canPublishSources ?? [];
+    // An empty list means "every source".
+    return (
+      sources.length === 0 ||
+      sources.some((source) => Number(source) === SCREEN_SHARE_SOURCE)
+    );
+  };
+  if (allowed()) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      room.off(RoomEvent.ParticipantPermissionsChanged, check);
+      reject(new Error("screen_permission_timeout"));
+    }, timeoutMs);
+    function check() {
+      if (!allowed()) return;
+      clearTimeout(timer);
+      room.off(RoomEvent.ParticipantPermissionsChanged, check);
+      resolve();
+    }
+    room.on(RoomEvent.ParticipantPermissionsChanged, check);
+  });
+}
+
+/** Browsers say "denied" when the person cancels the picker; that is not an error to show. */
+function describeShare(error: unknown): string {
+  if (error instanceof DOMException && error.name === "NotAllowedError")
+    return "";
+  if (error instanceof Error && error.message === "screen_permission_timeout")
+    return "Não foi possível liberar o compartilhamento agora. Tente de novo.";
+  return describe(error);
+}
+
 /** The full-screen call: preview, then the grid of people with the call controls. */
 export function CallRoom({
   client,
@@ -387,6 +428,14 @@ export function CallRoom({
         );
         setPhase("error");
       })
+      .on(RoomEvent.LocalTrackUnpublished, (publication) => {
+        // "Stop sharing" in the browser's own bar: give the slot back.
+        if (publication.source !== Track.Source.ScreenShare) return;
+        setSharing(false);
+        const token = csrf();
+        if (token !== null)
+          void stopScreenShare(client, token, callId).catch(() => undefined);
+      })
       .on(RoomEvent.Disconnected, () =>
         setPhase((value) => (value === "connected" ? "error" : value)),
       );
@@ -487,15 +536,26 @@ export function CallRoom({
         setSharing(false);
         return;
       }
-      // The slot is arbitrated by the server; the token that allows the source is
-      // only issued to the current presenter, so reconnect with it.
-      const ticket = await startScreenShare(client, token, callId);
-      active.disconnect();
-      await connect(ticket, true);
+      // The server arbitrates the single slot and then lets LiveKit accept the
+      // screen from this person, so they stay in the room: reconnecting would
+      // make the server see them leave.
+      await startScreenShare(client, token, callId);
+      try {
+        await waitForScreenPermission(active);
+        await active.localParticipant.setScreenShareEnabled(true, {
+          resolution: { width: 1920, height: 1080, frameRate: 15 },
+        });
+      } catch (error) {
+        // The picker was cancelled or the browser refused: free the slot again.
+        await stopScreenShare(client, token, callId).catch(() => undefined);
+        throw error;
+      }
+      setSharing(true);
       setMessage("");
       blip("ok");
     } catch (error) {
-      setMessage(describe(error));
+      setSharing(false);
+      setMessage(describeShare(error));
     }
   }
 
