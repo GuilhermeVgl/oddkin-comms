@@ -7,6 +7,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { setAvatarVersions } from "../design/avatars";
 import { useEvents } from "../events";
+import { Banner } from "../design/primitives";
 import { go, useRoute } from "../design/router";
 import { useOptionalE2EE } from "../e2ee/E2EE";
 import { csrfToken } from "../errors";
@@ -73,6 +74,39 @@ function AvatarSync() {
     if (event === "resync" || event.eventType === "avatar.changed") load();
   });
   return null;
+}
+
+/** Tells whoever can approve devices that one is waiting, wherever they are in the app. */
+function ApprovalNotice() {
+  const e2ee = useOptionalE2EE();
+  const route = useRoute();
+  const waiting = e2ee?.approvals.length ?? 0;
+  if (
+    waiting === 0 ||
+    (route.name === "settings" && route.arg === "dispositivos")
+  )
+    return null;
+  return (
+    <Banner
+      icon="key"
+      kind="warn"
+      role="status"
+      style={{ margin: "8px 32px 0" }}
+    >
+      <b>
+        {waiting === 1
+          ? "Um dispositivo pediu acesso ao histórico."
+          : `${waiting} dispositivos pediram acesso ao histórico.`}
+      </b>{" "}
+      <button
+        className="btn sm"
+        onClick={() => go("settings/dispositivos")}
+        type="button"
+      >
+        Revisar
+      </button>
+    </Banner>
+  );
 }
 
 function Frame({
@@ -145,6 +179,7 @@ function Frame({
       <div className="has-shell" id="app">
         <Sidebar account={account} onLogout={onLogout} />
         <div className="main" key={route.name}>
+          <ApprovalNotice />
           {screen}
         </div>
         <MobileNav account={account} onLogout={onLogout} />

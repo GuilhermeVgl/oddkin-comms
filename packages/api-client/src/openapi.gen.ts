@@ -2406,7 +2406,8 @@ export interface components {
         | "call_invite"
         | "recovery_access"
         | "followed_update"
-        | "invitation_accepted";
+        | "invitation_accepted"
+        | "device_request";
       /** Format: uuid */
       resourceId: string;
       /** Format: uuid */

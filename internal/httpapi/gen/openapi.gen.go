@@ -637,6 +637,7 @@ func (e KeyDomainState) Valid() bool {
 const (
 	Assignment         NotificationKind = "assignment"
 	CallInvite         NotificationKind = "call_invite"
+	DeviceRequest      NotificationKind = "device_request"
 	DirectMessage      NotificationKind = "direct_message"
 	FollowedUpdate     NotificationKind = "followed_update"
 	InvitationAccepted NotificationKind = "invitation_accepted"
@@ -650,6 +651,8 @@ func (e NotificationKind) Valid() bool {
 	case Assignment:
 		return true
 	case CallInvite:
+		return true
+	case DeviceRequest:
 		return true
 	case DirectMessage:
 		return true

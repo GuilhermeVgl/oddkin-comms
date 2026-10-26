@@ -3674,6 +3674,7 @@ components:
                 recovery_access,
                 followed_update,
                 invitation_accepted,
+                device_request,
               ],
           }
         resourceId: { type: string, format: uuid }

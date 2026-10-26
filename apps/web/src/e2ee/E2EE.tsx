@@ -1,7 +1,12 @@
 import {
   createApiClient,
   authorizeDevice,
+  getConversationKeyDomain,
+  getSprintKeyDomain,
   getTrustRoot,
+  listDirectConversations,
+  listKeyDomains,
+  listProjects,
   listDevices,
   listRecoveryAudit,
   listRecoveryGaps,
@@ -12,6 +17,7 @@ import {
   setHistoryMode,
   setTrustRoot,
   type CurrentAccount,
+  type KeyDomain,
   type Device,
   type PendingDevice,
   type RecoveryAuditEntry,
@@ -297,6 +303,53 @@ export function E2EEProvider({
     projects.current.clear();
   }, [account.id, client, runtimeOf]);
 
+  /**
+   * Hands the keys to devices that were approved but still lack them, and
+   * rotates after a revocation, in every project, conversation and the sprint
+   * domain this device can read. Without it a new device is approved yet sees
+   * nothing until someone happens to open each screen.
+   */
+  const stewarding = useRef(false);
+  const stewardAgain = useRef(false);
+  const steward = useCallback(async () => {
+    const ring = keyring.current;
+    const { vault } = await runtimeOf();
+    if (ring === null || !vault.unlocked) return;
+    if (stewarding.current) {
+      stewardAgain.current = true;
+      return;
+    }
+    stewarding.current = true;
+    try {
+      do {
+        stewardAgain.current = false;
+        const domains: KeyDomain[] = [];
+        for (const project of await listProjects(client).catch(() => [])) {
+          domains.push(
+            ...(await listKeyDomains(client, project.id).catch(() => [])),
+          );
+        }
+        for (const dm of await listDirectConversations(client).catch(
+          () => [],
+        )) {
+          const domain = await getConversationKeyDomain(client, dm.id).catch(
+            () => null,
+          );
+          if (domain !== null) domains.push(domain);
+        }
+        const sprint = await getSprintKeyDomain(client).catch(() => null);
+        if (sprint !== null) domains.push(sprint);
+        for (const domain of domains) {
+          if (domain.currentGeneration === 0 || domain.state === "ok") continue;
+          // Another steward may have acted first; the next event looks again.
+          await ring.maintain(domain).catch(() => undefined);
+        }
+      } while (stewardAgain.current);
+    } finally {
+      stewarding.current = false;
+    }
+  }, [client, runtimeOf]);
+
   const refresh = useCallback(async () => {
     try {
       const { vault, crypto } = await runtimeOf();
@@ -411,12 +464,15 @@ export function E2EEProvider({
       setCanApproveWithRoot(stored.root !== undefined && vault.unlocked);
       setHasRecovery(stored.recovery !== undefined && vault.unlocked);
       setPhase(vault.unlocked ? "unlocked" : "locked");
-      if (vault.unlocked) await loadApprovals();
+      if (vault.unlocked) {
+        await loadApprovals();
+        void steward();
+      }
     } catch {
       setError("Não foi possível verificar a segurança deste dispositivo.");
       setPhase("error");
     }
-  }, [account, buildKeyring, client, loadApprovals, runtimeOf]);
+  }, [account, buildKeyring, client, loadApprovals, runtimeOf, steward]);
 
   useEffect(() => {
     void refresh();
@@ -425,6 +481,7 @@ export function E2EEProvider({
   useEvents((event) => {
     if (event === "resync" || event.eventType === "device.changed")
       void refresh();
+    else if (event.eventType === "key-domain.changed") void steward();
   });
 
   const api = useMemo<E2EEApi>(
@@ -694,6 +751,15 @@ export function E2EEProvider({
         } else {
           throw new Error("this browser cannot approve that device");
         }
+        // The approval is the explicit act: the recovery identity (when this
+        // browser holds it) also restores that device's history, and the
+        // stewards hand over the keys they hold. Both are logged by the server.
+        if (root !== undefined && keyring.current !== null) {
+          await keyring.current
+            .recoverGaps(approval.deviceId)
+            .catch(() => undefined);
+        }
+        void steward();
         await refresh();
       },
 

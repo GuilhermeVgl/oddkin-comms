@@ -369,4 +369,26 @@ func TestKeyDirectoryDomainsAndRotation(t *testing.T) {
 	if bytes.Contains(raw, []byte("secret")) {
 		t.Fatal("responses must never carry secret key material")
 	}
+
+	// Handing history to a device must wake it up even though the domain state
+	// stays "ok": the new device is already counted as a holder of the current
+	// generation, so only the event tells its open tab there is more to fetch.
+	changes := func() int {
+		var n int
+		err := pool.QueryRow(ctx, `SELECT count(*) FROM user_event WHERE account_id = $1 AND type = 'key-domain.changed' AND resource_id = $2`,
+			outsiderDevice.account, domain.Id).Scan(&n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := changes()
+	history := envelope(memberDevice, outsiderDevice, 3, false)
+	body := fmt.Sprintf(`{"generation":3,"signerDeviceId":%q,"envelopes":[%s]}`, memberDevice.id, history)
+	if code := member.do(http.MethodPost, "/api/v1/key-domains/"+domain.Id+"/envelopes", body, nil); code != http.StatusOK {
+		t.Fatalf("grant history: %d", code)
+	}
+	if after := changes(); after <= before {
+		t.Fatalf("a history grant must announce key-domain.changed to the recipient (before %d, after %d)", before, after)
+	}
 }

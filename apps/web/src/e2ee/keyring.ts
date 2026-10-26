@@ -158,8 +158,13 @@ export class Keyring {
    * that lacks a generation, re-seals it with the key the recovery identity
    * holds and posts it to the audited recovery endpoint.
    */
-  async recoverGaps(): Promise<{ granted: number; failed: number }> {
-    const gaps = await listRecoveryGaps(this.deps.client);
+  async recoverGaps(
+    onlyDeviceId?: string,
+  ): Promise<{ granted: number; failed: number }> {
+    const gaps = (await listRecoveryGaps(this.deps.client)).filter(
+      (gap) =>
+        onlyDeviceId === undefined || gap.device.deviceId === onlyDeviceId,
+    );
     const byTarget = new Map<string, RecoveryGap[]>();
     for (const gap of gaps) {
       const key = `${gap.domainId}:${gap.generation}`;

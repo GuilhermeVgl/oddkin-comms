@@ -15,6 +15,7 @@ const LABEL: Record<Notification["kind"], string> = {
   recovery_access: "A administração restaurou seu acesso ao histórico cifrado",
   followed_update: "Uma atividade que você segue foi atualizada",
   invitation_accepted: "Alguém aceitou seu convite e já pode entrar",
+  device_request: "Um dispositivo pediu acesso ao histórico cifrado",
   direct_message: "Nova mensagem direta",
 };
 
@@ -25,6 +26,7 @@ const ICON: Record<Notification["kind"], IconName> = {
   recovery_access: "key",
   followed_update: "eye",
   invitation_accepted: "team",
+  device_request: "key",
   direct_message: "chat",
 };
 
@@ -53,6 +55,9 @@ export function NotificationsMenu({
         break;
       case "invitation_accepted":
         go("team");
+        break;
+      case "device_request":
+        go("settings/dispositivos");
         break;
       case "mention":
         go(

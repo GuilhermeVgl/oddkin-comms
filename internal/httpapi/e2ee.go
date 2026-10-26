@@ -144,15 +144,33 @@ func authorizedDevices(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDoma
 // a new generation exists); someone authorized who holds nothing yet leaves the
 // domain waiting for keys. Clients are told through the event feed.
 func refreshDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) error {
+	_, err := settleDomain(ctx, q, domain)
+	return err
+}
+
+// refreshDomainAfterGrant is refreshDomain for the moment keys were handed to
+// devices: the state may stay the same (a device was already counted as
+// waiting), yet the recipients must still hear that something new is there to
+// fetch, so the event goes out even when nothing changed.
+func refreshDomainAfterGrant(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) error {
+	announced, err := settleDomain(ctx, q, domain)
+	if err != nil || announced {
+		return err
+	}
+	return announceDomain(ctx, q, domain)
+}
+
+// settleDomain stores the recomputed state and reports whether it announced it.
+func settleDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) (bool, error) {
 	state := "pending_keys"
 	if domain.CurrentGeneration > 0 {
 		authorized, err := authorizedDevices(ctx, q, domain)
 		if err != nil {
-			return err
+			return false, err
 		}
 		holders, err := q.ListEnvelopeRecipients(ctx, sqlc.ListEnvelopeRecipientsParams{DomainID: domain.ID, Generation: domain.CurrentGeneration})
 		if err != nil {
-			return err
+			return false, err
 		}
 		switch {
 		case slices.ContainsFunc(holders, func(id pgtype.UUID) bool { return !slices.Contains(authorized, id) }):
@@ -164,12 +182,12 @@ func refreshDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) 
 		}
 	}
 	if state == domain.State {
-		return nil
+		return false, nil
 	}
 	if err := q.SetKeyDomainState(ctx, sqlc.SetKeyDomainStateParams{ID: domain.ID, State: state}); err != nil {
-		return err
+		return false, err
 	}
-	return announceDomain(ctx, q, domain)
+	return true, announceDomain(ctx, q, domain)
 }
 
 func announceDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain) error {
@@ -364,9 +382,13 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Administrators learn of a new pending device at once, so an invitation that
-	// carries history can be approved without anyone opening a settings page.
+	// carries history can be approved without anyone opening a settings page; a
+	// person's other devices hear about it too, since they can approve it.
 	if admins, adminErr := q.ListOrganizationAdmins(ctx, organizationID); adminErr == nil {
 		_ = emitEvent(ctx, q, admins, eventSpec{Type: "device.changed", ResourceID: device.ID})
+		if kind == "device" {
+			announceDeviceRequest(ctx, q, device, admins, session.AccountID)
+		}
 	}
 	writeJSON(w, http.StatusCreated, toDevice(device))
 }
@@ -1022,7 +1044,7 @@ func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request
 		w.WriteHeader(status)
 		return
 	}
-	if err = refreshDomain(ctx, q, domain); err == nil {
+	if err = refreshDomainAfterGrant(ctx, q, domain); err == nil {
 		domain, err = q.GetKeyDomain(ctx, domain.ID)
 	}
 	if err == nil {
@@ -1438,7 +1460,7 @@ func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-	if err = refreshDomain(ctx, q, domain); err == nil {
+	if err = refreshDomainAfterGrant(ctx, q, domain); err == nil {
 		domain, err = q.GetKeyDomain(ctx, domain.ID)
 	}
 	if err == nil {
@@ -1485,4 +1507,30 @@ func (h *healthHandler) ListRecoveryAudit(w http.ResponseWriter, r *http.Request
 		entries = append(entries, entry)
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// announceDeviceRequest puts a notification in front of whoever can approve a
+// new device: the administrators and the person's own other devices. The
+// administrator setting up their very first device is not asking anyone.
+func announceDeviceRequest(ctx context.Context, q *sqlc.Queries, device sqlc.Device, admins []pgtype.UUID, account pgtype.UUID) {
+	own, err := q.ListDevicesForAccount(ctx, account)
+	if err != nil {
+		return
+	}
+	hasActive := false
+	for _, other := range own {
+		if other.ID != device.ID && other.State == "active" && other.Kind == "device" {
+			hasActive = true
+		}
+	}
+	recipients := slices.Clone(admins)
+	if hasActive && !slices.Contains(recipients, account) {
+		recipients = append(recipients, account)
+	}
+	for _, recipient := range recipients {
+		if recipient == account && !hasActive {
+			continue
+		}
+		_ = notifyAccount(ctx, q, recipient, "device_request", device.ID, pgtype.UUID{}, pgtype.UUID{})
+	}
 }
