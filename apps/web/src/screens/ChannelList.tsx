@@ -7,7 +7,6 @@ import {
 } from "@crewstead/api-client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../design/icons";
-import { Menu } from "../design/Menu";
 import { toast } from "../design/toast";
 import { createChannelNamed, encryptChannel } from "../e2ee/content";
 import { csrfToken, describeError } from "../errors";
@@ -37,9 +36,6 @@ export function ChannelList({
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<{ id: string; after: boolean } | null>(null);
-  const [menu, setMenu] = useState<{ id: string; anchor: HTMLElement } | null>(
-    null,
-  );
 
   async function act(action: () => Promise<void>, done?: string) {
     try {
@@ -116,10 +112,6 @@ export function ChannelList({
     );
   }
 
-  const menuEntry =
-    menu === null ? undefined : mine.find((entry) => entry.id === menu.id);
-  const menuIndex = menuEntry === undefined ? -1 : mine.indexOf(menuEntry);
-
   return (
     <div>
       <h4 className="row">
@@ -127,7 +119,7 @@ export function ChannelList({
         {manager ? (
           <button
             aria-label={`Novo canal em ${state.project.name}`}
-            className="iconbtn"
+            className="cghost"
             onClick={() => setAdding(true)}
             title="Novo canal"
             type="button"
@@ -136,7 +128,7 @@ export function ChannelList({
           </button>
         ) : null}
       </h4>
-      {mine.map((entry) => {
+      {mine.map((entry, index) => {
         const label = entry.archived ? `${entry.name} (arquivado)` : entry.name;
         const indicator =
           over?.id === entry.id && dragging !== entry.id
@@ -177,49 +169,106 @@ export function ChannelList({
             }}
           >
             {editing === entry.id ? (
-              <InlineName
-                initial={entry.name}
-                label={`Novo nome de ${entry.name}`}
-                onCancel={() => setEditing(null)}
-                onSave={(value) => save(entry, value)}
-              />
-            ) : (
-              <button
-                aria-current={entry.id === selectedId ? "true" : undefined}
-                className="citem"
-                onClick={() => onOpen(entry.id)}
-                onDoubleClick={() =>
-                  manager ? setEditing(entry.id) : undefined
-                }
-                type="button"
-              >
+              <>
                 <Icon name="hash" size="sm" />
-                <span>{label}</span>
-                {entry.unread > 0 ? (
-                  <span aria-label={`${entry.unread} não lidas`} className="u">
-                    {entry.unread}
-                  </span>
+                <InlineName
+                  initial={entry.name}
+                  label={`Novo nome de ${entry.name}`}
+                  onCancel={() => setEditing(null)}
+                  onSave={(value) => save(entry, value)}
+                />
+                <span className="ctools">
+                  <button
+                    aria-label="Mover para cima"
+                    className="cghost"
+                    disabled={index === 0}
+                    onClick={() => move(entry.id, -1)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    title="Mover para cima"
+                    type="button"
+                  >
+                    <Icon name="up" size="sm" />
+                  </button>
+                  <button
+                    aria-label="Mover para baixo"
+                    className="cghost"
+                    disabled={index === mine.length - 1}
+                    onClick={() => move(entry.id, 1)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    title="Mover para baixo"
+                    type="button"
+                  >
+                    <Icon name="down" size="sm" />
+                  </button>
+                  <button
+                    aria-label={
+                      entry.archived ? "Restaurar canal" : "Arquivar canal"
+                    }
+                    className="cghost"
+                    onClick={() => {
+                      setEditing(null);
+                      void act(
+                        () =>
+                          setChannelArchived(
+                            client,
+                            csrfToken(),
+                            entry.id,
+                            !entry.archived,
+                          ),
+                        entry.archived
+                          ? "Canal restaurado."
+                          : "Canal arquivado: agora é só leitura.",
+                      );
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    title={entry.archived ? "Restaurar" : "Arquivar"}
+                    type="button"
+                  >
+                    <Icon name="lock" size="sm" />
+                  </button>
+                </span>
+              </>
+            ) : (
+              <>
+                <button
+                  aria-current={entry.id === selectedId ? "true" : undefined}
+                  className="citem"
+                  onClick={() => onOpen(entry.id)}
+                  onDoubleClick={() =>
+                    manager ? setEditing(entry.id) : undefined
+                  }
+                  type="button"
+                >
+                  <Icon name="hash" size="sm" />
+                  <span>{label}</span>
+                  {entry.unread > 0 ? (
+                    <span
+                      aria-label={`${entry.unread} não lidas`}
+                      className="u"
+                    >
+                      {entry.unread}
+                    </span>
+                  ) : null}
+                </button>
+                {manager ? (
+                  <button
+                    aria-label={`Editar ${entry.name}`}
+                    className="cghost cedit"
+                    onClick={() => setEditing(entry.id)}
+                    title="Editar"
+                    type="button"
+                  >
+                    <Icon name="edit" size="sm" />
+                  </button>
                 ) : null}
-              </button>
+              </>
             )}
-            {manager && editing !== entry.id ? (
-              <button
-                aria-haspopup="menu"
-                aria-label={`Ações de ${entry.name}`}
-                className="iconbtn crow-more"
-                onClick={(event) =>
-                  setMenu({ id: entry.id, anchor: event.currentTarget })
-                }
-                type="button"
-              >
-                <Icon name="more" size="sm" />
-              </button>
-            ) : null}
           </div>
         );
       })}
       {adding ? (
         <div className="crow">
+          <Icon name="hash" size="sm" />
           <InlineName
             initial=""
             label="Nome do novo canal"
@@ -228,67 +277,6 @@ export function ChannelList({
             placeholder="novo-canal"
           />
         </div>
-      ) : null}
-      {menu !== null && menuEntry !== undefined ? (
-        <Menu anchor={menu.anchor} onClose={() => setMenu(null)} right>
-          <button
-            onClick={() => {
-              setMenu(null);
-              setEditing(menuEntry.id);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <Icon name="edit" size="sm" />
-            Renomear
-          </button>
-          <button
-            disabled={menuIndex <= 0}
-            onClick={() => {
-              setMenu(null);
-              move(menuEntry.id, -1);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <Icon name="up" size="sm" />
-            Mover para cima
-          </button>
-          <button
-            disabled={menuIndex < 0 || menuIndex >= mine.length - 1}
-            onClick={() => {
-              setMenu(null);
-              move(menuEntry.id, 1);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <Icon name="down" size="sm" />
-            Mover para baixo
-          </button>
-          <button
-            onClick={() => {
-              setMenu(null);
-              void act(
-                () =>
-                  setChannelArchived(
-                    client,
-                    csrfToken(),
-                    menuEntry.id,
-                    !menuEntry.archived,
-                  ),
-                menuEntry.archived
-                  ? "Canal restaurado."
-                  : "Canal arquivado: agora é só leitura.",
-              );
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <Icon name="lock" size="sm" />
-            {menuEntry.archived ? "Restaurar" : "Arquivar"}
-          </button>
-        </Menu>
       ) : null}
     </div>
   );
@@ -323,7 +311,7 @@ function InlineName({
   return (
     <input
       aria-label={label}
-      className="inp crow-input"
+      className="crow-input"
       defaultValue={initial}
       maxLength={60}
       onBlur={() => finish(true)}
