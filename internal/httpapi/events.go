@@ -158,7 +158,7 @@ func (h *apiServer) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := sqlc.New(h.auth.pool).MarkAllNotificationsRead(ctx, session.AccountID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -185,7 +185,7 @@ func (h *apiServer) SetReadCursor(w http.ResponseWriter, r *http.Request, conver
 		return
 	}
 	if err := q.SetReadCursor(ctx, sqlc.SetReadCursorParams{AccountID: session.AccountID, ConversationID: conversation.ID, Seq: payload.Seq}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -231,9 +231,14 @@ type serverFrame struct {
 	Code            string `json:"code,omitempty"`
 }
 
+var errAuthNotConfigured = errors.New("auth service is not configured")
+
+// frameWriter sends one frame to the client, bounded by a write deadline.
+type frameWriter func(serverFrame) error
+
 func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errAuthNotConfigured)
 		return
 	}
 	if !sameOrigin(r) {
@@ -254,17 +259,28 @@ func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	write := func(frame serverFrame) error {
+	write := frameWriter(func(frame serverFrame) error {
 		writeCtx, writeCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer writeCancel()
 		return wsjson.Write(writeCtx, conn, frame)
-	}
+	})
 	if err = write(serverFrame{Type: "hello", ProtocolVersion: protocolVersion, HeartbeatSecs: int(heartbeatInterval.Seconds()), RetentionDays: 7}); err != nil {
 		return
 	}
 
-	// A single reader owns the connection's read side; control frames flow
-	// through a bounded channel.
+	frames := readClientFrames(ctx, cancel, conn)
+	q := sqlc.New(h.auth.pool)
+	last, resumed := h.awaitResume(ctx, conn, frames, q, session.AccountID, write)
+	if !resumed {
+		return
+	}
+	h.pumpFeed(ctx, r, conn, frames, q, session.AccountID, last, write)
+}
+
+// readClientFrames starts the single reader that owns the connection's read
+// side; control frames flow through a bounded channel. The reader ends, and
+// cancels the connection's context, when the connection or ctx closes.
+func readClientFrames(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn) <-chan clientFrame {
 	frames := make(chan clientFrame, 4)
 	go func() {
 		defer cancel()
@@ -280,29 +296,37 @@ func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	return frames
+}
 
-	q := sqlc.New(h.auth.pool)
-	var last int64
+// awaitResume waits for the client's resume frame and returns the sequence
+// to replay from. It closes the connection and reports false when the client
+// misbehaves, times out or needs a fresh snapshot.
+func (h *apiServer) awaitResume(ctx context.Context, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, write frameWriter) (int64, bool) {
 	select {
 	case frame := <-frames:
 		if frame.Type != "resume" {
 			_ = conn.Close(websocket.StatusPolicyViolation, "resume expected")
-			return
+			return 0, false
 		}
-		start, resumable := h.resumePoint(ctx, q, session.AccountID, frame.Cursor)
+		start, resumable := h.resumePoint(ctx, q, account, frame.Cursor)
 		if !resumable {
 			_ = write(serverFrame{Type: "sync_required"})
 			_ = conn.Close(websocket.StatusNormalClosure, "sync required")
-			return
+			return 0, false
 		}
-		last = start
+		return start, true
 	case <-time.After(10 * time.Second):
 		_ = conn.Close(websocket.StatusPolicyViolation, "resume timeout")
-		return
+		return 0, false
 	case <-ctx.Done():
-		return
+		return 0, false
 	}
+}
 
+// pumpFeed delivers the account's events from last on, pings the client, and
+// re-checks the session, until the connection ends or the session does.
+func (h *apiServer) pumpFeed(ctx context.Context, r *http.Request, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) {
 	poll := time.NewTicker(feedPollInterval)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(heartbeatInterval)
@@ -330,35 +354,49 @@ func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
 				_ = write(serverFrame{Type: "error", Code: "unsupported_frame"})
 			}
 		case <-poll.C:
-			events, listErr := q.ListUserEvents(ctx, sqlc.ListUserEventsParams{AccountID: session.AccountID, Seq: last, Limit: eventBatch})
-			if listErr != nil {
+			var err error
+			if last, err = h.deliverEvents(ctx, q, account, last, write); err != nil {
 				return
-			}
-			for _, event := range events {
-				last = event.Seq
-				allowed, authErr := canReceive(ctx, q, session.AccountID, event.ProjectID, event.ConversationID, event.RequiredPermission.String)
-				if authErr != nil {
-					return
-				}
-				if !allowed {
-					continue
-				}
-				frame := serverFrame{
-					Type: "event", Cursor: h.auth.signCursor(session.AccountID, event.Seq), EventID: uuid.UUID(event.EventID.Bytes).String(),
-					EventType: event.Type, ResourceID: uuid.UUID(event.ResourceID.Bytes).String(), ResourceVersion: event.ResourceVersion,
-					OccurredAt: event.OccurredAt.Time.UTC().Format(time.RFC3339Nano),
-				}
-				if event.ConversationID.Valid {
-					frame.ContextID = uuid.UUID(event.ConversationID.Bytes).String()
-				} else if event.ProjectID.Valid {
-					frame.ContextID = uuid.UUID(event.ProjectID.Bytes).String()
-				}
-				if err = write(frame); err != nil {
-					return
-				}
 			}
 		}
 	}
+}
+
+// deliverEvents sends the next batch of events the account may still see and
+// returns the sequence of the last event it looked at.
+func (h *apiServer) deliverEvents(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) (int64, error) {
+	events, err := q.ListUserEvents(ctx, sqlc.ListUserEventsParams{AccountID: account, Seq: last, Limit: eventBatch})
+	if err != nil {
+		return last, err
+	}
+	for _, event := range events {
+		last = event.Seq
+		allowed, authErr := canReceive(ctx, q, account, event.ProjectID, event.ConversationID, event.RequiredPermission.String)
+		if authErr != nil {
+			return last, authErr
+		}
+		if !allowed {
+			continue
+		}
+		if err = write(h.eventFrame(account, event)); err != nil {
+			return last, err
+		}
+	}
+	return last, nil
+}
+
+func (h *apiServer) eventFrame(account pgtype.UUID, event sqlc.UserEvent) serverFrame {
+	frame := serverFrame{
+		Type: "event", Cursor: h.auth.signCursor(account, event.Seq), EventID: uuid.UUID(event.EventID.Bytes).String(),
+		EventType: event.Type, ResourceID: uuid.UUID(event.ResourceID.Bytes).String(), ResourceVersion: event.ResourceVersion,
+		OccurredAt: event.OccurredAt.Time.UTC().Format(time.RFC3339Nano),
+	}
+	if event.ConversationID.Valid {
+		frame.ContextID = uuid.UUID(event.ConversationID.Bytes).String()
+	} else if event.ProjectID.Valid {
+		frame.ContextID = uuid.UUID(event.ProjectID.Bytes).String()
+	}
+	return frame
 }
 
 // resumePoint returns the sequence after which the feed is replayed. An empty
