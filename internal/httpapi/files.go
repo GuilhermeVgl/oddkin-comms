@@ -76,7 +76,7 @@ func resolveFileContext(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 			return result, false
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return result, false
 		}
 		access, ok := loadAccess(ctx, w, q, item.ProjectID, accountID)
@@ -90,7 +90,7 @@ func resolveFileContext(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 		result.projectID, result.workItemID = item.ProjectID, item.ID
 		organizationID, err := q.GetProjectOrganization(ctx, item.ProjectID)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return result, false
 		}
 		result.organizationID = organizationID
@@ -101,7 +101,7 @@ func resolveFileContext(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 			return result, false
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return result, false
 		}
 		_, chat, ok := resolveChatAccess(ctx, w, q, conversation, accountID)
@@ -114,7 +114,7 @@ func resolveFileContext(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 			result.canDownload, result.canUpload = chat.read, chat.send
 			membership, err := q.GetOrganizationMembershipForAccount(ctx, accountID)
 			if err != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, nil, err)
 				return result, false
 			}
 			result.organizationID = membership.OrganizationID
@@ -130,7 +130,7 @@ func resolveFileContext(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 		result.projectID = conversation.ProjectID
 		organizationID, err := q.GetProjectOrganization(ctx, conversation.ProjectID)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return result, false
 		}
 		result.organizationID = organizationID
@@ -149,7 +149,7 @@ func randomObjectKey() (string, error) {
 	return "o/" + hex.EncodeToString(raw), nil
 }
 
-func (h *healthHandler) storage(w http.ResponseWriter) (objectstore.Store, bool) {
+func (h *apiServer) storage(w http.ResponseWriter) (objectstore.Store, bool) {
 	if h.auth == nil || h.auth.store == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return nil, false
@@ -157,7 +157,7 @@ func (h *healthHandler) storage(w http.ResponseWriter) (objectstore.Store, bool)
 	return h.auth.store, true
 }
 
-func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -202,7 +202,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	attachmentID := pgUUID(uuid.New())
 	if payload.Id != nil {
-		attachmentID = pgUUID(uuidFrom(*payload.Id))
+		attachmentID = toPG(*payload.Id)
 	}
 	contentType := "application/octet-stream"
 	if payload.ContentType != nil && *payload.ContentType != "" {
@@ -211,13 +211,13 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	var workItemID, conversationID pgtype.UUID
 	switch payload.ContextType {
 	case gen.CreateUploadRequestContextTypeWorkItem:
-		workItemID = pgUUID(uuidFrom(payload.ContextId))
+		workItemID = toPG(payload.ContextId)
 	case gen.CreateUploadRequestContextTypeConversation:
-		conversationID = pgUUID(uuidFrom(payload.ContextId))
+		conversationID = toPG(payload.ContextId)
 	}
 	key, err := randomObjectKey()
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	partCount := int32((payload.Size + uploadPartSize - 1) / uploadPartSize)
@@ -227,7 +227,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	// Step 1: reserve quota and the single upload slot in the database.
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -246,7 +246,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	var signerID *pgtype.UUID
 	if payload.SignerDeviceId != nil {
-		signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
 	}
 	var nameEnvelope *string
 	if payload.NameEnc != nil {
@@ -255,7 +255,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	failure, err := attachmentDomainFailure(ctx, q, target, encryptedName, session.AccountID, attachmentID, signerID, nameEnvelope)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if failure != nil {
@@ -265,14 +265,14 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	var bodySigner pgtype.UUID
 	domain, found, err := bodyDomain(ctx, q, target)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if failure = bodyEncryptionFailure(domain, found, bodyEncrypted); failure == nil && bodyEncrypted {
-		bodySigner = pgUUID(uuidFrom(*payload.SignerDeviceId))
+		bodySigner = toPG(*payload.SignerDeviceId)
 		_, failure, err = prepareEncryptedWith(ctx, q, session.AccountID, domain, found, &bodySigner)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -286,7 +286,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	reserved, err := q.ReservedStorage(ctx, target.organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if reserved+payload.Size > h.auth.quota {
@@ -323,7 +323,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 
@@ -343,14 +343,14 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // ownUpload returns the caller's active upload or answers 404/409.
-func (h *healthHandler) ownUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, requireActive bool) (sqlc.Attachment, bool) {
-	attachment, err := q.GetAttachment(ctx, pgUUID(uuidFrom(id)))
+func (h *apiServer) ownUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, requireActive bool) (sqlc.Attachment, bool) {
+	attachment, err := q.GetAttachment(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && attachment.UploaderID != account) {
 		w.WriteHeader(http.StatusNotFound)
 		return attachment, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return attachment, false
 	}
 	if requireActive && (attachment.State != "uploading" || attachment.UploadID == "pending") {
@@ -360,7 +360,7 @@ func (h *healthHandler) ownUpload(ctx context.Context, w http.ResponseWriter, q 
 	return attachment, true
 }
 
-func (h *healthHandler) PresignUploadPart(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId, partNumber int) {
+func (h *apiServer) PresignUploadPart(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId, partNumber int) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -381,7 +381,7 @@ func (h *healthHandler) PresignUploadPart(w http.ResponseWriter, r *http.Request
 	}
 	url, err := store.PresignPart(ctx, attachment.ObjectKey, attachment.UploadID, int32(partNumber), partURLTTL)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.PresignedUrl{Url: url, ExpiresInSeconds: int(partURLTTL.Seconds())})
@@ -420,7 +420,7 @@ func toAttachment(row sqlc.Attachment, uploaderEmail string) gen.Attachment {
 	return attachment
 }
 
-func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
+func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -467,7 +467,7 @@ func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, u
 	}
 	size, err := store.Size(ctx, attachment.ObjectKey)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// Stored bytes equal the reservation: the file for a plaintext body, the
@@ -490,7 +490,7 @@ func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, u
 	if attachment.BodyEncrypted {
 		failure, verifyErr := verifyStoredManifest(ctx, q, store, attachment)
 		if verifyErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, verifyErr)
 			return
 		}
 		if failure != nil {
@@ -500,7 +500,7 @@ func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, u
 	}
 	changed, err := q.MarkAttachmentReady(ctx, sqlc.MarkAttachmentReadyParams{ID: attachment.ID, StoredSize: pgtype.Int8{Int64: size, Valid: true}})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if changed == 0 {
@@ -511,7 +511,7 @@ func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, u
 	writeJSON(w, http.StatusOK, toAttachment(attachment, session.EmailNormalized))
 }
 
-func (h *healthHandler) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
+func (h *apiServer) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -536,7 +536,7 @@ func (h *healthHandler) AbortUpload(w http.ResponseWriter, r *http.Request, uplo
 
 // releaseObject best-effort frees the bucket resources of an aborted or deleted
 // attachment; the scheduled cleanup retries anything left behind.
-func (h *healthHandler) releaseObject(ctx context.Context, q *sqlc.Queries, attachment sqlc.Attachment) {
+func (h *apiServer) releaseObject(ctx context.Context, q *sqlc.Queries, attachment sqlc.Attachment) {
 	if h.auth.store == nil {
 		return
 	}
@@ -545,7 +545,7 @@ func (h *healthHandler) releaseObject(ctx context.Context, q *sqlc.Queries, atta
 	}
 }
 
-func (h *healthHandler) GetAttachmentDownload(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
+func (h *apiServer) GetAttachmentDownload(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -557,13 +557,13 @@ func (h *healthHandler) GetAttachmentDownload(w http.ResponseWriter, r *http.Req
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	attachment, err := q.GetAttachment(ctx, pgUUID(uuidFrom(attachmentId)))
+	attachment, err := q.GetAttachment(ctx, toPG(attachmentId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && attachment.State != "ready") {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	target, ok := resolveFileContext(ctx, w, q, session.AccountID, attachment.WorkItemID, attachment.ConversationID)
@@ -576,13 +576,13 @@ func (h *healthHandler) GetAttachmentDownload(w http.ResponseWriter, r *http.Req
 	}
 	url, err := store.PresignGet(ctx, attachment.ObjectKey, downloadURLTTL)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.PresignedUrl{Url: url, ExpiresInSeconds: int(downloadURLTTL.Seconds())})
 }
 
-func (h *healthHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
+func (h *apiServer) DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -590,13 +590,13 @@ func (h *healthHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request,
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	attachment, err := q.GetAttachment(ctx, pgUUID(uuidFrom(attachmentId)))
+	attachment, err := q.GetAttachment(ctx, toPG(attachmentId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && attachment.State != "ready") {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	target, ok := resolveFileContext(ctx, w, q, session.AccountID, attachment.WorkItemID, attachment.ConversationID)
@@ -615,7 +615,7 @@ func (h *healthHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, workItemID, conversationID pgtype.UUID) {
+func (h *apiServer) listAttachments(w http.ResponseWriter, r *http.Request, workItemID, conversationID pgtype.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -635,7 +635,7 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 	if workItemID.Valid {
 		rows, err := q.ListWorkItemAttachments(ctx, workItemID)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 		for _, row := range rows {
@@ -648,7 +648,7 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 	} else {
 		rows, err := q.ListConversationAttachments(ctx, conversationID)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 		for _, row := range rows {
@@ -662,15 +662,15 @@ func (h *healthHandler) listAttachments(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, attachments)
 }
 
-func (h *healthHandler) ListWorkItemAttachments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
-	h.listAttachments(w, r, pgUUID(uuidFrom(workItemId)), pgtype.UUID{})
+func (h *apiServer) ListWorkItemAttachments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+	h.listAttachments(w, r, toPG(workItemId), pgtype.UUID{})
 }
 
-func (h *healthHandler) ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
-	h.listAttachments(w, r, pgtype.UUID{}, pgUUID(uuidFrom(conversationId)))
+func (h *apiServer) ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+	h.listAttachments(w, r, pgtype.UUID{}, toPG(conversationId))
 }
 
-func (h *healthHandler) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -684,12 +684,12 @@ func (h *healthHandler) GetStorageUsage(w http.ResponseWriter, r *http.Request) 
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	reserved, err := q.ReservedStorage(ctx, membership.OrganizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.StorageUsage{QuotaBytes: h.auth.quota, ReservedBytes: reserved})

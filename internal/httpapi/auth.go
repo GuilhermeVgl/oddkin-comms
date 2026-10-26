@@ -90,13 +90,13 @@ func NewAppHandlerWithConfig(pool *pgxpool.Pool, config AppConfig) (http.Handler
 	if err != nil {
 		return nil, err
 	}
-	return withObservability(gen.Handler(&healthHandler{database: pool, auth: &authService{
+	return withObservability(gen.Handler(&apiServer{database: pool, auth: &authService{
 		pool: pool, dummyHash: dummyHash, limiter: newLoginLimiter(),
 		invitationDeliveryKey: append([]byte(nil), config.InvitationDeliveryKey...), jobs: jobClient, cursorKey: cursorKey, store: config.ObjectStore, quota: quota, livekit: config.LiveKit, rooms: rooms,
 	}}), config.AccessLog), nil
 }
 
-func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) Login(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -150,7 +150,7 @@ func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if !identity.VerifyPassword(payload.Password, account.PasswordHash) || !account.Active {
@@ -161,7 +161,7 @@ func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	issued, err := identity.IssueSession(time.Now())
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	_, err = sqlc.New(h.auth.pool).CreateAuthSession(ctx, sqlc.CreateAuthSessionParams{
@@ -169,7 +169,7 @@ func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: pgtype.Timestamptz{Time: issued.ExpiresAt, Valid: true},
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	h.auth.limiter.succeed(accountKey)
@@ -178,7 +178,7 @@ func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetCurrentAccount(w http.ResponseWriter, r *http.Request) {
 	session, status := h.activeSession(r)
 	if status != http.StatusOK {
 		w.WriteHeader(status)
@@ -188,7 +188,7 @@ func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	_, err := sqlc.New(h.auth.pool).TouchAuthSession(ctx, session.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	response := gen.CurrentAccount{
@@ -200,7 +200,7 @@ func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -210,15 +210,15 @@ func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (h *healthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) Logout(w http.ResponseWriter, r *http.Request) {
 	h.revoke(w, r, false)
 }
 
-func (h *healthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	h.revoke(w, r, true)
 }
 
-func (h *healthHandler) revoke(w http.ResponseWriter, r *http.Request, all bool) {
+func (h *apiServer) revoke(w http.ResponseWriter, r *http.Request, all bool) {
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -242,14 +242,14 @@ func (h *healthHandler) revoke(w http.ResponseWriter, r *http.Request, all bool)
 		_, err = queries.RevokeAuthSession(ctx, session.ID)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	clearAuthCookies(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) activeSession(r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, int) {
+func (h *apiServer) activeSession(r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, int) {
 	if h.auth == nil {
 		return sqlc.FindActiveSessionByTokenHashRow{}, http.StatusServiceUnavailable
 	}

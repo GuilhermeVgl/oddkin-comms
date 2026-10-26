@@ -86,7 +86,7 @@ func requireReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	case "dm":
 		conversation, err := q.GetConversation(ctx, domain.ConversationID)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return false
 		}
 		if account != conversation.DmLow && account != conversation.DmHigh {
@@ -259,16 +259,16 @@ func toKeyDomain(domain sqlc.KeyDomain) gen.KeyDomain {
 	return response
 }
 
-func (h *healthHandler) organizationOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID) (pgtype.UUID, bool) {
+func (h *apiServer) organizationOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID) (pgtype.UUID, bool) {
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, account)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return pgtype.UUID{}, false
 	}
 	return membership.OrganizationID, true
 }
 
-func (h *healthHandler) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -286,13 +286,13 @@ func (h *healthHandler) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.TrustRoot{SignPublicKey: b64(root.RootSignPublicKey), SetAt: root.SetAt.Time})
 }
 
-func (h *healthHandler) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -319,7 +319,7 @@ func (h *healthHandler) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := q.SetTrustRoot(ctx, sqlc.SetTrustRootParams{OrganizationID: organizationID, RootSignPublicKey: key, SetBy: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if created == 0 {
@@ -329,13 +329,13 @@ func (h *healthHandler) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	root, err := q.GetTrustRoot(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.TrustRoot{SignPublicKey: b64(root.RootSignPublicKey), SetAt: root.SetAt.Time})
 }
 
-func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -378,7 +378,7 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// Administrators learn of a new pending device at once, so an invitation that
@@ -393,7 +393,7 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toDevice(device))
 }
 
-func (h *healthHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListDevices(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -402,7 +402,7 @@ func (h *healthHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListDevicesForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	devices := make([]gen.Device, 0, len(rows))
@@ -412,7 +412,7 @@ func (h *healthHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, devices)
 }
 
-func (h *healthHandler) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -430,7 +430,7 @@ func (h *healthHandler) ListPendingDevices(w http.ResponseWriter, r *http.Reques
 	}
 	rows, err := q.ListPendingDevices(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	pending := make([]gen.PendingDevice, 0, len(rows))
@@ -452,7 +452,7 @@ func (h *healthHandler) ListPendingDevices(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, pending)
 }
 
-func (h *healthHandler) AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *apiServer) AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -470,18 +470,18 @@ func (h *healthHandler) AuthorizeDevice(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	target, err := q.GetDevice(ctx, pgUUID(uuidFrom(deviceId)))
+	target, err := q.GetDevice(ctx, toPG(deviceId))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	var (
@@ -508,7 +508,7 @@ func (h *healthHandler) AuthorizeDevice(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		if rootErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, rootErr)
 			return
 		}
 		signer = root.RootSignPublicKey
@@ -518,13 +518,13 @@ func (h *healthHandler) AuthorizeDevice(w http.ResponseWriter, r *http.Request, 
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		existing, getErr := q.GetDevice(ctx, pgUUID(uuidFrom(*payload.AuthorizerDeviceId)))
+		existing, getErr := q.GetDevice(ctx, toPG(*payload.AuthorizerDeviceId))
 		if errors.Is(getErr, pgx.ErrNoRows) || (getErr == nil && (existing.AccountID != session.AccountID || existing.State != "active" || existing.Kind != "device")) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		if getErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, getErr)
 			return
 		}
 		signer, authorizer = existing.SignPublicKey, existing.ID
@@ -556,18 +556,18 @@ func (h *healthHandler) AuthorizeDevice(w http.ResponseWriter, r *http.Request, 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	activated, err := sqlc.New(h.auth.pool).GetDevice(ctx, target.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toDevice(activated))
 }
 
-func (h *healthHandler) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *apiServer) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -576,18 +576,18 @@ func (h *healthHandler) RevokeDevice(w http.ResponseWriter, r *http.Request, dev
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	target, err := q.GetDevice(ctx, pgUUID(uuidFrom(deviceId)))
+	target, err := q.GetDevice(ctx, toPG(deviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && target.AccountID != session.AccountID && !session.IsAdmin) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if _, err = q.RevokeDevice(ctx, target.ID); err == nil {
@@ -600,13 +600,13 @@ func (h *healthHandler) RevokeDevice(w http.ResponseWriter, r *http.Request, dev
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -619,22 +619,22 @@ func (h *healthHandler) GetProjectDirectory(w http.ResponseWriter, r *http.Reque
 	}
 	members, err := projectRecipients(ctx, q, pgUUID(projectId), "")
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	devices, err := q.ListActiveDevicesForAccounts(ctx, members)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	organizationID, err := q.GetProjectOrganization(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	recovery, err := q.ListActiveRecoveryDevices(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	directory := make([]gen.DirectoryDevice, 0, len(devices)+len(recovery))
@@ -647,7 +647,7 @@ func (h *healthHandler) GetProjectDirectory(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, directory)
 }
 
-func (h *healthHandler) CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -660,7 +660,7 @@ func (h *healthHandler) CreateKeyDomain(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -675,7 +675,7 @@ func (h *healthHandler) CreateKeyDomain(w http.ResponseWriter, r *http.Request, 
 	}
 	organizationID, err := q.GetProjectOrganization(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domain, err := q.CreateKeyDomain(ctx, sqlc.CreateKeyDomainParams{OrganizationID: organizationID, ProjectID: pgUUID(projectId), Kind: string(payload.Kind)})
@@ -690,13 +690,13 @@ func (h *healthHandler) CreateKeyDomain(w http.ResponseWriter, r *http.Request, 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
 }
 
-func (h *healthHandler) ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -710,7 +710,7 @@ func (h *healthHandler) ListKeyDomains(w http.ResponseWriter, r *http.Request, p
 	}
 	rows, err := q.ListKeyDomainsForProject(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domains := make([]gen.KeyDomain, 0, len(rows))
@@ -722,7 +722,7 @@ func (h *healthHandler) ListKeyDomains(w http.ResponseWriter, r *http.Request, p
 	writeJSON(w, http.StatusOK, domains)
 }
 
-func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -735,32 +735,32 @@ func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
 	// The domain row lock makes "next generation" and "recipient set is
 	// complete" one atomic decision.
-	domain, err := q.LockKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId)))
+	domain, err := q.LockKeyDomain(ctx, toPG(keyDomainId))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if !requireReader(ctx, w, q, domain, session.AccountID) {
 		return
 	}
-	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if int32(payload.Generation) != domain.CurrentGeneration+1 {
@@ -769,12 +769,12 @@ func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Requ
 	}
 	required, err := authorizedDevices(ctx, q, domain)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	given := make([]pgtype.UUID, 0, len(payload.Envelopes))
 	for _, envelope := range payload.Envelopes {
-		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		recipient := toPG(envelope.RecipientDeviceId)
 		if slices.Contains(given, recipient) || !slices.Contains(required, recipient) {
 			// An envelope for someone who must not hold this key (or twice for one device).
 			w.WriteHeader(http.StatusBadRequest)
@@ -794,7 +794,7 @@ func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Requ
 	for _, envelope := range payload.Envelopes {
 		sealed, validSealed := unb64(envelope.Sealed, 0)
 		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
-		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		recipient := toPG(envelope.RecipientDeviceId)
 		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
 			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
 				RecipientDeviceID: uuidString(recipient), DomainID: uuidString(domain.ID), Generation: uint32(payload.Generation), Sealed: sealed,
@@ -818,13 +818,13 @@ func (h *healthHandler) PublishKeyGeneration(w http.ResponseWriter, r *http.Requ
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -832,13 +832,13 @@ func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Reques
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	domain, err := q.GetKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId)))
+	domain, err := q.GetKeyDomain(ctx, toPG(keyDomainId))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if !requireReader(ctx, w, q, domain, session.AccountID) {
@@ -846,7 +846,7 @@ func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Reques
 	}
 	devices, err := q.ListDevicesForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	var active []pgtype.UUID
@@ -857,7 +857,7 @@ func (h *healthHandler) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Reques
 	}
 	rows, err := q.ListEnvelopesForDevices(ctx, sqlc.ListEnvelopesForDevicesParams{DomainID: domain.ID, Devices: active})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	envelopes := make([]gen.KeyEnvelope, 0, len(rows))
@@ -885,7 +885,7 @@ func directoryEntry(id, account pgtype.UUID, email, kind, state string, sign, bo
 // GetDevice returns the public record of any activated device of the
 // organization, including revoked ones: clients need the key of a former
 // device to verify what it signed, and to walk certificate chains.
-func (h *healthHandler) GetDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *apiServer) GetDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -897,13 +897,13 @@ func (h *healthHandler) GetDevice(w http.ResponseWriter, r *http.Request, device
 	if !ok {
 		return
 	}
-	device, err := q.GetDevice(ctx, pgUUID(uuidFrom(deviceId)))
+	device, err := q.GetDevice(ctx, toPG(deviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (device.OrganizationID != organizationID || len(device.Certificate) == 0)) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	owner, err := q.GetAccountByID(ctx, device.AccountID)
@@ -915,20 +915,20 @@ func (h *healthHandler) GetDevice(w http.ResponseWriter, r *http.Request, device
 }
 
 // domainForReader loads a domain and answers 404/403 for non-readers.
-func (h *healthHandler) domainForReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id gen.KeyDomainId, account pgtype.UUID) (sqlc.KeyDomain, bool) {
-	domain, err := q.GetKeyDomain(ctx, pgUUID(uuidFrom(id)))
+func (h *apiServer) domainForReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id gen.KeyDomainId, account pgtype.UUID) (sqlc.KeyDomain, bool) {
+	domain, err := q.GetKeyDomain(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return domain, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return domain, false
 	}
 	return domain, requireReader(ctx, w, q, domain, account)
 }
 
-func (h *healthHandler) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -942,7 +942,7 @@ func (h *healthHandler) ListKeyRecipients(w http.ResponseWriter, r *http.Request
 	}
 	rows, err := q.ListAllEnvelopeRecipients(ctx, domain.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	recipients := make([]gen.KeyRecipient, 0, len(rows))
@@ -952,7 +952,7 @@ func (h *healthHandler) ListKeyRecipients(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, recipients)
 }
 
-func (h *healthHandler) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -966,17 +966,17 @@ func (h *healthHandler) ListAuthorizedDevices(w http.ResponseWriter, r *http.Req
 	}
 	readers, err := domainReaders(ctx, q, domain)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	devices, err := q.ListActiveDevicesForAccounts(ctx, readers)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	recovery, err := q.ListActiveRecoveryDevices(ctx, domain.OrganizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	result := make([]gen.DirectoryDevice, 0, len(devices)+len(recovery))
@@ -991,7 +991,7 @@ func (h *healthHandler) ListAuthorizedDevices(w http.ResponseWriter, r *http.Req
 
 // GrantKeyEnvelopes gives authorized devices that lack one an envelope for an
 // existing generation, which is how a new member receives the history.
-func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1004,29 +1004,29 @@ func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	if _, err = q.LockKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId))); errors.Is(err, pgx.ErrNoRows) {
+	if _, err = q.LockKeyDomain(ctx, toPG(keyDomainId)); errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	} else if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domain, ok := h.domainForReader(ctx, w, q, keyDomainId, session.AccountID)
 	if !ok {
 		return
 	}
-	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if payload.Generation < 1 || int32(payload.Generation) > domain.CurrentGeneration {
@@ -1035,7 +1035,7 @@ func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request
 	}
 	items := make([]grantItem, len(payload.Envelopes))
 	for i, envelope := range payload.Envelopes {
-		items[i] = grantItem{recipient: pgUUID(uuidFrom(envelope.RecipientDeviceId)), sealed: envelope.Sealed, signature: envelope.Signature}
+		items[i] = grantItem{recipient: toPG(envelope.RecipientDeviceId), sealed: envelope.Sealed, signature: envelope.Signature}
 	}
 	if status, _, grantErr := applyGrant(ctx, q, domain, signer, payload.Generation, items); grantErr != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -1051,14 +1051,14 @@ func (h *healthHandler) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
 // GetConversationKeyDomain returns the DM's key domain to either participant.
-func (h *healthHandler) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -1066,13 +1066,13 @@ func (h *healthHandler) GetConversationKeyDomain(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	conversation, err := q.GetConversation(ctx, pgUUID(uuidFrom(conversationId)))
+	conversation, err := q.GetConversation(ctx, toPG(conversationId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (conversation.Kind != "dm" || (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh))) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domain, err := q.GetKeyDomainByConversation(ctx, conversation.ID)
@@ -1081,13 +1081,13 @@ func (h *healthHandler) GetConversationKeyDomain(w http.ResponseWriter, r *http.
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *healthHandler) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1096,18 +1096,18 @@ func (h *healthHandler) CreateConversationKeyDomain(w http.ResponseWriter, r *ht
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	conversation, err := q.GetConversation(ctx, pgUUID(uuidFrom(conversationId)))
+	conversation, err := q.GetConversation(ctx, toPG(conversationId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh)) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if conversation.Kind != "dm" {
@@ -1130,13 +1130,13 @@ func (h *healthHandler) CreateConversationKeyDomain(w http.ResponseWriter, r *ht
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
 }
 
-func (h *healthHandler) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -1158,13 +1158,13 @@ func (h *healthHandler) GetSprintKeyDomain(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *healthHandler) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1177,7 +1177,7 @@ func (h *healthHandler) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Req
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -1198,7 +1198,7 @@ func (h *healthHandler) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Req
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
@@ -1254,7 +1254,7 @@ func applyGrant(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain, sig
 
 // recoveryAdmin answers 403 unless the caller is an administrator whose
 // account owns an active recovery identity.
-func (h *healthHandler) recoveryAdmin(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (pgtype.UUID, []pgtype.UUID, bool) {
+func (h *apiServer) recoveryAdmin(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (pgtype.UUID, []pgtype.UUID, bool) {
 	if !session.IsAdmin {
 		w.WriteHeader(http.StatusForbidden)
 		return pgtype.UUID{}, nil, false
@@ -1265,7 +1265,7 @@ func (h *healthHandler) recoveryAdmin(ctx context.Context, w http.ResponseWriter
 	}
 	recovery, err := q.ListActiveRecoveryDevices(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return pgtype.UUID{}, nil, false
 	}
 	var mine []pgtype.UUID
@@ -1284,7 +1284,7 @@ func (h *healthHandler) recoveryAdmin(ctx context.Context, w http.ResponseWriter
 // ListRecoveryGaps lists every (domain, generation, device) where an authorized
 // device cannot read yet. Only the recovery administrator sees it, by design:
 // the recovery identity can restore access anywhere in the organization.
-func (h *healthHandler) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -1298,7 +1298,7 @@ func (h *healthHandler) ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
 	}
 	domains, err := q.ListKeyDomainsForOrganization(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	gaps := []gen.RecoveryGap{}
@@ -1308,13 +1308,13 @@ func (h *healthHandler) ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
 		}
 		authorized, authErr := authorizedDevices(ctx, q, domain)
 		if authErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, authErr)
 			return
 		}
 		for generation := int32(1); generation <= domain.CurrentGeneration; generation++ {
 			holders, listErr := q.ListEnvelopeRecipients(ctx, sqlc.ListEnvelopeRecipientsParams{DomainID: domain.ID, Generation: generation})
 			if listErr != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, r, listErr)
 				return
 			}
 			for _, id := range authorized {
@@ -1323,7 +1323,7 @@ func (h *healthHandler) ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
 				}
 				device, deviceErr := q.GetDevice(ctx, id)
 				if deviceErr != nil {
-					w.WriteHeader(http.StatusServiceUnavailable)
+					serverError(w, r, deviceErr)
 					return
 				}
 				email := ""
@@ -1349,7 +1349,7 @@ func (h *healthHandler) ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, gaps)
 }
 
-func (h *healthHandler) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -1361,18 +1361,18 @@ func (h *healthHandler) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	domain, err := q.GetKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId)))
+	domain, err := q.GetKeyDomain(ctx, toPG(keyDomainId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && domain.OrganizationID != organizationID) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	rows, err := q.ListEnvelopesForDevices(ctx, sqlc.ListEnvelopesForDevicesParams{DomainID: domain.ID, Devices: recoveryIDs})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	envelopes := make([]gen.KeyEnvelope, 0, len(rows))
@@ -1389,7 +1389,7 @@ func (h *healthHandler) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Req
 // administrator, with the recovery identity unlocked locally, re-seals a
 // generation for devices that lost theirs. The server only transports it,
 // records who did what for whom, and tells the person.
-func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *apiServer) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1402,7 +1402,7 @@ func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Re
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -1411,31 +1411,31 @@ func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	domain, err := q.LockKeyDomain(ctx, pgUUID(uuidFrom(keyDomainId)))
+	domain, err := q.LockKeyDomain(ctx, toPG(keyDomainId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && domain.OrganizationID != organizationID) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
-	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	items := make([]grantItem, len(payload.Envelopes))
 	for i, envelope := range payload.Envelopes {
-		items[i] = grantItem{recipient: pgUUID(uuidFrom(envelope.RecipientDeviceId)), sealed: envelope.Sealed, signature: envelope.Signature}
+		items[i] = grantItem{recipient: toPG(envelope.RecipientDeviceId), sealed: envelope.Sealed, signature: envelope.Signature}
 	}
 	status, granted, err := applyGrant(ctx, q, domain, signer, payload.Generation, items)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if status != 0 {
@@ -1456,7 +1456,7 @@ func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Re
 			err = getErr
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -1467,13 +1467,13 @@ func (h *healthHandler) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Re
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *healthHandler) ListRecoveryAudit(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListRecoveryAudit(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -1491,7 +1491,7 @@ func (h *healthHandler) ListRecoveryAudit(w http.ResponseWriter, r *http.Request
 	}
 	rows, err := q.ListRecoveryAudit(ctx, organizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	entries := make([]gen.RecoveryAuditEntry, 0, len(rows))

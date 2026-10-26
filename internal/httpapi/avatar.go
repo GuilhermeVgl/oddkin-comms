@@ -36,7 +36,7 @@ func avatarKind(contentType string, data []byte) bool {
 }
 
 // PutAvatar stores the caller's photo and tells the people who can see it.
-func (h *healthHandler) PutAvatar(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) PutAvatar(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -55,7 +55,7 @@ func (h *healthHandler) PutAvatar(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -67,13 +67,13 @@ func (h *healthHandler) PutAvatar(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -82,7 +82,7 @@ func (h *healthHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -94,7 +94,7 @@ func (h *healthHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -110,7 +110,7 @@ func announceAvatar(ctx context.Context, q *sqlc.Queries, account pgtype.UUID) e
 
 // visibleAvatars is what the caller may see: themselves, people who share a
 // project with them, and everyone for an administrator.
-func (h *healthHandler) visibleAvatars(ctx context.Context, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (map[pgtype.UUID]int64, error) {
+func (h *apiServer) visibleAvatars(ctx context.Context, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (map[pgtype.UUID]int64, error) {
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (h *healthHandler) visibleAvatars(ctx context.Context, q *sqlc.Queries, ses
 	return visible, nil
 }
 
-func (h *healthHandler) ListAvatars(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListAvatars(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -135,7 +135,7 @@ func (h *healthHandler) ListAvatars(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	visible, err := h.visibleAvatars(ctx, sqlc.New(h.auth.pool), session)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	list := make([]gen.AvatarVersion, 0, len(visible))
@@ -145,7 +145,7 @@ func (h *healthHandler) ListAvatars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
-func (h *healthHandler) GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
+func (h *apiServer) GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -153,10 +153,10 @@ func (h *healthHandler) GetAvatar(w http.ResponseWriter, r *http.Request, accoun
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	target := pgUUID(uuidFrom(accountId))
+	target := toPG(accountId)
 	visible, err := h.visibleAvatars(ctx, q, session)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if _, allowed := visible[target]; !allowed {

@@ -19,7 +19,7 @@ func brandingResponse(row sqlc.GetOrganizationBrandingRow) gen.OrganizationBrand
 	return gen.OrganizationBranding{Name: row.Name.String, HasLogo: len(row.LogoData) > 0, ShowDuo: row.ShowDuo}
 }
 
-func (h *healthHandler) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.reader(w, r); !ok {
 		return
 	}
@@ -27,13 +27,13 @@ func (h *healthHandler) GetOrganizationBranding(w http.ResponseWriter, r *http.R
 	defer cancel()
 	row, err := sqlc.New(h.auth.pool).GetOrganizationBranding(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, brandingResponse(row))
 }
 
-func (h *healthHandler) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -61,7 +61,7 @@ func (h *healthHandler) UpdateOrganizationBranding(w http.ResponseWriter, r *htt
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err := q.UpdateOrganizationBranding(ctx, sqlc.UpdateOrganizationBrandingParams{
@@ -74,7 +74,7 @@ func (h *healthHandler) UpdateOrganizationBranding(w http.ResponseWriter, r *htt
 	}
 	row, err := q.GetOrganizationBranding(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, brandingResponse(row))
@@ -105,7 +105,7 @@ func decodeBrandLogo(payload gen.UpdateOrganizationBrandingRequest) ([]byte, str
 	return data, mimeType, true, true
 }
 
-func (h *healthHandler) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.reader(w, r); !ok {
 		return
 	}
@@ -113,7 +113,7 @@ func (h *healthHandler) GetOrganizationLogo(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 	row, err := sqlc.New(h.auth.pool).GetOrganizationLogo(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if len(row.LogoData) == 0 || !row.LogoMime.Valid {

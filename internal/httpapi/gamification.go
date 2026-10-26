@@ -17,7 +17,7 @@ const maxFocusMinutes = 180
 
 // GetMyStats is the caller's own scoreboard. It is computed from operational
 // metadata only (when work was finished, thanks, focus time, calls joined).
-func (h *healthHandler) GetMyStats(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetMyStats(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -36,12 +36,12 @@ func (h *healthHandler) GetMyStats(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := q.ListCompletionDays(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	counts, err := q.GetGamificationCounts(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	now := time.Now().In(zone)
@@ -62,7 +62,7 @@ func (h *healthHandler) GetMyStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *healthHandler) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, false)
 	if !ok {
 		return
@@ -71,7 +71,7 @@ func (h *healthHandler) GetWorkItemEngagement(w http.ResponseWriter, r *http.Req
 	defer cancel()
 	row, err := sqlc.New(h.auth.pool).GetItemEngagement(ctx, sqlc.GetItemEngagementParams{Item: item.ID, Me: account})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.WorkItemEngagement{KudosCount: int(row.KudosCount), KudosMine: row.KudosMine, FocusMinutes: int(row.FocusMinutes)})
@@ -79,7 +79,7 @@ func (h *healthHandler) GetWorkItemEngagement(w http.ResponseWriter, r *http.Req
 
 // GiveKudos thanks whoever finished an activity. The assignee hears about it
 // once, however many times the same person presses the button.
-func (h *healthHandler) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -88,7 +88,7 @@ func (h *healthHandler) GiveKudos(w http.ResponseWriter, r *http.Request, workIt
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -116,13 +116,13 @@ func (h *healthHandler) GiveKudos(w http.ResponseWriter, r *http.Request, workIt
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) RemoveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) RemoveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -136,7 +136,7 @@ func (h *healthHandler) RemoveKudos(w http.ResponseWriter, r *http.Request, work
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) RecordFocusSession(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) RecordFocusSession(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	var payload gen.FocusSessionRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

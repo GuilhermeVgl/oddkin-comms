@@ -15,7 +15,7 @@ import (
 // CreateChannel adds a channel. A project that already encrypts chat gets an
 // encrypted name under an id the client chose, so the id is part of what was
 // signed; otherwise the name is stored in the clear until the project migrates.
-func (h *healthHandler) CreateChannel(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) CreateChannel(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.CreateChannelRequest
 	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
 		return
@@ -32,8 +32,8 @@ func (h *healthHandler) CreateChannel(w http.ResponseWriter, r *http.Request, pr
 			err     error
 		)
 		if encrypted {
-			id := pgUUID(uuidFrom(*payload.Id))
-			writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "chat", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+			id := toPG(*payload.Id)
+			writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "chat", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 			if prepErr != nil {
 				return 0, nil, prepErr
 			}
@@ -80,7 +80,7 @@ func (h *healthHandler) CreateChannel(w http.ResponseWriter, r *http.Request, pr
 }
 
 // ReorderChannels takes the complete list so a stale client cannot drop a channel.
-func (h *healthHandler) ReorderChannels(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ReorderChannels(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ReorderRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -105,7 +105,7 @@ func (h *healthHandler) ReorderChannels(w http.ResponseWriter, r *http.Request, 
 			return http.StatusBadRequest, nil, nil
 		}
 		for position, id := range payload.Ids {
-			if err = q.SetConversationPosition(ctx, sqlc.SetConversationPositionParams{ID: pgUUID(uuidFrom(id)), ProjectID: pgUUID(projectId), Position: int32(position)}); err != nil {
+			if err = q.SetConversationPosition(ctx, sqlc.SetConversationPositionParams{ID: toPG(id), ProjectID: pgUUID(projectId), Position: int32(position)}); err != nil {
 				return 0, nil, err
 			}
 		}
@@ -114,7 +114,7 @@ func (h *healthHandler) ReorderChannels(w http.ResponseWriter, r *http.Request, 
 }
 
 // SetChannelArchived makes a channel read-only, or writable again.
-func (h *healthHandler) SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	var payload gen.ArchiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -127,7 +127,7 @@ func (h *healthHandler) SetChannelArchived(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -155,14 +155,14 @@ func (h *healthHandler) SetChannelArchived(w http.ResponseWriter, r *http.Reques
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // SetProjectArchived hides a project from the default lists and makes it read-only.
-func (h *healthHandler) SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ArchiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -175,7 +175,7 @@ func (h *healthHandler) SetProjectArchived(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -202,14 +202,14 @@ func (h *healthHandler) SetProjectArchived(w http.ResponseWriter, r *http.Reques
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // SetInvitePolicy lets the managers decide who else may invite or add people.
-func (h *healthHandler) SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.SetInvitePolicyRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -228,13 +228,13 @@ func (h *healthHandler) SetInvitePolicy(w http.ResponseWriter, r *http.Request, 
 
 // SetMemberRole promotes an internal member to manager or steps one down. The
 // project always keeps a manager, and externals never become managers.
-func (h *healthHandler) SetMemberRole(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+func (h *apiServer) SetMemberRole(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
 	var payload gen.SetMemberRoleRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
 	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
-		target := pgUUID(uuidFrom(accountId))
+		target := toPG(accountId)
 		targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
 		if err != nil {
 			return 0, nil, err

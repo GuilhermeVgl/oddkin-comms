@@ -18,7 +18,7 @@ import (
 // RequestPasswordReset always answers 202, so nobody learns which e-mails have
 // an account. When one does, the link is sent by a job created in the same
 // transaction that stores the token's hash.
-func (h *healthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -58,22 +58,22 @@ func (h *healthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	token, hash, expiresAt, err := identity.IssueResetToken(now)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	sealed, err := identity.SealResetToken(h.auth.invitationDeliveryKey, token)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -93,7 +93,7 @@ func (h *healthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Requ
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
@@ -102,7 +102,7 @@ func (h *healthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Requ
 // ConfirmPasswordReset spends the token, sets the password and ends every
 // earlier session. It touches no encryption key: the history stays unreadable
 // until this device is authorised again.
-func (h *healthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -136,7 +136,7 @@ func (h *healthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -157,7 +157,7 @@ func (h *healthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Requ
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

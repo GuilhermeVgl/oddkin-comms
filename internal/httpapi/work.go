@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -28,20 +26,8 @@ var defaultColumns = []struct{ name, category string }{
 	{"A fazer", "todo"}, {"Em andamento", "in_progress"}, {"Em revisão", "in_progress"}, {"Concluído", "done"},
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_, _ = w.Write(encoded)
-}
-
 // reader authenticates a read request.
-func (h *healthHandler) reader(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
+func (h *apiServer) reader(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
 	session, status := h.activeSession(r)
 	if status != http.StatusOK {
 		w.WriteHeader(status)
@@ -51,7 +37,7 @@ func (h *healthHandler) reader(w http.ResponseWriter, r *http.Request) (sqlc.Fin
 }
 
 // mutator authenticates a state-changing request: origin, session and CSRF.
-func (h *healthHandler) mutator(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
+func (h *apiServer) mutator(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return sqlc.FindActiveSessionByTokenHashRow{}, false
@@ -93,7 +79,7 @@ func lookupAccess(ctx context.Context, q *sqlc.Queries, projectID, accountID pgt
 func loadAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, projectID, accountID pgtype.UUID) (projectAccess, bool) {
 	access, found, err := lookupAccess(ctx, q, projectID, accountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return projectAccess{}, false
 	}
 	if !found {
@@ -101,29 +87,6 @@ func loadAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, pro
 		return projectAccess{}, false
 	}
 	return access, true
-}
-
-func pgUUID(id uuid.UUID) pgtype.UUID { return pgtype.UUID{Bytes: id, Valid: true} }
-
-func optionalUUID(id *openapi_types.UUID) pgtype.UUID {
-	if id == nil {
-		return pgtype.UUID{}
-	}
-	return pgUUID(uuid.UUID(*id))
-}
-
-func uuidFrom(id openapi_types.UUID) uuid.UUID { return uuid.UUID(id) }
-
-func fromPG(id pgtype.UUID) openapi_types.UUID { return openapi_types.UUID(uuid.UUID(id.Bytes)) }
-
-func isConstraintViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23514" || pgErr.Code == "23505")
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // projectFields is the common shape of a project row, whichever query produced it.
@@ -168,7 +131,7 @@ func fieldsOf(p sqlc.Project, access work.Access) projectFields {
 	}
 }
 
-func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request, params gen.ListProjectsParams) {
+func (h *apiServer) ListProjects(w http.ResponseWriter, r *http.Request, params gen.ListProjectsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -177,7 +140,7 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request, par
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListProjectsForAccount(ctx, sqlc.ListProjectsForAccountParams{AccountID: session.AccountID, IncludeArchived: params.IncludeArchived != nil && *params.IncludeArchived})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	projects := make([]gen.Project, 0, len(rows))
@@ -192,7 +155,7 @@ func (h *healthHandler) ListProjects(w http.ResponseWriter, r *http.Request, par
 	writeJSON(w, http.StatusOK, projects)
 }
 
-func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) CreateProject(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -216,14 +179,14 @@ func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	project, err := q.CreateProject(ctx, sqlc.CreateProjectParams{
@@ -235,7 +198,7 @@ func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: project.ID, AccountID: session.AccountID, IsManager: true}); err == nil {
@@ -256,13 +219,13 @@ func (h *healthHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toProject(fieldsOf(project, work.Access{Kind: "internal", Manager: true})))
 }
 
-func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -276,13 +239,13 @@ func (h *healthHandler) GetProject(w http.ResponseWriter, r *http.Request, proje
 	}
 	project, err := q.GetProject(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toProject(fieldsOf(project, access.access)))
 }
 
-func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -295,7 +258,7 @@ func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Reques
 	}
 	rows, err := q.ListProjectMembers(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	members := make([]gen.ProjectMember, 0, len(rows))
@@ -308,7 +271,7 @@ func (h *healthHandler) ListProjectMembers(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, members)
 }
 
-func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) AddProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -347,7 +310,7 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// Only a manager brings in an external person; the policy lets others add internal colleagues.
@@ -359,7 +322,7 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 	manager := access.access.Manager && payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -372,7 +335,7 @@ func (h *healthHandler) AddProjectMember(w http.ResponseWriter, r *http.Request,
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -386,7 +349,7 @@ func toPolicy(permissions []string, version int32) gen.ExternalPolicy {
 	return gen.ExternalPolicy{Permissions: converted, Version: int(version)}
 }
 
-func (h *healthHandler) GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -399,13 +362,13 @@ func (h *healthHandler) GetExternalPolicy(w http.ResponseWriter, r *http.Request
 	}
 	policy, err := q.GetExternalProjectPolicy(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
 }
 
-func (h *healthHandler) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -427,7 +390,7 @@ func (h *healthHandler) UpdateExternalPolicy(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -460,13 +423,13 @@ func (h *healthHandler) UpdateExternalPolicy(w http.ResponseWriter, r *http.Requ
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
 }
 
-func (h *healthHandler) ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -484,7 +447,7 @@ func (h *healthHandler) ListBoardColumns(w http.ResponseWriter, r *http.Request,
 	}
 	rows, err := q.ListBoardColumns(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	columns := make([]gen.BoardColumn, 0, len(rows))
@@ -536,7 +499,7 @@ func toWorkItem(item sqlc.WorkItem) gen.WorkItem {
 	return response
 }
 
-func (h *healthHandler) ListWorkItems(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListWorkItems(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -554,7 +517,7 @@ func (h *healthHandler) ListWorkItems(w http.ResponseWriter, r *http.Request, pr
 	}
 	rows, err := q.ListWorkItems(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	items := make([]gen.WorkItem, 0, len(rows))
@@ -564,7 +527,7 @@ func (h *healthHandler) ListWorkItems(w http.ResponseWriter, r *http.Request, pr
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -591,7 +554,7 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -615,11 +578,11 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 	if encrypted {
 		var signerID *pgtype.UUID
 		if payload.SignerDeviceId != nil {
-			signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+			signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
 		}
 		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", signerID)
 		if err == nil && fail == nil {
-			id := pgUUID(uuidFrom(*payload.Id))
+			id := toPG(*payload.Id)
 			if fail = writer.verify(session.AccountID, workItemResource(id, "title"), 1, string(*payload.TitleEnc)); fail == nil {
 				fail = writer.verify(session.AccountID, workItemResource(id, "desc"), 1, string(*payload.DescriptionEnc))
 			}
@@ -628,7 +591,7 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 		fail, err = requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if fail != nil {
@@ -673,7 +636,7 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 		titleEnc, _ := unb64(string(*payload.TitleEnc), 0)
 		descriptionEnc, _ := unb64(string(*payload.DescriptionEnc), 0)
 		item, err = q.CreateEncryptedWorkItem(ctx, sqlc.CreateEncryptedWorkItemParams{
-			ID: pgUUID(uuidFrom(*payload.Id)), ProjectID: params.ProjectID, Kind: kind, ParentID: params.ParentID,
+			ID: toPG(*payload.Id), ProjectID: params.ProjectID, Kind: kind, ParentID: params.ParentID,
 			AssigneeID: params.AssigneeID, DueDate: params.DueDate, Priority: params.Priority, ColumnID: params.ColumnID,
 			CreatedBy: session.AccountID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
 		})
@@ -695,7 +658,7 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 		err = notifyAssignment(ctx, q, item, session.AccountID, pgtype.UUID{})
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -705,7 +668,7 @@ func (h *healthHandler) CreateWorkItem(w http.ResponseWriter, r *http.Request, p
 	writeJSON(w, http.StatusCreated, toWorkItem(item))
 }
 
-func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -724,7 +687,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -736,7 +699,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
@@ -766,7 +729,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	if encContent {
 		var fail *encFailure
 		revision := int32(*payload.ContentRevision)
-		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 		if err == nil && fail == nil && revision != item.ContentRevision+1 {
 			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 		}
@@ -776,7 +739,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 			}
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 		if fail != nil {
@@ -786,7 +749,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 	} else if payload.Title != nil || payload.Description != nil {
 		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
 		if planErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, planErr)
 			return
 		}
 		if fail != nil {
@@ -817,7 +780,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 		params.SetSprint = true
 	} else if payload.SprintId != nil {
 		organizationID, orgErr := q.GetProjectOrganization(ctx, item.ProjectID)
-		sprint, sprintErr := q.GetSprint(ctx, pgUUID(uuidFrom(*payload.SprintId)))
+		sprint, sprintErr := q.GetSprint(ctx, toPG(*payload.SprintId))
 		if orgErr != nil || sprintErr != nil || sprint.OrganizationID != organizationID || sprint.State == "closed" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -842,7 +805,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 			return
 		}
 		if moveErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, moveErr)
 			return
 		}
 		params.ColumnID = target.ID
@@ -891,7 +854,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 		err = notifyFollowers(ctx, q, updated, session.AccountID)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -903,7 +866,7 @@ func (h *healthHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Request, w
 
 // applyMoveRules enforces the completion rules of SPEC 6.5 inside the caller's
 // transaction. It returns a non-zero status when the move must be rejected.
-func (h *healthHandler) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) int {
+func (h *apiServer) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) int {
 	current, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: item.ColumnID, ProjectID: item.ProjectID})
 	if err != nil {
 		return http.StatusServiceUnavailable
@@ -957,21 +920,21 @@ func (h *healthHandler) applyMoveRules(ctx context.Context, q *sqlc.Queries, ite
 
 // workItemAccess resolves an item and the caller's access without leaking the
 // existence of items in projects the caller cannot see.
-func (h *healthHandler) workItemAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, itemID gen.WorkItemId, accountID pgtype.UUID) (sqlc.WorkItem, projectAccess, bool) {
+func (h *apiServer) workItemAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, itemID gen.WorkItemId, accountID pgtype.UUID) (sqlc.WorkItem, projectAccess, bool) {
 	item, err := q.GetWorkItem(ctx, pgUUID(itemID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return item, projectAccess{}, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return item, projectAccess{}, false
 	}
 	access, ok := loadAccess(ctx, w, q, item.ProjectID, accountID)
 	return item, access, ok
 }
 
-func (h *healthHandler) ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -989,7 +952,7 @@ func (h *healthHandler) ListWorkItemComments(w http.ResponseWriter, r *http.Requ
 	}
 	rows, err := q.ListWorkItemComments(ctx, item.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	comments := make([]gen.WorkItemComment, 0, len(rows))
@@ -1011,7 +974,7 @@ func (h *healthHandler) ListWorkItemComments(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, comments)
 }
 
-func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1045,13 +1008,13 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		err     error
 	)
 	if encrypted {
-		commentID := pgUUID(uuidFrom(*payload.Id))
-		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		commentID := toPG(*payload.Id)
+		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 		if prepErr == nil && fail == nil {
 			fail = writer.verify(session.AccountID, commentResource(commentID), 1, *payload.BodyEnc)
 		}
 		if prepErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, prepErr)
 			return
 		}
 		if fail != nil {
@@ -1065,7 +1028,7 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 	} else {
 		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
 		if planErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, planErr)
 			return
 		}
 		if fail != nil {
@@ -1083,7 +1046,7 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// Commenting follows the activity; announcing it is best effort, the comment is already saved.
@@ -1100,7 +1063,7 @@ func (h *healthHandler) CreateWorkItemComment(w http.ResponseWriter, r *http.Req
 
 // EncryptComment migrates the author's own legacy plaintext comment: the
 // plaintext is erased in the same statement that stores the envelope.
-func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
+func (h *apiServer) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1113,23 +1076,23 @@ func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, c
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	comment, err := q.GetWorkItemComment(ctx, pgUUID(uuidFrom(commentId)))
+	comment, err := q.GetWorkItemComment(ctx, toPG(commentId))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	item, err := q.GetWorkItem(ctx, comment.WorkItemID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
@@ -1144,12 +1107,12 @@ func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, c
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
 	if err == nil && fail == nil {
 		fail = writer.verify(session.AccountID, commentResource(comment.ID), 1, payload.BodyEnc)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if fail != nil {
@@ -1161,7 +1124,7 @@ func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, c
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1170,7 +1133,7 @@ func (h *healthHandler) EncryptComment(w http.ResponseWriter, r *http.Request, c
 // UpdateProject replaces a project's plaintext name and description with their
 // encrypted form (managers only). There is no plaintext rename: once the
 // project has a key, it never has one again.
-func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) UpdateProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1183,7 +1146,7 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -1194,7 +1157,7 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	access, ok := loadAccess(ctx, w, q, project.ID, session.AccountID)
@@ -1206,7 +1169,7 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	revision := int32(payload.ContentRevision)
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, project.ID, "work", optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, project.ID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
 	if err == nil && fail == nil && revision != project.ContentRevision+1 {
 		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 	}
@@ -1216,7 +1179,7 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if fail != nil {
@@ -1240,7 +1203,7 @@ func (h *healthHandler) UpdateProject(w http.ResponseWriter, r *http.Request, pr
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

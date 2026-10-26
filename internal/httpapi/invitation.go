@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"mime"
 	"net/http"
 	"regexp"
 	"time"
@@ -23,7 +21,7 @@ import (
 // linkExtraPattern keeps the inviter-chosen fragment to plain parameters.
 var linkExtraPattern = regexp.MustCompile(`^[A-Za-z0-9_=&.-]{1,300}$`)
 
-func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -60,7 +58,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	orgAdmin := membership.IsAdmin && membership.MembershipKind == "internal"
@@ -68,19 +66,19 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 	var projectID pgtype.UUID
 	if payload.ProjectId != nil {
 		q := sqlc.New(h.auth.pool)
-		project, projectErr := q.GetProject(ctx, pgUUID(uuidFrom(*payload.ProjectId)))
+		project, projectErr := q.GetProject(ctx, toPG(*payload.ProjectId))
 		if errors.Is(projectErr, pgx.ErrNoRows) || (projectErr == nil && project.OrganizationID != membership.OrganizationID) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		if projectErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, projectErr)
 			return
 		}
 		if !orgAdmin {
 			access, found, accessErr := lookupAccess(ctx, q, project.ID, session.AccountID)
 			if accessErr != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, r, accessErr)
 				return
 			}
 			if !found || !mayBringPeopleIn(project.InvitePolicy, access.access, false) {
@@ -123,24 +121,24 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		}
 		sealed, sealErr := identity.SealInvitationToken(h.auth.invitationDeliveryKey, *payload.LinkExtra)
 		if sealErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, sealErr)
 			return
 		}
 		sealedExtra = sealed
 	}
 	token, record, err := identity.IssueInvitationToken(time.Now())
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	sealedToken, err := identity.SealInvitationToken(h.auth.invitationDeliveryKey, token)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -157,7 +155,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		ExpiresAt: pgtype.Timestamptz{Time: record.ExpiresAt, Valid: true}, HistoryMode: historyMode, ProjectID: projectID,
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = queries.SetInvitationRequester(ctx, sqlc.SetInvitationRequesterParams{ID: created.ID, RequestedBy: session.AccountID}); err != nil {
@@ -190,7 +188,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -214,7 +212,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -227,7 +225,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	account, err := queries.GetAccountByEmail(ctx, email)
@@ -250,7 +248,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if _, err = queries.EnsureOrganizationMembership(ctx, sqlc.EnsureOrganizationMembershipParams{
@@ -260,7 +258,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	} else if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if invitation.ProjectID.Valid {
@@ -273,7 +271,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 			err = announceProjectChanged(ctx, queries, invitation.ProjectID)
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -288,7 +286,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = queries.ClearInvitationDeliveryToken(ctx, invitation.ID); err != nil {
@@ -307,33 +305,9 @@ func decodeInvitationRequest(w http.ResponseWriter, r *http.Request, payload *ge
 	return decodeJSONBody(w, r, payload)
 }
 
-func decodeJSONBody(w http.ResponseWriter, r *http.Request, payload any) bool {
-	return decodeJSONBodyLimit(w, r, payload, 4096)
-}
-
-func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, payload any, limit int64) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" {
-		w.WriteHeader(http.StatusBadRequest)
-		return false
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(payload); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return false
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		w.WriteHeader(http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
 // ListInvitations tells administrators which invitations are still waiting and
 // which were accepted.
-func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, params gen.ListInvitationsParams) {
+func (h *apiServer) ListInvitations(w http.ResponseWriter, r *http.Request, params gen.ListInvitationsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -343,7 +317,7 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, 
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	type invitationRow struct {
@@ -355,11 +329,11 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, 
 	var rows []invitationRow
 	switch {
 	case params.ProjectId != nil:
-		projectID := pgUUID(uuidFrom(*params.ProjectId))
+		projectID := toPG(*params.ProjectId)
 		if !session.IsAdmin {
 			access, found, accessErr := lookupAccess(ctx, q, projectID, session.AccountID)
 			if accessErr != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, r, accessErr)
 				return
 			}
 			if !found || !access.access.Manager {
@@ -369,7 +343,7 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, 
 		}
 		list, listErr := q.ListProjectInvitations(ctx, projectID)
 		if listErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, listErr)
 			return
 		}
 		for _, row := range list {
@@ -378,7 +352,7 @@ func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request, 
 	case session.IsAdmin:
 		list, listErr := q.ListOrganizationInvitations(ctx, membership.OrganizationID)
 		if listErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, listErr)
 			return
 		}
 		for _, row := range list {

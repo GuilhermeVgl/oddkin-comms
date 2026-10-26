@@ -90,7 +90,7 @@ func canReceive(ctx context.Context, q *sqlc.Queries, accountID, projectID, conv
 	return permission == "" || access.access.Can(permission), nil
 }
 
-func (h *healthHandler) ListNotifications(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -100,7 +100,7 @@ func (h *healthHandler) ListNotifications(w http.ResponseWriter, r *http.Request
 	q := sqlc.New(h.auth.pool)
 	rows, err := q.ListNotifications(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	notifications := make([]gen.Notification, 0, len(rows))
@@ -111,7 +111,7 @@ func (h *healthHandler) ListNotifications(w http.ResponseWriter, r *http.Request
 		}
 		visible, authErr := canReceive(ctx, q, session.AccountID, row.ProjectID, row.ConversationID, permission)
 		if authErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, authErr)
 			return
 		}
 		if !visible {
@@ -131,16 +131,16 @@ func (h *healthHandler) ListNotifications(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, notifications)
 }
 
-func (h *healthHandler) MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID) {
+func (h *apiServer) MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	changed, err := sqlc.New(h.auth.pool).MarkNotificationRead(ctx, sqlc.MarkNotificationReadParams{ID: pgUUID(uuidFrom(notificationId)), AccountID: session.AccountID})
+	changed, err := sqlc.New(h.auth.pool).MarkNotificationRead(ctx, sqlc.MarkNotificationReadParams{ID: toPG(notificationId), AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if changed == 0 {
@@ -150,7 +150,7 @@ func (h *healthHandler) MarkNotificationRead(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -164,7 +164,7 @@ func (h *healthHandler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -231,7 +231,7 @@ type serverFrame struct {
 	Code            string `json:"code,omitempty"`
 }
 
-func (h *healthHandler) EventsSocket(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -364,7 +364,7 @@ func (h *healthHandler) EventsSocket(w http.ResponseWriter, r *http.Request) {
 // resumePoint returns the sequence after which the feed is replayed. An empty
 // cursor starts at the current head; a foreign, forged or expired cursor
 // requires a fresh snapshot.
-func (h *healthHandler) resumePoint(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, cursor string) (int64, bool) {
+func (h *apiServer) resumePoint(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, cursor string) (int64, bool) {
 	head, err := q.UserEventHead(ctx, account)
 	if err != nil {
 		return 0, false

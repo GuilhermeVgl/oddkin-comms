@@ -46,54 +46,45 @@ func validColumnName(name string) (string, bool) {
 // columnTx runs a managers-only change of a project's columns in one
 // transaction, under a project lock so two managers cannot break the board's
 // rules together, and announces it so open boards reload.
-func (h *healthHandler) columnTx(w http.ResponseWriter, r *http.Request, projectID gen.ProjectId, change func(ctx context.Context, q *sqlc.Queries) (status int, body any, err error)) {
+func (h *apiServer) columnTx(w http.ResponseWriter, r *http.Request, projectID gen.ProjectId, change func(ctx context.Context, q *sqlc.Queries) (status int, body any, err error)) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectID), session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err = q.LockProject(ctx, pgUUID(projectID)); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	status, body, err := change(ctx, q)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if status >= 400 {
-		w.WriteHeader(status)
-		return
-	}
-	members, err := projectRecipients(ctx, q, pgUUID(projectID), "")
-	if err == nil {
-		err = emitEvent(ctx, q, members, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectID), ProjectID: pgUUID(projectID)})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	var (
+		status int
+		body   any
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectID), session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
+		}
+		if access.archived {
+			return statusError(http.StatusConflict)
+		}
+		if err := q.LockProject(ctx, pgUUID(projectID)); err != nil {
+			return err
+		}
+		var err error
+		if status, body, err = change(ctx, q); err != nil {
+			return err
+		}
+		if status >= 400 {
+			return statusError(status)
+		}
+		members, err := projectRecipients(ctx, q, pgUUID(projectID), "")
+		if err != nil {
+			return err
+		}
+		return emitEvent(ctx, q, members, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectID), ProjectID: pgUUID(projectID)})
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	if body == nil {
@@ -103,7 +94,7 @@ func (h *healthHandler) columnTx(w http.ResponseWriter, r *http.Request, project
 	writeJSON(w, status, body)
 }
 
-func (h *healthHandler) CreateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) CreateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.CreateBoardColumnRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -128,12 +119,12 @@ func (h *healthHandler) CreateBoardColumn(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (h *healthHandler) UpdateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID) {
+func (h *apiServer) UpdateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID) {
 	var payload gen.UpdateBoardColumnRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-	params := sqlc.UpdateBoardColumnParams{ID: pgUUID(uuidFrom(columnId)), ProjectID: pgUUID(projectId)}
+	params := sqlc.UpdateBoardColumnParams{ID: toPG(columnId), ProjectID: pgUUID(projectId)}
 	if payload.Name != nil {
 		name, valid := validColumnName(*payload.Name)
 		if !valid {
@@ -165,8 +156,8 @@ func (h *healthHandler) UpdateBoardColumn(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (h *healthHandler) DeleteBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID, params gen.DeleteBoardColumnParams) {
-	id := pgUUID(uuidFrom(columnId))
+func (h *apiServer) DeleteBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID, params gen.DeleteBoardColumnParams) {
+	id := toPG(columnId)
 	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
 		if _, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: id, ProjectID: pgUUID(projectId)}); errors.Is(err, pgx.ErrNoRows) {
 			return http.StatusNotFound, nil, nil
@@ -181,7 +172,7 @@ func (h *healthHandler) DeleteBoardColumn(w http.ResponseWriter, r *http.Request
 			if params.MoveTo == nil || uuidFrom(*params.MoveTo) == uuidFrom(columnId) {
 				return http.StatusBadRequest, nil, nil
 			}
-			destination := pgUUID(uuidFrom(*params.MoveTo))
+			destination := toPG(*params.MoveTo)
 			if _, err = q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: destination, ProjectID: pgUUID(projectId)}); errors.Is(err, pgx.ErrNoRows) {
 				return http.StatusBadRequest, nil, nil
 			} else if err != nil {
@@ -205,7 +196,7 @@ func (h *healthHandler) DeleteBoardColumn(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (h *healthHandler) ReorderBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ReorderBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ReorderBoardColumnsRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -249,7 +240,7 @@ func (h *healthHandler) ReorderBoardColumns(w http.ResponseWriter, r *http.Reque
 // RemoveProjectMember ends a person's access at once. The same transaction
 // marks every key domain of the project for rotation, so what is written after
 // this cannot be read by the person who left, and tells open clients to reload.
-func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+func (h *apiServer) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -258,7 +249,7 @@ func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -279,10 +270,10 @@ func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	target := pgUUID(uuidFrom(accountId))
+	target := toPG(accountId)
 	targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if !found {
@@ -292,7 +283,7 @@ func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Reque
 	if targetAccess.access.Manager {
 		managers, countErr := q.CountProjectManagers(ctx, pgUUID(projectId))
 		if countErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, countErr)
 			return
 		}
 		if managers <= 1 {
@@ -315,13 +306,13 @@ func (h *healthHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Reque
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) followAccess(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId, write bool) (sqlc.WorkItem, pgtype.UUID, bool) {
+func (h *apiServer) followAccess(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId, write bool) (sqlc.WorkItem, pgtype.UUID, bool) {
 	var (
 		session sqlc.FindActiveSessionByTokenHashRow
 		ok      bool
@@ -347,7 +338,7 @@ func (h *healthHandler) followAccess(w http.ResponseWriter, r *http.Request, wor
 	return item, session.AccountID, true
 }
 
-func (h *healthHandler) GetFollowing(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) GetFollowing(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, false)
 	if !ok {
 		return
@@ -356,13 +347,13 @@ func (h *healthHandler) GetFollowing(w http.ResponseWriter, r *http.Request, wor
 	defer cancel()
 	following, err := sqlc.New(h.auth.pool).IsFollowingWorkItem(ctx, sqlc.IsFollowingWorkItemParams{WorkItemID: item.ID, AccountID: account})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.Following{Following: following})
 }
 
-func (h *healthHandler) FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -376,7 +367,7 @@ func (h *healthHandler) FollowWorkItem(w http.ResponseWriter, r *http.Request, w
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *apiServer) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -392,7 +383,7 @@ func (h *healthHandler) UnfollowWorkItem(w http.ResponseWriter, r *http.Request,
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
-func (h *healthHandler) SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ProjectAppearanceRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

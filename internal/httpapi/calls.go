@@ -45,7 +45,7 @@ func resolveCallRights(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 		return rights, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return rights, false
 	}
 	conversation, chat, ok := resolveChatAccess(ctx, w, q, conversation, accountID)
@@ -68,7 +68,7 @@ func resolveCallRights(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 	return rights, true
 }
 
-func (h *healthHandler) mediaConfigured(w http.ResponseWriter) bool {
+func (h *apiServer) mediaConfigured(w http.ResponseWriter) bool {
 	if h.auth == nil || h.auth.rooms == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return false
@@ -175,7 +175,7 @@ func buildCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, rights call
 	return response, nil
 }
 
-func (h *healthHandler) StartCall(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -189,19 +189,19 @@ func (h *healthHandler) StartCall(w http.ResponseWriter, r *http.Request) {
 	}
 	room, err := newRoomName()
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	rights, ok := resolveCallRights(ctx, w, q, pgUUID(uuidFrom(payload.ConversationId)), session.AccountID)
+	rights, ok := resolveCallRights(ctx, w, q, toPG(payload.ConversationId), session.AccountID)
 	if !ok {
 		return
 	}
@@ -215,13 +215,13 @@ func (h *healthHandler) StartCall(w http.ResponseWriter, r *http.Request) {
 	}
 	eligible, err := eligibleInvitees(ctx, q, rights.conversation)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	var invitees []pgtype.UUID
 	if payload.InviteeIds != nil {
 		for _, id := range *payload.InviteeIds {
-			invitee := pgUUID(uuidFrom(id))
+			invitee := toPG(id)
 			if invitee == session.AccountID || !slices.Contains(eligible, invitee) || slices.Contains(invitees, invitee) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
@@ -260,7 +260,7 @@ func (h *healthHandler) StartCall(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// Media-server effect after commit; on failure close the call again.
@@ -272,14 +272,14 @@ func (h *healthHandler) StartCall(w http.ResponseWriter, r *http.Request) {
 	reader := sqlc.New(h.auth.pool)
 	response, err := buildCall(ctx, reader, call, rights, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, response)
 }
 
 // closeCall ends a call in its own transaction (used after external failures).
-func (h *healthHandler) closeCall(ctx context.Context, call sqlc.Call, reason string) {
+func (h *apiServer) closeCall(ctx context.Context, call sqlc.Call, reason string) {
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
 		return
@@ -290,7 +290,7 @@ func (h *healthHandler) closeCall(ctx context.Context, call sqlc.Call, reason st
 	}
 }
 
-func (h *healthHandler) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
+func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -298,7 +298,7 @@ func (h *healthHandler) ListActiveCalls(w http.ResponseWriter, r *http.Request, 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	rights, ok := resolveCallRights(ctx, w, q, pgUUID(uuidFrom(params.ConversationId)), session.AccountID)
+	rights, ok := resolveCallRights(ctx, w, q, toPG(params.ConversationId), session.AccountID)
 	if !ok {
 		return
 	}
@@ -308,7 +308,7 @@ func (h *healthHandler) ListActiveCalls(w http.ResponseWriter, r *http.Request, 
 		if err == nil {
 			built, buildErr := buildCall(ctx, q, call, rights, session.AccountID)
 			if buildErr != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, r, buildErr)
 				return
 			}
 			result = append(result, built)
@@ -320,7 +320,7 @@ func (h *healthHandler) ListActiveCalls(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *healthHandler) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -330,18 +330,18 @@ func (h *healthHandler) ListCallInvitations(w http.ResponseWriter, r *http.Reque
 	q := sqlc.New(h.auth.pool)
 	rows, err := q.ListPendingCallInvitations(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	result := []gen.CallInvitation{}
 	for _, row := range rows {
 		visible, authErr := canReceive(ctx, q, session.AccountID, pgtype.UUID{}, row.ConversationID, work.ChatRead)
 		if authErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, authErr)
 			return
 		}
 		if visible {
-			result = append(result, gen.CallInvitation{CallId: fromPG(row.CallID), ConversationId: fromPG(row.ConversationID), StartedBy: row.StartedByEmail, StartedById: pgUUIDPtr(row.StartedBy), CreatedAt: row.CreatedAt.Time})
+			result = append(result, gen.CallInvitation{CallId: fromPG(row.CallID), ConversationId: fromPG(row.ConversationID), StartedBy: row.StartedByEmail, StartedById: uuidPtr(row.StartedBy), CreatedAt: row.CreatedAt.Time})
 		}
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -349,7 +349,7 @@ func (h *healthHandler) ListCallInvitations(w http.ResponseWriter, r *http.Reque
 
 // ListCallHistory is the record of calls a conversation shows between its
 // messages. Anyone who can read the conversation may see who took part.
-func (h *healthHandler) ListCallHistory(w http.ResponseWriter, r *http.Request, params gen.ListCallHistoryParams) {
+func (h *apiServer) ListCallHistory(w http.ResponseWriter, r *http.Request, params gen.ListCallHistoryParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -357,7 +357,7 @@ func (h *healthHandler) ListCallHistory(w http.ResponseWriter, r *http.Request, 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	q := sqlc.New(h.auth.pool)
-	rights, ok := resolveCallRights(ctx, w, q, pgUUID(uuidFrom(params.ConversationId)), session.AccountID)
+	rights, ok := resolveCallRights(ctx, w, q, toPG(params.ConversationId), session.AccountID)
 	if !ok {
 		return
 	}
@@ -367,7 +367,7 @@ func (h *healthHandler) ListCallHistory(w http.ResponseWriter, r *http.Request, 
 	}
 	rows, err := q.ListCallRecords(ctx, sqlc.ListCallRecordsParams{ConversationID: rights.conversation.ID, Limit: int32(limit)})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	now := time.Now()
@@ -375,7 +375,7 @@ func (h *healthHandler) ListCallHistory(w http.ResponseWriter, r *http.Request, 
 	for _, row := range rows {
 		end := now
 		record := gen.CallRecord{
-			Id: fromPG(row.ID), State: gen.CallRecordState(row.State), StartedBy: row.StartedByEmail, StartedById: pgUUIDPtr(row.StartedBy),
+			Id: fromPG(row.ID), State: gen.CallRecordState(row.State), StartedBy: row.StartedByEmail, StartedById: uuidPtr(row.StartedBy),
 			StartedAt: row.CreatedAt.Time, Participants: row.ParticipantEmails, Answered: len(row.ParticipantEmails) >= 2,
 		}
 		if row.EndedAt.Valid {
@@ -392,14 +392,6 @@ func (h *healthHandler) ListCallHistory(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, result)
 }
 
-func pgUUIDPtr(id pgtype.UUID) *openapi_types.UUID {
-	if !id.Valid {
-		return nil
-	}
-	value := fromPG(id)
-	return &value
-}
-
 // loadCall resolves a call and the caller's rights, answering 404 otherwise.
 func loadCall(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, lock bool) (sqlc.Call, callRights, bool) {
 	var (
@@ -407,23 +399,23 @@ func loadCall(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id op
 		err  error
 	)
 	if lock {
-		call, err = q.LockCall(ctx, pgUUID(uuidFrom(id)))
+		call, err = q.LockCall(ctx, toPG(id))
 	} else {
-		call, err = q.GetCall(ctx, pgUUID(uuidFrom(id)))
+		call, err = q.GetCall(ctx, toPG(id))
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return call, callRights{}, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return call, callRights{}, false
 	}
 	rights, ok := resolveCallRights(ctx, w, q, call.ConversationID, account)
 	return call, rights, ok
 }
 
-func (h *healthHandler) GetCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) GetCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -441,13 +433,13 @@ func (h *healthHandler) GetCall(w http.ResponseWriter, r *http.Request, callId g
 	}
 	response, err := buildCall(ctx, q, call, rights, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *healthHandler) ticket(call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, screenShare bool) (gen.CallTicket, error) {
+func (h *apiServer) ticket(call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, screenShare bool) (gen.CallTicket, error) {
 	identity := uuid.UUID(session.AccountID.Bytes).String()
 	token, err := h.auth.livekit.JoinToken(call.RoomName, identity, session.EmailNormalized, screenShare, callTokenTTL)
 	if err != nil {
@@ -459,7 +451,7 @@ func (h *healthHandler) ticket(call sqlc.Call, session sqlc.FindActiveSessionByT
 	}, nil
 }
 
-func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -472,12 +464,12 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 		return
 	}
 	transfer := payload.Transfer != nil && *payload.Transfer
-	deviceID := pgUUID(uuidFrom(payload.DeviceId))
+	deviceID := toPG(payload.DeviceId)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -500,7 +492,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 		return
 	}
 	if deviceErr != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, deviceErr)
 		return
 	}
 	if call.State != "active" {
@@ -523,7 +515,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 		err = q.ExpireStaleAdmissionsForCall(ctx, call.ID)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	existing, err := q.ActiveAdmissionForAccount(ctx, session.AccountID)
@@ -542,7 +534,7 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 	case errors.Is(err, pgx.ErrNoRows):
 		seats, countErr := q.CountCallSeats(ctx, call.ID)
 		if countErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, countErr)
 			return
 		}
 		if seats >= calls.MaxParticipants {
@@ -569,13 +561,13 @@ func (h *healthHandler) JoinCall(w http.ResponseWriter, r *http.Request, callId 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, ticket)
 }
 
-func (h *healthHandler) DeclineCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) DeclineCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -584,7 +576,7 @@ func (h *healthHandler) DeclineCall(w http.ResponseWriter, r *http.Request, call
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -605,13 +597,13 @@ func (h *healthHandler) DeclineCall(w http.ResponseWriter, r *http.Request, call
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) CancelCallInvitation(w http.ResponseWriter, r *http.Request, callId gen.CallId, accountId openapi_types.UUID) {
+func (h *apiServer) CancelCallInvitation(w http.ResponseWriter, r *http.Request, callId gen.CallId, accountId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -620,7 +612,7 @@ func (h *healthHandler) CancelCallInvitation(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -633,7 +625,7 @@ func (h *healthHandler) CancelCallInvitation(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	changed, err := q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: pgUUID(uuidFrom(accountId)), State: "cancelled"})
+	changed, err := q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: toPG(accountId), State: "cancelled"})
 	if err == nil && changed == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -645,13 +637,13 @@ func (h *healthHandler) CancelCallInvitation(w http.ResponseWriter, r *http.Requ
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -660,7 +652,7 @@ func (h *healthHandler) LeaveCall(w http.ResponseWriter, r *http.Request, callId
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -691,7 +683,7 @@ func (h *healthHandler) LeaveCall(w http.ResponseWriter, r *http.Request, callId
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) EndCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) EndCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -700,7 +692,7 @@ func (h *healthHandler) EndCall(w http.ResponseWriter, r *http.Request, callId g
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -720,7 +712,7 @@ func (h *healthHandler) EndCall(w http.ResponseWriter, r *http.Request, callId g
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if ended && h.auth.rooms != nil {
@@ -729,7 +721,7 @@ func (h *healthHandler) EndCall(w http.ResponseWriter, r *http.Request, callId g
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) StartScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -741,7 +733,7 @@ func (h *healthHandler) StartScreenShare(w http.ResponseWriter, r *http.Request,
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -782,7 +774,7 @@ func (h *healthHandler) StartScreenShare(w http.ResponseWriter, r *http.Request,
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	// The slot is ours; now let LiveKit accept the screen from this person,
@@ -796,7 +788,7 @@ func (h *healthHandler) StartScreenShare(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, ticket)
 }
 
-func (h *healthHandler) StopScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) StopScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -805,7 +797,7 @@ func (h *healthHandler) StopScreenShare(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -822,7 +814,7 @@ func (h *healthHandler) StopScreenShare(w http.ResponseWriter, r *http.Request, 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if h.auth.rooms != nil {
@@ -832,7 +824,7 @@ func (h *healthHandler) StopScreenShare(w http.ResponseWriter, r *http.Request, 
 }
 
 // LivekitWebhook verifies the signature, ignores replays and reconciles presence.
-func (h *healthHandler) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil || h.auth.rooms == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -847,7 +839,7 @@ func (h *healthHandler) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -855,7 +847,7 @@ func (h *healthHandler) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	if event.GetId() != "" {
 		fresh, recordErr := q.RecordWebhookEvent(ctx, event.GetId())
 		if recordErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, recordErr)
 			return
 		}
 		if fresh == 0 {
@@ -873,7 +865,7 @@ func (h *healthHandler) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 		call, err = q.LockCall(ctx, call.ID)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	var kick, deleteRoom bool
@@ -925,13 +917,13 @@ func seatOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, call sq
 		return seat, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return seat, false
 	}
 	return seat, true
 }
 
-func (h *healthHandler) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -948,14 +940,14 @@ func (h *healthHandler) ListCallKeyDevices(w http.ResponseWriter, r *http.Reques
 	}
 	seats, err := q.ListSeatDevices(ctx, call.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	devices := make([]gen.DirectoryDevice, 0, len(seats))
 	for _, id := range seats {
 		device, getErr := q.GetDevice(ctx, id)
 		if getErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, getErr)
 			return
 		}
 		email := ""
@@ -967,7 +959,7 @@ func (h *healthHandler) ListCallKeyDevices(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, devices)
 }
 
-func (h *healthHandler) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -985,7 +977,7 @@ func (h *healthHandler) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Requ
 	}
 	rows, err := q.ListCallKeyEnvelopes(ctx, sqlc.ListCallKeyEnvelopesParams{CallID: call.ID, RecipientDeviceID: seat.DeviceID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	envelopes := make([]gen.KeyEnvelope, 0, len(rows))
@@ -1002,7 +994,7 @@ func (h *healthHandler) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Requ
 // devices that hold a seat right now. The server only checks who may receive
 // it and who sealed it; it never sees the key. The recovery identity is not a
 // recipient: calls are not recorded and not recoverable.
-func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *apiServer) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -1015,7 +1007,7 @@ func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, c
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -1036,13 +1028,13 @@ func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, c
 	if !ok {
 		return
 	}
-	signer, err := q.GetDevice(ctx, pgUUID(uuidFrom(payload.SignerDeviceId)))
+	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.ID != seat.DeviceID || signer.State != "active")) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if int32(payload.Generation) != call.KeyGeneration+1 {
@@ -1051,12 +1043,12 @@ func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, c
 	}
 	seats, err := q.ListSeatDevices(ctx, call.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	given := make([]pgtype.UUID, 0, len(payload.Envelopes))
 	for _, envelope := range payload.Envelopes {
-		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		recipient := toPG(envelope.RecipientDeviceId)
 		if slices.Contains(given, recipient) || !slices.Contains(seats, recipient) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -1075,7 +1067,7 @@ func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, c
 	for _, envelope := range payload.Envelopes {
 		sealed, validSealed := unb64(envelope.Sealed, 0)
 		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
-		recipient := pgUUID(uuidFrom(envelope.RecipientDeviceId))
+		recipient := toPG(envelope.RecipientDeviceId)
 		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
 			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
 				RecipientDeviceID: uuidString(recipient), DomainID: "call:" + uuidString(call.ID), Generation: uint32(payload.Generation), Sealed: sealed,
@@ -1103,7 +1095,7 @@ func (h *healthHandler) PublishCallKey(w http.ResponseWriter, r *http.Request, c
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, response)

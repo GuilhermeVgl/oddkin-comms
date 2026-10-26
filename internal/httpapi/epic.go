@@ -34,7 +34,7 @@ func toEpic(epic sqlc.Epic) gen.Epic {
 	return response
 }
 
-func (h *healthHandler) ListEpics(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListEpics(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -52,7 +52,7 @@ func (h *healthHandler) ListEpics(w http.ResponseWriter, r *http.Request, projec
 	}
 	rows, err := q.ListEpics(ctx, pgUUID(projectId))
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	epics := make([]gen.Epic, 0, len(rows))
@@ -62,7 +62,7 @@ func (h *healthHandler) ListEpics(w http.ResponseWriter, r *http.Request, projec
 	writeJSON(w, http.StatusOK, epics)
 }
 
-func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) CreateEpic(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -97,15 +97,15 @@ func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, proje
 		err  error
 	)
 	if encrypted {
-		id := pgUUID(uuidFrom(*payload.Id))
-		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		id := toPG(*payload.Id)
+		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 		if prepErr == nil && fail == nil {
 			if fail = writer.verify(session.AccountID, epicResource(id, "title"), 1, *payload.TitleEnc); fail == nil {
 				fail = writer.verify(session.AccountID, epicResource(id, "desc"), 1, *payload.DescriptionEnc)
 			}
 		}
 		if prepErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, prepErr)
 			return
 		}
 		if fail != nil {
@@ -120,7 +120,7 @@ func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, proje
 	} else {
 		fail, planErr := requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
 		if planErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, planErr)
 			return
 		}
 		if fail != nil {
@@ -142,13 +142,13 @@ func (h *healthHandler) CreateEpic(w http.ResponseWriter, r *http.Request, proje
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toEpic(epic))
 }
 
-func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID) {
+func (h *apiServer) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -167,18 +167,18 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	epic, err := q.GetEpicForUpdate(ctx, pgUUID(uuidFrom(epicId)))
+	epic, err := q.GetEpicForUpdate(ctx, toPG(epicId))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	access, ok := loadAccess(ctx, w, q, epic.ProjectID, session.AccountID)
@@ -197,7 +197,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 	if encContent {
 		var fail *encFailure
 		revision := int32(*payload.ContentRevision)
-		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, epic.ProjectID, "work", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, epic.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 		if err == nil && fail == nil && revision != epic.ContentRevision+1 {
 			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 		}
@@ -207,7 +207,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 			}
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 		if fail != nil {
@@ -217,7 +217,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 	} else if payload.Title != nil || payload.Description != nil {
 		fail, planErr := requirePlaintextAllowed(ctx, q, epic.ProjectID, "work")
 		if planErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, planErr)
 			return
 		}
 		if fail != nil {
@@ -236,7 +236,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 		if *payload.Done && !epic.Done {
 			open, countErr := q.CountOpenEpicTasks(ctx, epic.ID)
 			if countErr != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
+				serverError(w, r, countErr)
 				return
 			}
 			if open > 0 {
@@ -256,7 +256,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err == nil && encContent {
@@ -276,7 +276,7 @@ func (h *healthHandler) UpdateEpic(w http.ResponseWriter, r *http.Request, epicI
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if err = tx.Commit(ctx); err != nil {

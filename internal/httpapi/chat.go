@@ -22,7 +22,7 @@ type chatAccess struct {
 	read, send, manager, archived bool
 }
 
-func (h *healthHandler) ListConversations(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *apiServer) ListConversations(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -40,7 +40,7 @@ func (h *healthHandler) ListConversations(w http.ResponseWriter, r *http.Request
 	}
 	rows, err := q.ListConversations(ctx, sqlc.ListConversationsParams{ProjectID: pgUUID(projectId), AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	channels := make([]gen.Conversation, 0, len(rows))
@@ -65,13 +65,13 @@ func (h *healthHandler) ListConversations(w http.ResponseWriter, r *http.Request
 // conversationAccess resolves a conversation and the caller's rights in it.
 // Channels of foreign projects and DMs of other people answer 404.
 func conversationAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, accountID pgtype.UUID) (sqlc.Conversation, chatAccess, bool) {
-	conversation, err := q.GetConversation(ctx, pgUUID(uuidFrom(id)))
+	conversation, err := q.GetConversation(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return conversation, chatAccess{}, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return conversation, chatAccess{}, false
 	}
 	return resolveChatAccess(ctx, w, q, conversation, accountID)
@@ -85,7 +85,7 @@ func resolveChatAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 		}
 		allowed, err := q.DirectMessagesAllowed(ctx, sqlc.DirectMessagesAllowedParams{First: conversation.DmLow, Second: conversation.DmHigh})
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, nil, err)
 			return conversation, chatAccess{}, false
 		}
 		return conversation, chatAccess{read: allowed, send: allowed}, true
@@ -183,7 +183,7 @@ func channelDomainFailure(ctx context.Context, q *sqlc.Queries, conversation sql
 	return nil, fail, err
 }
 
-func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params gen.ListMessagesParams) {
+func (h *apiServer) ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params gen.ListMessagesParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -209,7 +209,7 @@ func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, con
 	}
 	rows, err := q.ListMessages(ctx, sqlc.ListMessagesParams{ConversationID: conversation.ID, Seq: after, Limit: int32(limit)})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	ids := make([]pgtype.UUID, 0, len(rows))
@@ -218,7 +218,7 @@ func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, con
 	}
 	reactions, err := q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: ids})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	messages := make([]gen.Message, 0, len(rows))
@@ -232,7 +232,7 @@ func (h *healthHandler) ListMessages(w http.ResponseWriter, r *http.Request, con
 	writeJSON(w, http.StatusOK, messages)
 }
 
-func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) SendMessage(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -250,7 +250,7 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -273,7 +273,7 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	mutationID := pgUUID(uuidFrom(payload.ClientMutationId))
+	mutationID := toPG(payload.ClientMutationId)
 	existing, err := q.FindMessageByMutation(ctx, sqlc.FindMessageByMutationParams{
 		ConversationID: conversation.ID, AuthorID: session.AccountID, ClientMutationID: mutationID,
 	})
@@ -282,19 +282,19 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 	if errors.Is(err, pgx.ErrNoRows) {
 		seq, seqErr := q.NextMessageSeq(ctx, conversation.ID)
 		if seqErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, seqErr)
 			return
 		}
 		var signerID *pgtype.UUID
 		if payload.SignerDeviceId != nil {
-			signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+			signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
 		}
 		writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
 		if domainErr == nil && fail == nil && encrypted {
 			fail = writer.verify(session.AccountID, messageResource(mutationID), 1, *payload.BodyEnc)
 		}
 		if domainErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, domainErr)
 			return
 		}
 		if fail != nil {
@@ -327,7 +327,7 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	reactions, err := q.ListReactions(ctx, sqlc.ListReactionsParams{Me: session.AccountID, Ids: []pgtype.UUID{message.ID}})
@@ -335,7 +335,7 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, status, buildMessage(viewOf(message, session.EmailNormalized), toReactions(reactions, message.ID)))
@@ -343,18 +343,18 @@ func (h *healthHandler) SendMessage(w http.ResponseWriter, r *http.Request, conv
 
 // messageAccess locks the message and resolves the caller's rights in its conversation.
 func messageAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, accountID pgtype.UUID) (sqlc.Message, chatAccess, bool) {
-	message, err := q.GetMessageForUpdate(ctx, pgUUID(uuidFrom(id)))
+	message, err := q.GetMessageForUpdate(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return message, chatAccess{}, false
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return message, chatAccess{}, false
 	}
 	conversation, err := q.GetConversation(ctx, message.ConversationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return message, chatAccess{}, false
 	}
 	_, access, ok := resolveChatAccess(ctx, w, q, conversation, accountID)
@@ -365,7 +365,7 @@ func messageAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	return message, access, ok
 }
 
-func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *apiServer) EditMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -383,7 +383,7 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -402,12 +402,12 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 	}
 	conversation, err := q.GetConversation(ctx, message.ConversationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	var signerID *pgtype.UUID
 	if payload.SignerDeviceId != nil {
-		signerID = optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId)))
+		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
 	}
 	writer, fail, domainErr := channelDomainFailure(ctx, q, conversation, encrypted, session.AccountID, signerID)
 	if domainErr == nil && fail == nil && encrypted {
@@ -419,7 +419,7 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		}
 	}
 	if domainErr != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, domainErr)
 		return
 	}
 	if fail != nil {
@@ -444,7 +444,7 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	err = emitForMessage(ctx, q, "message.updated", edited)
@@ -456,13 +456,13 @@ func (h *healthHandler) EditMessage(w http.ResponseWriter, r *http.Request, mess
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, buildMessage(viewOf(edited, session.EmailNormalized), toReactions(reactions, edited.ID)))
 }
 
-func (h *healthHandler) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *apiServer) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -471,7 +471,7 @@ func (h *healthHandler) DeleteMessage(w http.ResponseWriter, r *http.Request, me
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -493,7 +493,7 @@ func (h *healthHandler) DeleteMessage(w http.ResponseWriter, r *http.Request, me
 			err = emitForMessage(ctx, q, "message.deleted", message)
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -504,7 +504,7 @@ func (h *healthHandler) DeleteMessage(w http.ResponseWriter, r *http.Request, me
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) ToggleReaction(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *apiServer) ToggleReaction(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -517,7 +517,7 @@ func (h *healthHandler) ToggleReaction(w http.ResponseWriter, r *http.Request, m
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -553,13 +553,13 @@ func (h *healthHandler) ToggleReaction(w http.ResponseWriter, r *http.Request, m
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toReactions(reactions, message.ID))
 }
 
-func (h *healthHandler) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -568,7 +568,7 @@ func (h *healthHandler) ListDirectContacts(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListDirectContacts(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	contacts := make([]gen.DirectContact, 0, len(rows))
@@ -578,7 +578,7 @@ func (h *healthHandler) ListDirectContacts(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, contacts)
 }
 
-func (h *healthHandler) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -587,7 +587,7 @@ func (h *healthHandler) ListDirectConversations(w http.ResponseWriter, r *http.R
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListDirectConversations(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	conversations := make([]gen.DirectConversation, 0, len(rows))
@@ -597,7 +597,7 @@ func (h *healthHandler) ListDirectConversations(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, conversations)
 }
 
-func (h *healthHandler) OpenDirectConversation(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) OpenDirectConversation(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -606,7 +606,7 @@ func (h *healthHandler) OpenDirectConversation(w http.ResponseWriter, r *http.Re
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-	peer := pgUUID(uuidFrom(payload.AccountId))
+	peer := toPG(payload.AccountId)
 	if peer == session.AccountID {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -616,7 +616,7 @@ func (h *healthHandler) OpenDirectConversation(w http.ResponseWriter, r *http.Re
 	q := sqlc.New(h.auth.pool)
 	allowed, err := q.DirectMessagesAllowed(ctx, sqlc.DirectMessagesAllowedParams{First: session.AccountID, Second: peer})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if !allowed {
@@ -629,12 +629,12 @@ func (h *healthHandler) OpenDirectConversation(w http.ResponseWriter, r *http.Re
 	}
 	conversation, err := q.EnsureDirectConversation(ctx, sqlc.EnsureDirectConversationParams{DmLow: low, DmHigh: high})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	account, err := q.GetAccountByID(ctx, peer)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	status := http.StatusOK
@@ -661,7 +661,7 @@ func announceMessage(ctx context.Context, q *sqlc.Queries, conversation sqlc.Con
 	notified := map[pgtype.UUID]bool{author: true}
 	if mentionIDs != nil {
 		for _, id := range *mentionIDs {
-			mentioned := pgUUID(uuidFrom(id))
+			mentioned := toPG(id)
 			if !slices.Contains(recipients, mentioned) {
 				return errInvalidMention
 			}
@@ -688,7 +688,7 @@ func announceMessage(ctx context.Context, q *sqlc.Queries, conversation sqlc.Con
 }
 
 // UpdateConversation encrypts a channel's name (project managers only).
-func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *apiServer) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -701,18 +701,18 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
-	conversation, err := q.GetConversationForUpdate(ctx, pgUUID(uuidFrom(conversationId)))
+	conversation, err := q.GetConversationForUpdate(ctx, toPG(conversationId))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && conversation.Kind != "channel") {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	access, ok := loadAccess(ctx, w, q, conversation.ProjectID, session.AccountID)
@@ -735,7 +735,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		}
 		fail, planErr := requirePlaintextAllowed(ctx, q, conversation.ProjectID, "chat")
 		if planErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, planErr)
 			return
 		}
 		if fail != nil {
@@ -758,7 +758,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 			nameErr = tx.Commit(ctx)
 		}
 		if nameErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, nameErr)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -769,7 +769,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	revision := int32(*payload.ContentRevision)
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, conversation.ProjectID, "chat", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 	if err == nil && fail == nil && revision != conversation.ContentRevision+1 {
 		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 	}
@@ -777,7 +777,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		fail = writer.verify(session.AccountID, channelResource(conversation.ID), revision, *payload.NameEnc)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if fail != nil {
@@ -799,7 +799,7 @@ func (h *healthHandler) UpdateConversation(w http.ResponseWriter, r *http.Reques
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

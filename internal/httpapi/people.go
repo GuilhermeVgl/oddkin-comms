@@ -11,7 +11,7 @@ import (
 )
 
 // ListSessions shows the caller's own sessions, so a forgotten browser can be ended.
-func (h *healthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListSessions(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -20,7 +20,7 @@ func (h *healthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListAccountSessions(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	sessions := make([]gen.AuthSession, 0, len(rows))
@@ -33,29 +33,29 @@ func (h *healthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessions)
 }
 
-func (h *healthHandler) RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID) {
+func (h *apiServer) RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	revoked, err := sqlc.New(h.auth.pool).RevokeAccountSession(ctx, sqlc.RevokeAccountSessionParams{ID: pgUUID(uuidFrom(sessionId)), AccountID: session.AccountID})
+	revoked, err := sqlc.New(h.auth.pool).RevokeAccountSession(ctx, sqlc.RevokeAccountSessionParams{ID: toPG(sessionId), AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if revoked == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	if pgUUID(uuidFrom(sessionId)) == session.ID {
+	if toPG(sessionId) == session.ID {
 		clearAuthCookies(w)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -69,12 +69,12 @@ func (h *healthHandler) ListOrganizationPeople(w http.ResponseWriter, r *http.Re
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	rows, err := q.ListOrganizationPeople(ctx, membership.OrganizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	people := make([]gen.OrganizationPerson, 0, len(rows))
@@ -89,7 +89,7 @@ func (h *healthHandler) ListOrganizationPeople(w http.ResponseWriter, r *http.Re
 
 // SetPersonActive ends all access of a deactivated account at once: its
 // sessions are revoked in the same transaction.
-func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
+func (h *apiServer) SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
 	var payload gen.SetActiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -106,17 +106,17 @@ func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, 
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
-	target := pgUUID(uuidFrom(accountId))
+	target := toPG(accountId)
 	person, err := q.GetOrganizationPerson(ctx, sqlc.GetOrganizationPersonParams{OrganizationID: membership.OrganizationID, ID: target})
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -125,7 +125,7 @@ func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, 
 	if !payload.Active && person.IsAdmin && person.Active {
 		admins, countErr := q.CountActiveAdmins(ctx, membership.OrganizationID)
 		if countErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, countErr)
 			return
 		}
 		if admins <= 1 {
@@ -141,7 +141,7 @@ func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -149,7 +149,7 @@ func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, 
 
 // SetHistoryMode lets a person choose whether they are asked to set up access
 // to encrypted history. "auto" is only ever set by an invitation.
-func (h *healthHandler) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
 	var payload gen.SetHistoryModeRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

@@ -43,7 +43,7 @@ func sprintDomain(ctx context.Context, q *sqlc.Queries, organizationID pgtype.UU
 	return domain, err == nil, err
 }
 
-func (h *healthHandler) ListSprints(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) ListSprints(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -52,7 +52,7 @@ func (h *healthHandler) ListSprints(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rows, err := sqlc.New(h.auth.pool).ListSprintsForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	sprints := make([]gen.Sprint, 0, len(rows))
@@ -62,7 +62,7 @@ func (h *healthHandler) ListSprints(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sprints)
 }
 
-func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) CreateSprint(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -87,27 +87,27 @@ func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 	q := sqlc.New(h.auth.pool)
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domain, found, err := sprintDomain(ctx, q, membership.OrganizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	starts := pgtype.Date{Time: payload.StartsOn.Time, Valid: true}
 	ends := pgtype.Date{Time: payload.EndsOn.Time, Valid: true}
 	var sprint sqlc.Sprint
 	if encrypted {
-		id := pgUUID(uuidFrom(*payload.Id))
-		writer, fail, prepErr := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(pgUUID(uuidFrom(*payload.SignerDeviceId))))
+		id := toPG(*payload.Id)
+		writer, fail, prepErr := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(toPG(*payload.SignerDeviceId)))
 		if prepErr == nil && fail == nil {
 			if fail = writer.verify(session.AccountID, sprintResource(id, "name"), 1, *payload.NameEnc); fail == nil {
 				fail = writer.verify(session.AccountID, sprintResource(id, "goal"), 1, *payload.GoalEnc)
 			}
 		}
 		if prepErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, prepErr)
 			return
 		}
 		if fail != nil {
@@ -142,14 +142,14 @@ func (h *healthHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toSprint(sprint))
 }
 
 // UpdateSprint encrypts the name and goal of a sprint (administrators).
-func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *apiServer) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -166,7 +166,7 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -177,16 +177,16 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 	}
 	sprint, err := q.GetSprintForUpdate(ctx, visible.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	domain, found, err := sprintDomain(ctx, q, sprint.OrganizationID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	revision := int32(payload.ContentRevision)
-	writer, fail, err := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(pgUUID(uuidFrom(payload.SignerDeviceId))))
+	writer, fail, err := prepareEncryptedWith(ctx, q, session.AccountID, domain, found, optionalUUIDValue(toPG(payload.SignerDeviceId)))
 	if err == nil && fail == nil && revision != sprint.ContentRevision+1 {
 		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 	}
@@ -196,7 +196,7 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	if fail != nil {
@@ -223,7 +223,7 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -234,11 +234,11 @@ func (h *healthHandler) UpdateSprint(w http.ResponseWriter, r *http.Request, spr
 func visibleSprint(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, sprintID openapi_types.UUID, accountID pgtype.UUID) (sqlc.Sprint, bool) {
 	rows, err := q.ListSprintsForAccount(ctx, accountID)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return sqlc.Sprint{}, false
 	}
 	for _, row := range rows {
-		if row.ID == pgUUID(uuidFrom(sprintID)) {
+		if row.ID == toPG(sprintID) {
 			return row, true
 		}
 	}
@@ -246,7 +246,7 @@ func visibleSprint(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	return sqlc.Sprint{}, false
 }
 
-func (h *healthHandler) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *apiServer) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -260,7 +260,7 @@ func (h *healthHandler) ListSprintWorkItems(w http.ResponseWriter, r *http.Reque
 	}
 	rows, err := q.ListSprintTasksForAccount(ctx, sqlc.ListSprintTasksForAccountParams{SprintID: sprint.ID, AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	items := make([]gen.WorkItem, 0, len(rows))
@@ -270,7 +270,7 @@ func (h *healthHandler) ListSprintWorkItems(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (h *healthHandler) StartSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *apiServer) StartSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -292,13 +292,13 @@ func (h *healthHandler) StartSprint(w http.ResponseWriter, r *http.Request, spri
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toSprint(started))
 }
 
-func (h *healthHandler) GetSprintClosePreview(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *apiServer) GetSprintClosePreview(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -316,12 +316,12 @@ func (h *healthHandler) GetSprintClosePreview(w http.ResponseWriter, r *http.Req
 	}
 	all, err := q.ListSprintTasksForClose(ctx, sqlc.ListSprintTasksForCloseParams{SprintID: sprint.ID, AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	readable, err := q.ListSprintTasksForAccount(ctx, sqlc.ListSprintTasksForAccountParams{SprintID: sprint.ID, AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	finished := make(map[pgtype.UUID]bool, len(all))
@@ -343,7 +343,7 @@ func (h *healthHandler) GetSprintClosePreview(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, preview)
 }
 
-func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *apiServer) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -360,7 +360,7 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 	defer cancel()
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -379,7 +379,7 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 	}
 	tasks, err := q.ListSprintTasksForClose(ctx, sqlc.ListSprintTasksForCloseParams{SprintID: sprint.ID, AccountID: session.AccountID})
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	type decision struct {
@@ -388,7 +388,7 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 	}
 	decisions := make(map[pgtype.UUID]decision, len(payload.Decisions))
 	for _, entry := range payload.Decisions {
-		id := pgUUID(uuidFrom(entry.WorkItemId))
+		id := toPG(entry.WorkItemId)
 		if _, duplicate := decisions[id]; duplicate {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -427,13 +427,13 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		next, nextErr := q.GetSprint(ctx, pgUUID(uuidFrom(*payload.DestinationSprintId)))
+		next, nextErr := q.GetSprint(ctx, toPG(*payload.DestinationSprintId))
 		if errors.Is(nextErr, pgx.ErrNoRows) || (nextErr == nil && (next.OrganizationID != sprint.OrganizationID || next.State != "planned")) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		if nextErr != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, nextErr)
 			return
 		}
 		destination = next.ID
@@ -453,7 +453,7 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 			err = q.RecordSprintItem(ctx, sqlc.RecordSprintItemParams{SprintID: sprint.ID, WorkItemID: task.ID, Outcome: outcome})
 		}
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -461,7 +461,7 @@ func (h *healthHandler) CloseSprint(w http.ResponseWriter, r *http.Request, spri
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

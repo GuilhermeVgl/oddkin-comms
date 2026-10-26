@@ -12,22 +12,22 @@ type DatabaseProbe interface {
 	Ping(context.Context) error
 }
 
-type healthHandler struct {
+type apiServer struct {
 	database DatabaseProbe
 	auth     *authService
 }
 
-var _ gen.ServerInterface = (*healthHandler)(nil)
+var _ gen.ServerInterface = (*apiServer)(nil)
 
 func NewHandler(database DatabaseProbe) http.Handler {
-	return withObservability(gen.Handler(&healthHandler{database: database}), nil)
+	return withObservability(gen.Handler(&apiServer{database: database}), nil)
 }
 
-func (h *healthHandler) GetLiveness(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetLiveness(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *healthHandler) GetReadiness(w http.ResponseWriter, r *http.Request) {
+func (h *apiServer) GetReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	if err := h.database.Ping(ctx); err != nil {
