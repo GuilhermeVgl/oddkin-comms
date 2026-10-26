@@ -187,6 +187,14 @@ type ExternalProjectPolicy struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type FocusSession struct {
+	ID         pgtype.UUID
+	AccountID  pgtype.UUID
+	WorkItemID pgtype.UUID
+	Minutes    int32
+	CreatedAt  pgtype.Timestamptz
+}
+
 type InvitationDelivery struct {
 	InvitationID    pgtype.UUID
 	TokenCiphertext []byte
@@ -428,6 +436,7 @@ type WorkItem struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	CompletedAt           pgtype.Timestamptz
 }
 
 type WorkItemComment struct {
@@ -445,4 +454,10 @@ type WorkItemFollower struct {
 	WorkItemID pgtype.UUID
 	AccountID  pgtype.UUID
 	CreatedAt  pgtype.Timestamptz
+}
+
+type WorkItemKudo struct {
+	WorkItemID    pgtype.UUID
+	FromAccountID pgtype.UUID
+	CreatedAt     pgtype.Timestamptz
 }

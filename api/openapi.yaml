@@ -975,6 +975,100 @@ paths:
           description: Origin or CSRF token rejected
         "404":
           description: Unknown or inaccessible activity
+  /api/v1/work-items/{workItemId}/kudos:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    put:
+      operationId: giveKudos
+      summary: Thank whoever finished the activity; the assignee is told once
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Thanked (also when already thanked)
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token or permission rejected, or the caller is the assignee
+        "404":
+          description: Unknown or inaccessible activity
+        "409":
+          description: The activity is not finished or has no assignee
+    delete:
+      operationId: removeKudos
+      summary: Take the thanks back
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Not thanked
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown or inaccessible activity
+  /api/v1/work-items/{workItemId}/engagement:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    get:
+      operationId: getWorkItemEngagement
+      summary: Thanks and focus time on one activity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Engagement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItemEngagement"
+        "401":
+          description: No active session
+        "403":
+          description: The profile cannot read activities
+        "404":
+          description: Unknown or inaccessible activity
+  /api/v1/work-items/{workItemId}/focus:
+    parameters:
+      - $ref: "#/components/parameters/WorkItemId"
+    post:
+      operationId: recordFocusSession
+      summary: Record a finished focus session on the activity
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusSessionRequest"
+      responses:
+        "204":
+          description: Recorded
+        "400":
+          description: Minutes outside 1 to 180
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token or permission rejected
+        "404":
+          description: Unknown or inaccessible activity
+  /api/v1/me/stats:
+    get:
+      operationId: getMyStats
+      summary: The caller's personal scoreboard (streaks, thanks, focus, calls)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyStats"
+        "401":
+          description: No active session
   /api/v1/work-items/{workItemId}/comments:
     parameters:
       - $ref: "#/components/parameters/WorkItemId"
@@ -3222,6 +3316,47 @@ components:
       properties:
         token: { type: string, minLength: 43, maxLength: 43 }
         password: { type: string, minLength: 12, maxLength: 1024 }
+    WorkItemEngagement:
+      type: object
+      required: [kudosCount, kudosMine, focusMinutes]
+      additionalProperties: false
+      properties:
+        kudosCount: { type: integer }
+        kudosMine: { type: boolean }
+        focusMinutes: { type: integer, description: Focus time of everyone on this activity }
+    FocusSessionRequest:
+      type: object
+      required: [minutes]
+      additionalProperties: false
+      properties:
+        minutes: { type: integer }
+    MyStats:
+      type: object
+      required:
+        [
+          completedToday,
+          completedTotal,
+          currentStreak,
+          bestStreak,
+          kudosReceived,
+          kudosGiven,
+          focusMinutes,
+          callsJoined,
+          commentsWritten,
+        ]
+      additionalProperties: false
+      properties:
+        completedToday: { type: integer }
+        completedTotal: { type: integer }
+        currentStreak:
+          type: integer
+          description: Consecutive days, ending today or yesterday, with at least one finished task
+        bestStreak: { type: integer }
+        kudosReceived: { type: integer }
+        kudosGiven: { type: integer }
+        focusMinutes: { type: integer }
+        callsJoined: { type: integer }
+        commentsWritten: { type: integer }
     Following:
       type: object
       required: [following]
@@ -3703,6 +3838,7 @@ components:
                 followed_update,
                 invitation_accepted,
                 device_request,
+                kudos,
               ],
           }
         resourceId: { type: string, format: uuid }

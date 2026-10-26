@@ -576,6 +576,81 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/work-items/{workItemId}/kudos": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Thank whoever finished the activity; the assignee is told once */
+    put: operations["giveKudos"];
+    post?: never;
+    /** Take the thanks back */
+    delete: operations["removeKudos"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-items/{workItemId}/engagement": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    /** Thanks and focus time on one activity */
+    get: operations["getWorkItemEngagement"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/work-items/{workItemId}/focus": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Record a finished focus session on the activity */
+    post: operations["recordFocusSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/me/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's personal scoreboard (streaks, thanks, focus, calls) */
+    get: operations["getMyStats"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/work-items/{workItemId}/comments": {
     parameters: {
       query?: never;
@@ -2034,6 +2109,27 @@ export interface components {
       token: string;
       password: string;
     };
+    WorkItemEngagement: {
+      kudosCount: number;
+      kudosMine: boolean;
+      /** @description Focus time of everyone on this activity */
+      focusMinutes: number;
+    };
+    FocusSessionRequest: {
+      minutes: number;
+    };
+    MyStats: {
+      completedToday: number;
+      completedTotal: number;
+      /** @description Consecutive days, ending today or yesterday, with at least one finished task */
+      currentStreak: number;
+      bestStreak: number;
+      kudosReceived: number;
+      kudosGiven: number;
+      focusMinutes: number;
+      callsJoined: number;
+      commentsWritten: number;
+    };
     Following: {
       following: boolean;
     };
@@ -2424,7 +2520,8 @@ export interface components {
         | "recovery_access"
         | "followed_update"
         | "invitation_accepted"
-        | "device_request";
+        | "device_request"
+        | "kudos";
       /** Format: uuid */
       resourceId: string;
       /** Format: uuid */
@@ -4766,6 +4863,217 @@ export interface operations {
       };
       /** @description Unknown or inaccessible activity */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  giveKudos: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Thanked (also when already thanked) */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token or permission rejected, or the caller is the assignee */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The activity is not finished or has no assignee */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  removeKudos: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Not thanked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getWorkItemEngagement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Engagement */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkItemEngagement"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The profile cannot read activities */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  recordFocusSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workItemId: components["parameters"]["WorkItemId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FocusSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Recorded */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Minutes outside 1 to 180 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token or permission rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible activity */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getMyStats: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Stats */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MyStats"];
+        };
+      };
+      /** @description No active session */
+      401: {
         headers: {
           [name: string]: unknown;
         };

@@ -659,6 +659,7 @@ const (
 	DirectMessage      NotificationKind = "direct_message"
 	FollowedUpdate     NotificationKind = "followed_update"
 	InvitationAccepted NotificationKind = "invitation_accepted"
+	Kudos              NotificationKind = "kudos"
 	Mention            NotificationKind = "mention"
 	RecoveryAccess     NotificationKind = "recovery_access"
 )
@@ -677,6 +678,8 @@ func (e NotificationKind) Valid() bool {
 	case FollowedUpdate:
 		return true
 	case InvitationAccepted:
+		return true
+	case Kudos:
 		return true
 	case Mention:
 		return true
@@ -1381,6 +1384,11 @@ type ExternalPolicy struct {
 	Version     int                  `json:"version"`
 }
 
+// FocusSessionRequest defines model for FocusSessionRequest.
+type FocusSessionRequest struct {
+	Minutes int `json:"minutes"`
+}
+
 // Following defines model for Following.
 type Following struct {
 	Following bool `json:"following"`
@@ -1521,6 +1529,21 @@ type Message struct {
 	ReplyToId        *openapi_types.UUID `json:"replyToId,omitempty"`
 	Seq              int64               `json:"seq"`
 	SignerDeviceId   *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+}
+
+// MyStats defines model for MyStats.
+type MyStats struct {
+	BestStreak      int `json:"bestStreak"`
+	CallsJoined     int `json:"callsJoined"`
+	CommentsWritten int `json:"commentsWritten"`
+	CompletedToday  int `json:"completedToday"`
+	CompletedTotal  int `json:"completedTotal"`
+
+	// CurrentStreak Consecutive days, ending today or yesterday, with at least one finished task
+	CurrentStreak int `json:"currentStreak"`
+	FocusMinutes  int `json:"focusMinutes"`
+	KudosGiven    int `json:"kudosGiven"`
+	KudosReceived int `json:"kudosReceived"`
 }
 
 // Notification defines model for Notification.
@@ -1974,6 +1997,14 @@ type WorkItemComment struct {
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 }
 
+// WorkItemEngagement defines model for WorkItemEngagement.
+type WorkItemEngagement struct {
+	// FocusMinutes Focus time of everyone on this activity
+	FocusMinutes int  `json:"focusMinutes"`
+	KudosCount   int  `json:"kudosCount"`
+	KudosMine    bool `json:"kudosMine"`
+}
+
 // CallId defines model for CallId.
 type CallId = openapi_types.UUID
 
@@ -2178,6 +2209,9 @@ type UpdateWorkItemJSONRequestBody = UpdateWorkItemRequest
 // CreateWorkItemCommentJSONRequestBody defines body for CreateWorkItemComment for application/json ContentType.
 type CreateWorkItemCommentJSONRequestBody = CreateCommentRequest
 
+// RecordFocusSessionJSONRequestBody defines body for RecordFocusSession for application/json ContentType.
+type RecordFocusSessionJSONRequestBody = FocusSessionRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// DeleteAvatar Remove the caller's profile photo
@@ -2372,6 +2406,9 @@ type ServerInterface interface {
 	// GrantRecoveryEnvelopes Re-seal a generation for authorized devices that lack it; audited and announced
 	// (POST /api/v1/key-domains/{keyDomainId}/recovery-grants)
 	GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId KeyDomainId)
+	// GetMyStats The caller's personal scoreboard (streaks, thanks, focus, calls)
+	// (GET /api/v1/me/stats)
+	GetMyStats(w http.ResponseWriter, r *http.Request)
 	// DeleteMessage Delete your own message, or any channel message as project manager
 	// (DELETE /api/v1/messages/{messageId})
 	DeleteMessage(w http.ResponseWriter, r *http.Request, messageId MessageId)
@@ -2552,6 +2589,12 @@ type ServerInterface interface {
 	// CreateWorkItemComment Add a comment
 	// (POST /api/v1/work-items/{workItemId}/comments)
 	CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// GetWorkItemEngagement Thanks and focus time on one activity
+	// (GET /api/v1/work-items/{workItemId}/engagement)
+	GetWorkItemEngagement(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// RecordFocusSession Record a finished focus session on the activity
+	// (POST /api/v1/work-items/{workItemId}/focus)
+	RecordFocusSession(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
 	// UnfollowWorkItem Stop following the activity
 	// (DELETE /api/v1/work-items/{workItemId}/followers/me)
 	UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
@@ -2561,6 +2604,12 @@ type ServerInterface interface {
 	// FollowWorkItem Follow the activity; moves and comments are announced inside the app
 	// (PUT /api/v1/work-items/{workItemId}/followers/me)
 	FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// RemoveKudos Take the thanks back
+	// (DELETE /api/v1/work-items/{workItemId}/kudos)
+	RemoveKudos(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
+	// GiveKudos Thank whoever finished the activity; the assignee is told once
+	// (PUT /api/v1/work-items/{workItemId}/kudos)
+	GiveKudos(w http.ResponseWriter, r *http.Request, workItemId WorkItemId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3975,6 +4024,20 @@ func (siw *ServerInterfaceWrapper) GrantRecoveryEnvelopes(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GrantRecoveryEnvelopes(w, r, keyDomainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyStats operation middleware
+func (siw *ServerInterfaceWrapper) GetMyStats(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyStats(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5432,6 +5495,58 @@ func (siw *ServerInterfaceWrapper) CreateWorkItemComment(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkItemEngagement operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkItemEngagement(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordFocusSession operation middleware
+func (siw *ServerInterfaceWrapper) RecordFocusSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordFocusSession(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UnfollowWorkItem operation middleware
 func (siw *ServerInterfaceWrapper) UnfollowWorkItem(w http.ResponseWriter, r *http.Request) {
 
@@ -5501,6 +5616,58 @@ func (siw *ServerInterfaceWrapper) FollowWorkItem(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FollowWorkItem(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveKudos operation middleware
+func (siw *ServerInterfaceWrapper) RemoveKudos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveKudos(w, r, workItemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GiveKudos operation middleware
+func (siw *ServerInterfaceWrapper) GiveKudos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workItemId" -------------
+	var workItemId WorkItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workItemId", r.PathValue("workItemId"), &workItemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workItemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GiveKudos(w, r, workItemId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5674,6 +5841,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.UnfollowWorkItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.GetFollowing)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/followers/me", wrapper.FollowWorkItem)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/kudos", wrapper.RemoveKudos)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/kudos", wrapper.GiveKudos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/engagement", wrapper.GetWorkItemEngagement)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/focus", wrapper.RecordFocusSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/stats", wrapper.GetMyStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.ListWorkItemComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.CreateWorkItemComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.ListConversations)

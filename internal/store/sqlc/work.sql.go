@@ -727,7 +727,7 @@ const createEncryptedWorkItem = `-- name: CreateEncryptedWorkItem :one
 INSERT INTO work_item (id, project_id, kind, parent_id, title, description, assignee_id, due_date, priority, column_id, created_by,
                        encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id)
 VALUES ($1, $2, $3, $4, '', '', $5, $6, $7, $8, $9, true, $10, $11, 1, $9, $12)
-RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 `
 
 type CreateEncryptedWorkItemParams struct {
@@ -786,6 +786,7 @@ func (q *Queries) CreateEncryptedWorkItem(ctx context.Context, arg CreateEncrypt
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -1062,7 +1063,7 @@ func (q *Queries) CreateSprintKeyDomain(ctx context.Context, organizationID pgty
 const createWorkItem = `-- name: CreateWorkItem :one
 INSERT INTO work_item (project_id, kind, parent_id, title, description, assignee_id, due_date, priority, column_id, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 `
 
 type CreateWorkItemParams struct {
@@ -1117,6 +1118,7 @@ func (q *Queries) CreateWorkItem(ctx context.Context, arg CreateWorkItemParams) 
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -2074,7 +2076,7 @@ func (q *Queries) GetTrustRoot(ctx context.Context, organizationID pgtype.UUID) 
 }
 
 const getWorkItem = `-- name: GetWorkItem :one
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 FROM work_item
 WHERE id = $1
 `
@@ -2107,6 +2109,7 @@ func (q *Queries) GetWorkItem(ctx context.Context, id pgtype.UUID) (WorkItem, er
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -2132,7 +2135,7 @@ func (q *Queries) GetWorkItemComment(ctx context.Context, id pgtype.UUID) (WorkI
 }
 
 const getWorkItemForUpdate = `-- name: GetWorkItemForUpdate :one
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 FROM work_item
 WHERE id = $1
 FOR UPDATE
@@ -2166,6 +2169,7 @@ func (q *Queries) GetWorkItemForUpdate(ctx context.Context, id pgtype.UUID) (Wor
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -3883,7 +3887,7 @@ func (q *Queries) ListSeatDevices(ctx context.Context, callID pgtype.UUID) ([]pg
 }
 
 const listSprintTasksForAccount = `-- name: ListSprintTasksForAccount :many
-SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id
+SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id, w.completed_at
 FROM work_item AS w
 JOIN project AS p ON p.id = w.project_id
 JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = $2
@@ -3933,6 +3937,7 @@ func (q *Queries) ListSprintTasksForAccount(ctx context.Context, arg ListSprintT
 			&i.ContentRevision,
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4228,7 +4233,7 @@ func (q *Queries) ListWorkItemComments(ctx context.Context, workItemID pgtype.UU
 }
 
 const listWorkItems = `-- name: ListWorkItems :many
-SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+SELECT id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 FROM work_item
 WHERE project_id = $1 AND NOT archived
 ORDER BY created_at, id
@@ -4268,6 +4273,7 @@ func (q *Queries) ListWorkItems(ctx context.Context, projectID pgtype.UUID) ([]W
 			&i.ContentRevision,
 			&i.ContentAuthorID,
 			&i.ContentSignerDeviceID,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -5302,7 +5308,7 @@ SET title = COALESCE($1, title),
     version = version + 1,
     updated_at = now()
 WHERE id = $14 AND version = $15
-RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id
+RETURNING id, project_id, kind, parent_id, parent_kind, title, description, assignee_id, due_date, priority, column_id, archived, version, created_by, created_at, updated_at, epic_id, sprint_id, encrypted, title_enc, description_enc, content_revision, content_author_id, content_signer_device_id, completed_at
 `
 
 type UpdateWorkItemParams struct {
@@ -5367,6 +5373,7 @@ func (q *Queries) UpdateWorkItem(ctx context.Context, arg UpdateWorkItemParams) 
 		&i.ContentRevision,
 		&i.ContentAuthorID,
 		&i.ContentSignerDeviceID,
+		&i.CompletedAt,
 	)
 	return i, err
 }
