@@ -14,33 +14,33 @@ O público inicial é uma única organização, com equipe interna e convidados 
 
 ### 1.1 Decisões confirmadas na entrevista
 
-| Tema | Decisão do usuário |
-| --- | --- |
-| Público | Equipe interna e convidados externos em projetos específicos |
-| Visibilidade | Cada projeto tem seus membros; usuários só acessam projetos aos quais pertencem |
-| Externos | Um conjunto granular de permissões por projeto, igual para todos os externos desse projeto, sem exceções por usuário |
-| Organização | Épicos, atividades e subtarefas com responsável e prazo próprios |
-| Responsabilidade | Um responsável principal por atividade ou subtarefa; outros podem acompanhar e comentar |
-| Quadro | Colunas configuráveis por projeto |
-| Sprint | Uma sprint da equipe pode reunir atividades de vários projetos |
-| Encerramento | Escolher quais pendências vão para a próxima sprint e quais voltam ao backlog |
-| Canais | Vários por projeto; acessíveis aos membros, respeitadas as permissões dos externos |
-| Mensagens diretas | Conversas entre duas pessoas |
-| Chat | Linear, com menções, reações por emoji e resposta citando mensagem |
-| Reuniões | Pontuais, iniciadas com convite; até cinco participantes, com áudio, vídeo e compartilhamento de tela |
-| Criptografia | Ponta a ponta para todo o conteúdo de trabalho, incluindo atividades, comentários e arquivos |
-| Recuperação | Um administrador pode recuperar acesso, aceitando-se sua capacidade de descriptografar conteúdo |
-| Login | E-mail e senha |
-| Arquivos | Até 500 MB por arquivo, em chats ou atividades |
-| Notificações | Apenas dentro do app: mensagens, menções, atribuições e chamadas |
-| Mobile | Atividades e chat adaptados ao celular; chamadas focadas no desktop |
-| Hospedagem | Projeto containerizado; VPS Contabo provisionada posteriormente pelo usuário |
-| Storage | Cloudflare R2 |
-| Animação | Personagens, transições e celebrações; sem pontos, níveis ou rankings |
-| Backend | Go (Golang), conforme decisão posterior à entrevista inicial |
-| E-mails transacionais | Envio pela API HTTPS da Resend, conforme decisão posterior |
-| Distribuição | Projeto destinado a publicação open source; licença ainda a definir pelo mantenedor |
-| Engenharia | TDD, quality gates e regras de contribuição em `CLAUDE.md`; nunca inserir `Co-authored-by` em commits |
+| Tema                  | Decisão do usuário                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Público               | Equipe interna e convidados externos em projetos específicos                                                         |
+| Visibilidade          | Cada projeto tem seus membros; usuários só acessam projetos aos quais pertencem                                      |
+| Externos              | Um conjunto granular de permissões por projeto, igual para todos os externos desse projeto, sem exceções por usuário |
+| Organização           | Épicos, atividades e subtarefas com responsável e prazo próprios                                                     |
+| Responsabilidade      | Um responsável principal por atividade ou subtarefa; outros podem acompanhar e comentar                              |
+| Quadro                | Colunas configuráveis por projeto                                                                                    |
+| Sprint                | Uma sprint da equipe pode reunir atividades de vários projetos                                                       |
+| Encerramento          | Escolher quais pendências vão para a próxima sprint e quais voltam ao backlog                                        |
+| Canais                | Vários por projeto; acessíveis aos membros, respeitadas as permissões dos externos                                   |
+| Mensagens diretas     | Conversas entre duas pessoas                                                                                         |
+| Chat                  | Linear, com menções, reações por emoji e resposta citando mensagem                                                   |
+| Reuniões              | Pontuais, iniciadas com convite; até cinco participantes, com áudio, vídeo e compartilhamento de tela                |
+| Criptografia          | Ponta a ponta para todo o conteúdo de trabalho, incluindo atividades, comentários e arquivos                         |
+| Recuperação           | Um administrador pode recuperar acesso, aceitando-se sua capacidade de descriptografar conteúdo                      |
+| Login                 | E-mail e senha                                                                                                       |
+| Arquivos              | Até 500 MB por arquivo, em chats ou atividades                                                                       |
+| Notificações          | Apenas dentro do app: mensagens, menções, atribuições e chamadas                                                     |
+| Mobile                | Atividades e chat adaptados ao celular; chamadas focadas no desktop                                                  |
+| Hospedagem            | Projeto containerizado; VPS Contabo provisionada posteriormente pelo usuário                                         |
+| Storage               | Cloudflare R2                                                                                                        |
+| Animação              | Personagens, transições e celebrações; sem pontos, níveis ou rankings                                                |
+| Backend               | Go (Golang), conforme decisão posterior à entrevista inicial                                                         |
+| E-mails transacionais | Envio pela API HTTPS da Resend, conforme decisão posterior                                                           |
+| Distribuição          | Projeto destinado a publicação open source; licença ainda a definir pelo mantenedor                                  |
+| Engenharia            | TDD, quality gates e regras de contribuição em `CLAUDE.md`; nunca inserir `Co-authored-by` em commits                |
 
 ### 1.2 Padrões propostos para completar a especificação
 
@@ -69,31 +69,31 @@ Aplicativos nativos, múltiplas empresas na mesma instalação, faturamento, aut
 
 ### 2.1 Composição
 
-| Camada | Escolha | Motivo no contexto do produto |
-| --- | --- | --- |
-| Linguagens | Go no backend; TypeScript strict no frontend | Contratos gerados a partir de OpenAPI/JSON Schema; não compartilhar structs internas com a UI |
-| Frontend | React + Vite, aplicação SPA | Aplicação autenticada e interativa, com descriptografia no navegador; renderização no servidor não é uma necessidade |
-| Navegação e dados remotos | React Router + TanStack Query | Rotas, cache, paginação, atualização otimista controlada e invalidação após eventos |
-| Interface | Tailwind CSS + componentes acessíveis baseados em Radix | Construir a linguagem visual do mockup mantendo semântica, foco e navegação por teclado |
-| Movimento | Motion para React; CSS para sprites | Transições e celebrações sem introduzir um motor de jogos |
-| Quadro | dnd-kit, com alternativa por teclado/menu | Reordenação e mudança de coluna com acessibilidade |
-| Backend | Go + `net/http`, monólito modular | Um processo com API e jobs; composição explícita, contextos canceláveis e módulos de domínio |
-| API | REST, OpenAPI 3.0.3, `oapi-codegen` e cliente TS gerado | Contrato primeiro; handlers Go estritos e validação runtime, sem GraphQL [S16] |
-| Tempo real do produto | WebSocket padrão, `github.com/coder/websocket` | Eventos após persistência; mutações via REST; retomada por cursor e filas limitadas, conforme seção 14.4 [S10] |
-| Banco | PostgreSQL | Integridade de relações, transações, políticas de acesso e histórico operacional |
-| Acesso ao banco | `pgx/v5` + `sqlc`; migrations SQL com Goose | SQL explícito, queries tipadas geradas, locks e transações reais; sem ORM [S17–S19] |
-| Jobs duráveis | River open source + PostgreSQL | Enqueue transacional com o mesmo `pgx.Tx`, retries e workers idempotentes; sem depender de recursos River Pro [S20] |
-| Chamadas | LiveKit self-hosted; SDK oficial Go no backend; JS/React no navegador | Go gerencia salas/tokens e valida webhooks; mídia E2EE continua no LiveKit e no cliente [S1–S4, S15] |
-| Conectividade de chamadas | TURN embutido do LiveKit | Conexão por retransmissão quando a rede do participante exigir [S2] |
-| Redis | Não usado | LiveKit roda em nó único sem Redis; só será necessário se houver mais de um nó de mídia |
-| Criptografia do conteúdo | libsodium.js / libsodium-wrappers-sumo, em Web Workers | Primitivas mantidas para criptografia autenticada, envelopes de chave e streaming [S5–S7] |
-| Arquivos | R2 privado; AWS SDK for Go v2, cliente S3 e presigner no backend | Go emite URLs e conclui multipart; navegador envia ciphertext diretamente ao R2 [S8–S9, S23] |
-| Sessões | Cookie opaco HttpOnly; sessão no banco | Revogação central, sem tokens de login persistidos em localStorage |
-| Senhas | Argon2id via `golang.org/x/crypto/argon2` | Salt aleatório, parâmetros versionados e limites de custo; não usar como chave E2EE de login [S24] |
-| E-mails transacionais | API HTTPS da Resend | Envio pelos jobs, após commit, com chave de idempotência estável, timeout e credencial apenas no servidor [S26–S27] |
-| Testes | Go `testing`/`httptest`, `-race`, PostgreSQL real; Vitest e Playwright | TDD, concorrência, API real e interface; gates detalhados no `CLAUDE.md` |
-| Empacotamento | Um módulo Go na raiz + pnpm workspace para frontend; Docker multi-stage e Compose | API/worker Go independentes do runtime Node; Node apenas no desenvolvimento/build do frontend |
-| Entrada HTTPS | Caddy; roteamento L4 quando necessário para TURN/TLS | Certificados e proxy; portas e mídia exigem configuração específica |
+| Camada                    | Escolha                                                                           | Motivo no contexto do produto                                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Linguagens                | Go no backend; TypeScript strict no frontend                                      | Contratos gerados a partir de OpenAPI/JSON Schema; não compartilhar structs internas com a UI                        |
+| Frontend                  | React + Vite, aplicação SPA                                                       | Aplicação autenticada e interativa, com descriptografia no navegador; renderização no servidor não é uma necessidade |
+| Navegação e dados remotos | React Router + TanStack Query                                                     | Rotas, cache, paginação, atualização otimista controlada e invalidação após eventos                                  |
+| Interface                 | Tailwind CSS + componentes acessíveis baseados em Radix                           | Construir a linguagem visual do mockup mantendo semântica, foco e navegação por teclado                              |
+| Movimento                 | Motion para React; CSS para sprites                                               | Transições e celebrações sem introduzir um motor de jogos                                                            |
+| Quadro                    | dnd-kit, com alternativa por teclado/menu                                         | Reordenação e mudança de coluna com acessibilidade                                                                   |
+| Backend                   | Go + `net/http`, monólito modular                                                 | Um processo com API e jobs; composição explícita, contextos canceláveis e módulos de domínio                         |
+| API                       | REST, OpenAPI 3.0.3, `oapi-codegen` e cliente TS gerado                           | Contrato primeiro; handlers Go estritos e validação runtime, sem GraphQL [S16]                                       |
+| Tempo real do produto     | WebSocket padrão, `github.com/coder/websocket`                                    | Eventos após persistência; mutações via REST; retomada por cursor e filas limitadas, conforme seção 14.4 [S10]       |
+| Banco                     | PostgreSQL                                                                        | Integridade de relações, transações, políticas de acesso e histórico operacional                                     |
+| Acesso ao banco           | `pgx/v5` + `sqlc`; migrations SQL com Goose                                       | SQL explícito, queries tipadas geradas, locks e transações reais; sem ORM [S17–S19]                                  |
+| Jobs duráveis             | River open source + PostgreSQL                                                    | Enqueue transacional com o mesmo `pgx.Tx`, retries e workers idempotentes; sem depender de recursos River Pro [S20]  |
+| Chamadas                  | LiveKit self-hosted; SDK oficial Go no backend; JS/React no navegador             | Go gerencia salas/tokens e valida webhooks; mídia E2EE continua no LiveKit e no cliente [S1–S4, S15]                 |
+| Conectividade de chamadas | TURN embutido do LiveKit                                                          | Conexão por retransmissão quando a rede do participante exigir [S2]                                                  |
+| Redis                     | Não usado                                                                         | LiveKit roda em nó único sem Redis; só será necessário se houver mais de um nó de mídia                              |
+| Criptografia do conteúdo  | libsodium.js / libsodium-wrappers-sumo, em Web Workers                            | Primitivas mantidas para criptografia autenticada, envelopes de chave e streaming [S5–S7]                            |
+| Arquivos                  | R2 privado; AWS SDK for Go v2, cliente S3 e presigner no backend                  | Go emite URLs e conclui multipart; navegador envia ciphertext diretamente ao R2 [S8–S9, S23]                         |
+| Sessões                   | Cookie opaco HttpOnly; sessão no banco                                            | Revogação central, sem tokens de login persistidos em localStorage                                                   |
+| Senhas                    | Argon2id via `golang.org/x/crypto/argon2`                                         | Salt aleatório, parâmetros versionados e limites de custo; não usar como chave E2EE de login [S24]                   |
+| E-mails transacionais     | API HTTPS da Resend                                                               | Envio pelos jobs, após commit, com chave de idempotência estável, timeout e credencial apenas no servidor [S26–S27]  |
+| Testes                    | Go `testing`/`httptest`, `-race`, PostgreSQL real; Vitest e Playwright            | TDD, concorrência, API real e interface; gates detalhados no `CLAUDE.md`                                             |
+| Empacotamento             | Um módulo Go na raiz + pnpm workspace para frontend; Docker multi-stage e Compose | API/worker Go independentes do runtime Node; Node apenas no desenvolvimento/build do frontend                        |
+| Entrada HTTPS             | Caddy; roteamento L4 quando necessário para TURN/TLS                              | Certificados e proxy; portas e mídia exigem configuração específica                                                  |
 
 ### 2.2 Por que esta combinação
 
@@ -132,26 +132,26 @@ Os módulos de negócio pertencem a um único backend: Identity, Organizations, 
 
 ### 3.1 Estrutura esperada do repositório
 
-| Diretório | Responsabilidade |
-| --- | --- |
-| `apps/web` | SPA, UI, sincronização, workers de criptografia e download |
-| `cmd/api` | Composição e inicialização do servidor HTTP/WebSocket; sem regras de negócio |
-| `cmd/migrate` | Opcional: as mesmas migrations (aplicação e River) executadas à mão. A API as aplica ao iniciar, sob lock consultivo |
-| `internal/<dominio>` | Serviços, políticas, tipos e interfaces pequenas dos módulos de negócio |
-| `internal/httpapi` | Adaptadores HTTP, middleware e código OpenAPI gerado |
-| `internal/realtime` | Conexões WebSocket, entrega e retomada; sem escrita de negócio por socket |
-| `internal/platform` | Configuração, banco, LiveKit, R2, Resend, logs e relógio |
-| `internal/store/sqlc` | Acesso SQL gerado; não editar manualmente |
-| `db/migrations` e `db/queries` | Migrations Goose e queries de entrada do sqlc |
-| `api/openapi.yaml` | Contrato REST 3.0.3, fonte dos DTOs/handlers e do cliente TS |
-| `api/events` | JSON Schemas versionados dos eventos e controle de socket |
-| `packages/api-client` | Tipos e cliente TypeScript gerados do OpenAPI |
-| `packages/contracts` | Tipos/validadores de eventos gerados dos schemas; sem lógica backend |
-| `tests/integration` e `tests/e2e` | Cenários reais de concorrência, integração e UI |
-| `packages/crypto-client` | Formatos versionados e integração das primitivas no navegador |
-| `packages/ui` | Componentes visuais e tokens |
-| `infra` | Dockerfiles, Compose, proxy, LiveKit e exemplos de configuração |
-| `docs` | ADRs, matriz de permissões, protocolo de chaves, operação e recuperação |
+| Diretório                         | Responsabilidade                                                                                                     |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`                        | SPA, UI, sincronização, workers de criptografia e download                                                           |
+| `cmd/api`                         | Composição e inicialização do servidor HTTP/WebSocket; sem regras de negócio                                         |
+| `cmd/migrate`                     | Opcional: as mesmas migrations (aplicação e River) executadas à mão. A API as aplica ao iniciar, sob lock consultivo |
+| `internal/<dominio>`              | Serviços, políticas, tipos e interfaces pequenas dos módulos de negócio                                              |
+| `internal/httpapi`                | Adaptadores HTTP, middleware e código OpenAPI gerado                                                                 |
+| `internal/realtime`               | Conexões WebSocket, entrega e retomada; sem escrita de negócio por socket                                            |
+| `internal/platform`               | Configuração, banco, LiveKit, R2, Resend, logs e relógio                                                             |
+| `internal/store/sqlc`             | Acesso SQL gerado; não editar manualmente                                                                            |
+| `db/migrations` e `db/queries`    | Migrations Goose e queries de entrada do sqlc                                                                        |
+| `api/openapi.yaml`                | Contrato REST 3.0.3, fonte dos DTOs/handlers e do cliente TS                                                         |
+| `api/events`                      | JSON Schemas versionados dos eventos e controle de socket                                                            |
+| `packages/api-client`             | Tipos e cliente TypeScript gerados do OpenAPI                                                                        |
+| `packages/contracts`              | Tipos/validadores de eventos gerados dos schemas; sem lógica backend                                                 |
+| `tests/integration` e `tests/e2e` | Cenários reais de concorrência, integração e UI                                                                      |
+| `packages/crypto-client`          | Formatos versionados e integração das primitivas no navegador                                                        |
+| `packages/ui`                     | Componentes visuais e tokens                                                                                         |
+| `infra`                           | Dockerfiles, Compose, proxy, LiveKit e exemplos de configuração                                                      |
+| `docs`                            | ADRs, matriz de permissões, protocolo de chaves, operação e recuperação                                              |
 
 ### 3.2 Regras de implementação Go
 
@@ -207,19 +207,19 @@ Jobs contêm IDs e referências, nunca conteúdo descriptografado ou chave de re
 
 ### 4.3 E-mails transacionais
 
-Necessários para convite, verificação e redefinição de senha. Enviar pelo endpoint `POST /emails` da API HTTPS da Resend, com autenticação Bearer, remetente de domínio verificado e chave de idempotência estável por intenção de envio. Configurar `RESEND_API_KEY` e `RESEND_FROM_EMAIL` apenas nos processos de envio do servidor, sem expor credenciais ao navegador, ao código-fonte ou aos logs. Em desenvolvimento e testes, usar servidor HTTP local que simula o contrato da Resend; o comando diagnóstico `cmd/email-smoke` permite ao operador validar um envio real com credenciais e domínio configurados. E-mails não devem incluir títulos de projetos, mensagens, tarefas ou prazos descriptografados. Não enviar resumos, lembretes ou notificações de atividades por e-mail. A resposta da API confirma aceitação pelo provedor, não entrega na caixa postal; falhas e webhooks de entrega exigem reconciliação.
+Necessários para convite, verificação e redefinição de senha. Enviar pelo endpoint `POST /emails` da API HTTPS da Resend, com autenticação Bearer, remetente de domínio verificado e chave de idempotência estável por intenção de envio. Configurar `RESEND_API_KEY` e `RESEND_FROM_EMAIL` apenas nos processos de envio do servidor, sem expor credenciais ao navegador, ao código-fonte ou aos logs. Testes automatizados usam um transporte falso em memória; em desenvolvimento, o e-mail usa a API real com as chaves do `.env` (ADR 0018). O comando diagnóstico `cmd/email-smoke` permite ao operador validar um envio real com credenciais e domínio configurados. E-mails não devem incluir títulos de projetos, mensagens, tarefas ou prazos descriptografados. Não enviar resumos, lembretes ou notificações de atividades por e-mail. A resposta da API confirma aceitação pelo provedor, não entrega na caixa postal; falhas e webhooks de entrega exigem reconciliação.
 
 ## 5. Projetos, membros e autorização
 
 ### 5.1 Papéis propostos
 
-| Papel | Escopo e responsabilidade |
-| --- | --- |
+| Papel                        | Escopo e responsabilidade                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
 | Administrador da organização | Contas, criação de projetos, nomeação de gestores, sprints globais e operações administrativas |
-| Gestor do projeto | Configurações, membros, colunas, canais e permissões dos externos daquele projeto |
-| Membro interno | Colaboração nos projetos aos quais pertence |
-| Externo | Ações determinadas exclusivamente pelo perfil compartilhado de externos do projeto |
-| Administrador de recuperação | Capacidade criptográfica especial; exercida com chave local e registrada em auditoria |
+| Gestor do projeto            | Configurações, membros, colunas, canais e permissões dos externos daquele projeto              |
+| Membro interno               | Colaboração nos projetos aos quais pertence                                                    |
+| Externo                      | Ações determinadas exclusivamente pelo perfil compartilhado de externos do projeto             |
+| Administrador de recuperação | Capacidade criptográfica especial; exercida com chave local e registrada em auditoria          |
 
 Administrador global não ganha automaticamente a navegação cotidiana de todos os conteúdos. Pode gerenciar a estrutura organizacional e iniciar ações administrativas auditadas. Conteúdo de projeto exige vínculo, exceto o fluxo explícito de recuperação autorizado pelo modelo de confiança. A capacidade de recuperação é uma exceção consciente ao isolamento de conteúdo, não uma promessa de privacidade contra esse administrador.
 
@@ -229,24 +229,24 @@ Administrador de recuperação pode coincidir com o administrador da organizaç�
 
 Uma linha de política por projeto, versionada. Todos os vínculos externos daquele projeto apontam para essa política; não existe tabela de override por pessoa. A mudança vale para todos imediatamente no servidor.
 
-| Permissão | Alcance | Padrão inicial proposto |
-| --- | --- | --- |
-| `work.read` | Ver épicos, atividades, subtarefas e seus comentários | Sim |
-| `work.create` | Criar atividades/subtarefas; épicos exigem edição de planejamento | Não |
-| `work.edit` | Editar campos, responsável e prazo | Não |
-| `work.move` | Mover entre colunas e concluir/reabrir | Não |
-| `work.archive` | Arquivar e restaurar itens | Não |
-| `work.comment` | Comentar e acompanhar atividades | Sim |
-| `planning.edit` | Gerenciar épicos e vincular atividades a sprints já existentes | Não |
-| `chat.read` | Ler todos os canais do projeto | Sim |
-| `chat.send` | Enviar, citar e mencionar em canais | Sim |
-| `chat.react` | Reagir e remover a própria reação | Sim |
-| `files.upload` | Enviar arquivos no contexto autorizado | Sim |
-| `files.download` | Obter e descriptografar arquivos de contextos autorizados | Sim |
-| `calls.start` | Iniciar chamada vinculada ao projeto | Não |
-| `calls.join` | Aceitar convite e participar | Sim |
-| `calls.screen_share` | Compartilhar tela na chamada | Não |
-| `direct_messages.use` | Iniciar/usar DM com pessoas do mesmo projeto | Sim |
+| Permissão             | Alcance                                                           | Padrão inicial proposto |
+| --------------------- | ----------------------------------------------------------------- | ----------------------- |
+| `work.read`           | Ver épicos, atividades, subtarefas e seus comentários             | Sim                     |
+| `work.create`         | Criar atividades/subtarefas; épicos exigem edição de planejamento | Não                     |
+| `work.edit`           | Editar campos, responsável e prazo                                | Não                     |
+| `work.move`           | Mover entre colunas e concluir/reabrir                            | Não                     |
+| `work.archive`        | Arquivar e restaurar itens                                        | Não                     |
+| `work.comment`        | Comentar e acompanhar atividades                                  | Sim                     |
+| `planning.edit`       | Gerenciar épicos e vincular atividades a sprints já existentes    | Não                     |
+| `chat.read`           | Ler todos os canais do projeto                                    | Sim                     |
+| `chat.send`           | Enviar, citar e mencionar em canais                               | Sim                     |
+| `chat.react`          | Reagir e remover a própria reação                                 | Sim                     |
+| `files.upload`        | Enviar arquivos no contexto autorizado                            | Sim                     |
+| `files.download`      | Obter e descriptografar arquivos de contextos autorizados         | Sim                     |
+| `calls.start`         | Iniciar chamada vinculada ao projeto                              | Não                     |
+| `calls.join`          | Aceitar convite e participar                                      | Sim                     |
+| `calls.screen_share`  | Compartilhar tela na chamada                                      | Não                     |
+| `direct_messages.use` | Iniciar/usar DM com pessoas do mesmo projeto                      | Sim                     |
 
 Dependências: editar/mover/comentar exige leitura; enviar/reagir em canal exige leitura do chat; upload exige poder escrever no contexto e baixar arquivos; iniciar chamada exige participar. Configurações inválidas são rejeitadas, com explicação. Permissões de comentários e mensagens não concedem alteração de mensagens/comentários de outras pessoas.
 
@@ -281,20 +281,20 @@ Criar projeto gera canais `geral` e um quadro inicial com A fazer, Em andamento,
 
 ### 6.3 Campos de trabalho
 
-| Campo | Regra |
-| --- | --- |
-| Título | Obrigatório; até 200 caracteres; criptografado |
-| Descrição | Markdown limitado e sanitizado; até 50 mil caracteres; criptografado |
-| Responsável | Zero ou um membro ativo do projeto; interno ou externo com leitura do item |
-| Prazo | Data civil opcional `YYYY-MM-DD`, independente para épico, atividade e subtarefa; criptografada |
-| Prioridade | Baixa, normal, alta, urgente; padrão normal; criptografada |
-| Estado | Referência à coluna do projeto; metadado operacional |
-| Épico e pai | Referências relacionais validadas no servidor |
-| Sprint | Opcional na atividade; herdada pela subtarefa |
-| Seguidores | Membros com acesso que recebem eventos relevantes dentro do app |
-| Comentários | Fluxo cronológico, texto criptografado e anexos opcionais |
-| Anexos | Objetos cifrados, vinculados ao recurso e sujeitos a acesso específico |
-| Histórico | Autor, ação, data técnica, versão; valores textuais antigos não ficam em claro |
+| Campo       | Regra                                                                                           |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| Título      | Obrigatório; até 200 caracteres; criptografado                                                  |
+| Descrição   | Markdown limitado e sanitizado; até 50 mil caracteres; criptografado                            |
+| Responsável | Zero ou um membro ativo do projeto; interno ou externo com leitura do item                      |
+| Prazo       | Data civil opcional `YYYY-MM-DD`, independente para épico, atividade e subtarefa; criptografada |
+| Prioridade  | Baixa, normal, alta, urgente; padrão normal; criptografada                                      |
+| Estado      | Referência à coluna do projeto; metadado operacional                                            |
+| Épico e pai | Referências relacionais validadas no servidor                                                   |
+| Sprint      | Opcional na atividade; herdada pela subtarefa                                                   |
+| Seguidores  | Membros com acesso que recebem eventos relevantes dentro do app                                 |
+| Comentários | Fluxo cronológico, texto criptografado e anexos opcionais                                       |
+| Anexos      | Objetos cifrados, vinculados ao recurso e sujeitos a acesso específico                          |
+| Histórico   | Autor, ação, data técnica, versão; valores textuais antigos não ficam em claro                  |
 
 Remover membro responsável deixa o item sem responsável, preservando a identificação histórica do evento. Não transferir silenciosamente para o gestor.
 
@@ -431,17 +431,17 @@ E2EE não oculta todos os metadados. A aplicação web também depende da integr
 
 ### 10.2 Conteúdo versus metadados
 
-| Dado | Tratamento proposto |
-| --- | --- |
-| Títulos, descrições, textos, comentários, nomes de canais/projetos e arquivos | E2EE |
-| Prazo, prioridade, objetivos e datas planejadas de sprint | E2EE; cálculo e filtros no cliente |
-| Conteúdo binário de anexos, thumbnails e manifesto de arquivo | E2EE antes do upload |
-| Emojis e texto de respostas | E2EE |
-| Áudio, vídeo e tela | E2EE de mídia via SDK LiveKit |
-| E-mail, nome de perfil e estado da conta | Dados de identidade acessíveis ao backend, protegidos em trânsito e pelo armazenamento/backup |
-| IDs, membros, papéis, permissões, autor, responsável, relações de pais/filhos, coluna/categoria e vínculos de sprint | Metadados necessários a acesso, integridade e sincronização, visíveis ao backend |
-| Horários técnicos, ordem, tamanho aproximado, cursores, destinatários de menção e presença | Metadados visíveis ao backend; retenção mínima |
-| Segredos de infraestrutura | Disponíveis apenas aos serviços que os utilizam; separados das chaves E2EE |
+| Dado                                                                                                                 | Tratamento proposto                                                                           |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Títulos, descrições, textos, comentários, nomes de canais/projetos e arquivos                                        | E2EE                                                                                          |
+| Prazo, prioridade, objetivos e datas planejadas de sprint                                                            | E2EE; cálculo e filtros no cliente                                                            |
+| Conteúdo binário de anexos, thumbnails e manifesto de arquivo                                                        | E2EE antes do upload                                                                          |
+| Emojis e texto de respostas                                                                                          | E2EE                                                                                          |
+| Áudio, vídeo e tela                                                                                                  | E2EE de mídia via SDK LiveKit                                                                 |
+| E-mail, nome de perfil e estado da conta                                                                             | Dados de identidade acessíveis ao backend, protegidos em trânsito e pelo armazenamento/backup |
+| IDs, membros, papéis, permissões, autor, responsável, relações de pais/filhos, coluna/categoria e vínculos de sprint | Metadados necessários a acesso, integridade e sincronização, visíveis ao backend              |
+| Horários técnicos, ordem, tamanho aproximado, cursores, destinatários de menção e presença                           | Metadados visíveis ao backend; retenção mínima                                                |
+| Segredos de infraestrutura                                                                                           | Disponíveis apenas aos serviços que os utilizam; separados das chaves E2EE                    |
 
 A distinção acima é uma proposta explícita de implementação do requisito “todo o conteúdo”. Se também for necessário esconder responsável, estado ou estrutura do trabalho do servidor, revisar o modelo: várias validações e filtros terão de mudar. Não chamar proteção de disco ou TLS de E2EE.
 
@@ -538,31 +538,31 @@ Indicadores na navegação, central de notificações e toast discreto para cham
 
 Base: imagem fornecida `image(20261023-173007).png`, com logotipo ODDKIN, sidebar escura, cartões claros, detalhes verde-limão e dupla Pixel Explorers. A referência foi visualmente inspecionada; ela não é um layout funcional completo nem um pacote de assets prontos.
 
-| Token | Cor |
-| --- | --- |
+| Token  | Cor       |
+| ------ | --------- |
 | Carvão | `#202321` |
-| Musgo | `#63745A` |
-| Limão | `#DFFF70` |
-| Papel | `#F1F0E8` |
+| Musgo  | `#63745A` |
+| Limão  | `#DFFF70` |
+| Papel  | `#F1F0E8` |
 | Branco | `#FFFFFF` |
 
 Verde-limão deve ser destaque sobre fundo escuro, ou superfície com texto escuro; não presumir contraste suficiente como texto fino em fundo branco. Tipografia proposta: família sans de leitura confortável, como Inter, com arquivos hospedados pela própria aplicação. Marca e personagens são assets próprios; não inserir o mockup inteiro dentro do app.
 
 ### 13.2 Navegação e telas
 
-| Tela | Conteúdo principal e ações |
-| --- | --- |
-| Login/convite | E-mail, senha, aceite, recuperação e estados de erro claros |
+| Tela                       | Conteúdo principal e ações                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| Login/convite              | E-mail, senha, aceite, recuperação e estados de erro claros                                    |
 | Autorização de dispositivo | Solicitação, progresso e aprovação; sem fingir que conta vazia significa histórico inexistente |
-| Visão geral | Projetos acessíveis, minha fila, sprint atual e notificações |
-| Projeto | Contexto, membros, épicos, atividades e acesso a canais |
-| Atividades | Alternância quadro/lista, filtros e criação rápida |
-| Detalhe do item | Descrição, responsável, prazo, prioridade, subtarefas, comentários e anexos |
-| Sprints | Planejadas/ativa/encerradas, planejamento e wizard de encerramento |
-| Mensagens | Canais por projeto e DMs elegíveis; paginação e busca local |
-| Chamada | Prévia, grade de até cinco pessoas, tela compartilhada e controles |
-| Equipe do projeto | Membros, convites e perfil comum de permissões dos externos |
-| Configurações | Perfil, dispositivos, colunas, políticas, armazenamento e recuperação conforme papel |
+| Visão geral                | Projetos acessíveis, minha fila, sprint atual e notificações                                   |
+| Projeto                    | Contexto, membros, épicos, atividades e acesso a canais                                        |
+| Atividades                 | Alternância quadro/lista, filtros e criação rápida                                             |
+| Detalhe do item            | Descrição, responsável, prazo, prioridade, subtarefas, comentários e anexos                    |
+| Sprints                    | Planejadas/ativa/encerradas, planejamento e wizard de encerramento                             |
+| Mensagens                  | Canais por projeto e DMs elegíveis; paginação e busca local                                    |
+| Chamada                    | Prévia, grade de até cinco pessoas, tela compartilhada e controles                             |
+| Equipe do projeto          | Membros, convites e perfil comum de permissões dos externos                                    |
+| Configurações              | Perfil, dispositivos, colunas, políticas, armazenamento e recuperação conforme papel           |
 
 Sidebar desktop com visão geral, atividades, mensagens e projetos. Projetos e canais listados somente quando acessíveis. Mobile usa navegação compacta e detalhe em tela inteira; o quadro pode ter rolagem horizontal, mas deve oferecer lista equivalente.
 
@@ -580,28 +580,28 @@ Fluxos principais operáveis por teclado; foco visível; labels, mensagens e est
 
 ### 14.1 Entidades principais
 
-| Entidade | Relações/invariantes |
-| --- | --- |
-| Organization | Uma por instalação; configuração e fuso |
-| User | Identidade, estado e hash de senha; sem chave privada em claro |
-| OrganizationMember | Papel interno/externo/admin e estado |
-| Session / Invitation | Tokens em hash, expiração e revogação |
-| Device / DeviceCertificate | Chaves públicas, certificados, estado de autorização e revogação |
-| Project / ProjectMember | Vínculos únicos por projeto/usuário; papel interno fixo |
-| ExternalProjectPolicy | Uma política versionada por projeto |
-| BoardColumn | Projeto, posição, categoria e nome cifrado |
-| Epic | Projeto, conteúdo cifrado, responsável opcional, estado e versão |
-| WorkItem | Projeto, tipo task/subtask, pai, épico na task, responsável, coluna e versão |
-| WorkItemFollower / Comment | Acompanhamento e comentários cifrados no contexto |
-| Sprint / SprintItemHistory | Estado, payload cifrado, associação corrente e histórico preservado |
-| Conversation | Canal de projeto ou DM do par canônico; sem ambiguidade de tipo |
-| Message / Reaction / ReadCursor | Ordem, ciphertext, autoria, referência citada e leitura por usuário |
-| Attachment / UploadSession | Contexto único, estado, objeto, tamanhos, reserva e expiração |
-| KeyDomain / KeyGeneration / KeyEnvelope | Gerações, destinatários, contexto e envelopes assinados |
-| Call / CallInvitation / CallAdmission | Contexto, estado, participante, reserva e token emitido |
-| Notification / AuditEvent / OutboxEvent | Entrega por usuário, auditoria mínima e publicação pós-commit |
-| UserEventFeed / UserEventSequence | Feed durável por destinatário, ordem transacional, cursor e retenção |
-| IdempotencyRecord | Ator, operação, chave, hash do request e referência ao resultado; retenção de 7 dias |
+| Entidade                                | Relações/invariantes                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------ |
+| Organization                            | Uma por instalação; configuração e fuso                                              |
+| User                                    | Identidade, estado e hash de senha; sem chave privada em claro                       |
+| OrganizationMember                      | Papel interno/externo/admin e estado                                                 |
+| Session / Invitation                    | Tokens em hash, expiração e revogação                                                |
+| Device / DeviceCertificate              | Chaves públicas, certificados, estado de autorização e revogação                     |
+| Project / ProjectMember                 | Vínculos únicos por projeto/usuário; papel interno fixo                              |
+| ExternalProjectPolicy                   | Uma política versionada por projeto                                                  |
+| BoardColumn                             | Projeto, posição, categoria e nome cifrado                                           |
+| Epic                                    | Projeto, conteúdo cifrado, responsável opcional, estado e versão                     |
+| WorkItem                                | Projeto, tipo task/subtask, pai, épico na task, responsável, coluna e versão         |
+| WorkItemFollower / Comment              | Acompanhamento e comentários cifrados no contexto                                    |
+| Sprint / SprintItemHistory              | Estado, payload cifrado, associação corrente e histórico preservado                  |
+| Conversation                            | Canal de projeto ou DM do par canônico; sem ambiguidade de tipo                      |
+| Message / Reaction / ReadCursor         | Ordem, ciphertext, autoria, referência citada e leitura por usuário                  |
+| Attachment / UploadSession              | Contexto único, estado, objeto, tamanhos, reserva e expiração                        |
+| KeyDomain / KeyGeneration / KeyEnvelope | Gerações, destinatários, contexto e envelopes assinados                              |
+| Call / CallInvitation / CallAdmission   | Contexto, estado, participante, reserva e token emitido                              |
+| Notification / AuditEvent / OutboxEvent | Entrega por usuário, auditoria mínima e publicação pós-commit                        |
+| UserEventFeed / UserEventSequence       | Feed durável por destinatário, ordem transacional, cursor e retenção                 |
+| IdempotencyRecord                       | Ator, operação, chave, hash do request e referência ao resultado; retenção de 7 dias |
 
 Usar UUIDs, FKs, índices e restrições; não armazenar todo o domínio num único JSON cifrado. Persistir conteúdo cifrado em `bytea` ou representação binária equivalente, com cabeçalhos tipados. Enumerações operacionais ficam explícitas.
 
@@ -639,14 +639,14 @@ Endpoint: `GET /api/v1/events/ws`, mesma origem, cookie de sessão e validação
 
 Contrato de controle versionado em `api/events`:
 
-| Direção / tipo | Campos e semântica |
-| --- | --- |
-| Servidor `hello` | `protocolVersion`, `connectionId`, heartbeat e janela de retenção; sem IDs de projetos não autorizados |
-| Cliente `resume` | Cursor opaco opcional; só aceita a identidade vinculada à sessão |
-| Servidor `event` | `eventId`, `type`, `resourceId`, `resourceVersion`, `occurredAt`, `cursor`; por padrão é invalidação/referência, não corpo integral |
-| Cliente `ack` | Último cursor aplicado; avanço monotônico de checkpoint da conexão/dispositivo, sem deletar o feed de outros dispositivos |
-| Servidor `sync_required` | Cursor expirado/invalidado; cliente deve refazer snapshot autorizado |
-| Servidor `error` | Código seguro e `requestId`; sem stacktrace nem plaintext |
+| Direção / tipo           | Campos e semântica                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Servidor `hello`         | `protocolVersion`, `connectionId`, heartbeat e janela de retenção; sem IDs de projetos não autorizados                              |
+| Cliente `resume`         | Cursor opaco opcional; só aceita a identidade vinculada à sessão                                                                    |
+| Servidor `event`         | `eventId`, `type`, `resourceId`, `resourceVersion`, `occurredAt`, `cursor`; por padrão é invalidação/referência, não corpo integral |
+| Cliente `ack`            | Último cursor aplicado; avanço monotônico de checkpoint da conexão/dispositivo, sem deletar o feed de outros dispositivos           |
+| Servidor `sync_required` | Cursor expirado/invalidado; cliente deve refazer snapshot autorizado                                                                |
+| Servidor `error`         | Código seguro e `requestId`; sem stacktrace nem plaintext                                                                           |
 
 O cursor é um token assinado que vincula usuário, sequência do feed e geração da autorização. Não usar sequência global pública, cursor de outro usuário ou timestamp local como ponto de retomada. IDs de recursos no evento também exigem autorização atual.
 
@@ -719,19 +719,19 @@ Healthcheck verifica disponibilidade de dependências sem expor credenciais. Ale
 
 Os valores abaixo são metas de aceitação propostas, não medições ou garantia de um plano Contabo. Registrar CPU, RAM, região, navegador, rede, versões e dataset ao executar os testes. Separar tempo de backend, rede e processamento de cliente.
 
-| Cenário | Meta proposta |
-| --- | --- |
-| Carga funcional | 10 usuários ativos, 20 projetos, 10 mil itens e 100 mil mensagens no conjunto |
-| API de metadados | p95 ≤ 300 ms de processamento, sem transferências de arquivo |
-| Persistência de mensagem/item | p95 ≤ 500 ms no backend no cenário-alvo |
-| Atualização entre clientes | p95 ≤ 1 s do commit à aplicação do evento, em rede com RTT ≤ 150 ms |
-| Abertura de quadro sincronizado | p95 ≤ 2 s para até 200 atividades visíveis e dados locais prontos |
-| Primeiro carregamento de chat | p95 ≤ 2 s para 50 mensagens, após sessão e chaves disponíveis |
-| Reconexão | Recuperar deltas e consistência em até 5 s após rede voltar, no dataset-alvo |
-| Admissão de chamada | p95 ≤ 5 s após permissões de dispositivo e chaves, em rede de teste estável |
-| Mídia | Duas salas de 5, câmeras e uma tela por sala, por 30 min, sem desconexão causada por falha do app |
-| Arquivo 500 MB | Round-trip com hash idêntico; memória incremental alvo ≤ 128 MiB no caminho desktop de referência |
-| Animações | Buscar 60 fps nas interações comuns do dispositivo de referência; nenhuma animação bloqueia input |
+| Cenário                         | Meta proposta                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Carga funcional                 | 10 usuários ativos, 20 projetos, 10 mil itens e 100 mil mensagens no conjunto                     |
+| API de metadados                | p95 ≤ 300 ms de processamento, sem transferências de arquivo                                      |
+| Persistência de mensagem/item   | p95 ≤ 500 ms no backend no cenário-alvo                                                           |
+| Atualização entre clientes      | p95 ≤ 1 s do commit à aplicação do evento, em rede com RTT ≤ 150 ms                               |
+| Abertura de quadro sincronizado | p95 ≤ 2 s para até 200 atividades visíveis e dados locais prontos                                 |
+| Primeiro carregamento de chat   | p95 ≤ 2 s para 50 mensagens, após sessão e chaves disponíveis                                     |
+| Reconexão                       | Recuperar deltas e consistência em até 5 s após rede voltar, no dataset-alvo                      |
+| Admissão de chamada             | p95 ≤ 5 s após permissões de dispositivo e chaves, em rede de teste estável                       |
+| Mídia                           | Duas salas de 5, câmeras e uma tela por sala, por 30 min, sem desconexão causada por falha do app |
+| Arquivo 500 MB                  | Round-trip com hash idêntico; memória incremental alvo ≤ 128 MiB no caminho desktop de referência |
+| Animações                       | Buscar 60 fps nas interações comuns do dispositivo de referência; nenhuma animação bloqueia input |
 
 Não definir duração fixa de upload sem taxa de conexão. Medir throughput, memória e responsividade. Criptografia deve ocorrer em worker, com trabalho incremental; listas e mensagens usam virtualização quando volume justificar.
 
@@ -739,58 +739,58 @@ Chrome e Edge desktop são baseline de chamadas; validar Firefox/Safari separada
 
 ## 17. Critérios de aceite e testes
 
-| ID | Cenário e verificação | Resultado obrigatório |
-| --- | --- | --- |
-| AC-01 | Convite para e-mail A usado por conta B; convite expirado/reutilizado | Nenhum acesso indevido; mensagens seguras e novo convite possível |
-| AC-02 | Login, reset, logout global e revogação com HTTP e socket abertos | Sessões e operações revogadas; reset não entrega histórico sem chaves |
-| AC-03 | Dois projetos disjuntos; tentar IDs, busca, arquivos, contadores e subscriptions alheios | Nenhum conteúdo nem metadado de projeto inacessível vaza |
-| AC-04 | Dois externos no mesmo projeto; alterar cada flag | Ambos recebem a mesma política; não existe override por usuário |
-| AC-05 | Usuário em dois projetos com políticas distintas | Permissões avaliadas no contexto correto |
-| AC-06 | Criar épico, task e subtarefa; tentar terceiro nível ou pai de outro projeto | Hierarquia válida aceita; relações inválidas rejeitadas |
-| AC-07 | Alterar colunas, excluir coluna ocupada e mudar categoria | Migração explícita e atômica; nenhuma atividade órfã |
-| AC-08 | Concluir task com subtarefas abertas e reabrir subtarefa | Regras de confirmação e reabertura consistentes |
-| AC-09 | Editar simultaneamente mesmo item em dois clientes | Sem sobrescrita silenciosa; conflito recuperável |
-| AC-10 | Sprint com três projetos; usuário só acessa um | Projeção e totais restritos ao projeto autorizado |
-| AC-11 | Encerrar sprint, repartir pendências e repetir request | Uma operação efetiva; histórico preservado; idempotência |
-| AC-12 | Alterar pendência entre preview e fechamento | Conflito explícito; nada parcialmente movido |
-| AC-13 | Enviar/citar/editar/apagar mensagem e reagir | Conversa linear consistente; citação apagada não vaza trecho |
-| AC-14 | Repetir mutação, perder ACK e reconectar socket | Sem duplicação; mensagem persistida recuperada pelo cursor |
-| AC-15 | Remover último projeto comum de um par de DM | Novos envios/acessos bloqueados segundo regra; contatos não enumeram a organização |
-| AC-16 | Menção a pessoa sem acesso; notificação em dispositivo bloqueado | Menção rejeitada; nenhuma prévia indevida |
-| AC-17 | Inspecionar banco, objetos, logs, Redis e backups em ambiente de teste | Nenhum conteúdo de trabalho ou chave E2EE legível |
-| AC-18 | Modificar ciphertext, trocar resourceId, chave/versão ou assinatura | Descriptografia/validação falha com segurança, sem exibir conteúdo parcial como válido |
-| AC-19 | Inserir chave de dispositivo pelo backend sem aprovação legítima | Cliente rejeita identidade não certificada; não entrega envelope |
-| AC-20 | Revogar membro e enviar conteúdo com chave antiga | API bloqueia escrita antiga; rotação garante que removido não leia novo conteúdo |
-| AC-21 | Desativar downloads mantendo leitura de tarefas/chat | Novo externo não recebe chave de arquivo por payload indireto |
-| AC-22 | Perder dispositivos; recuperar via administrador | Histórico recuperável no novo dispositivo sem segredo em claro no servidor |
-| AC-23 | Redefinir senha sem recuperação; perder também chave de recuperação | UI distingue acesso à conta e histórico indisponível; não existe bypass secreto |
-| AC-24 | Upload de 500.000.000 e 500.000.001 bytes | Primeiro aceito e íntegro; segundo rejeitado; overhead tratado corretamente |
-| AC-25 | Upload interrompido, parte duplicada/alterada, cancelamento e quota concorrente | Retentativa segura; integridade, limite e limpeza preservados |
-| AC-26 | Download de 500 MB e manifesto truncado | Caminho válido sem buffer integral; truncamento detectado |
-| AC-27 | Autorizar seis pessoas ao mesmo tempo e reutilizar tokens | Nunca mais de cinco pessoas admitidas na chamada |
-| AC-28 | Cinco câmeras, uma tela, troca de apresentador e saída | Controles e permissões corretos; uma tela ativa |
-| AC-29 | Revogar participante durante chamada e reconectar | Removido não retorna com acesso vigente; mídia futura usa nova chave |
-| AC-30 | Navegador sem E2EE compatível | Chamada bloqueada com explicação; sem downgrade silencioso |
-| AC-31 | Testar UDP, fallback TCP/TURN e rede restritiva | Conexão válida com E2EE ou falha explícita; documentar limites reais |
-| AC-32 | Duas chamadas de cinco simultâneas por 30 min | Medir CPU, RAM, banda e mídia; atingir metas na infraestrutura escolhida |
-| AC-33 | Teclado, leitor de tela, zoom e redução de movimento | Fluxos principais utilizáveis; alternativa ao arraste e sem animações excessivas |
-| AC-34 | Compose em host Linux limpo, migrar, reiniciar e restaurar backup | Aplicação volta com dados e conteúdo recuperável; portas e secrets corretos |
-| AC-35 | Logs de erro durante login, upload, chamada e descriptografia | Ausência de tokens, chaves e plaintext |
+| ID    | Cenário e verificação                                                                    | Resultado obrigatório                                                                  |
+| ----- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| AC-01 | Convite para e-mail A usado por conta B; convite expirado/reutilizado                    | Nenhum acesso indevido; mensagens seguras e novo convite possível                      |
+| AC-02 | Login, reset, logout global e revogação com HTTP e socket abertos                        | Sessões e operações revogadas; reset não entrega histórico sem chaves                  |
+| AC-03 | Dois projetos disjuntos; tentar IDs, busca, arquivos, contadores e subscriptions alheios | Nenhum conteúdo nem metadado de projeto inacessível vaza                               |
+| AC-04 | Dois externos no mesmo projeto; alterar cada flag                                        | Ambos recebem a mesma política; não existe override por usuário                        |
+| AC-05 | Usuário em dois projetos com políticas distintas                                         | Permissões avaliadas no contexto correto                                               |
+| AC-06 | Criar épico, task e subtarefa; tentar terceiro nível ou pai de outro projeto             | Hierarquia válida aceita; relações inválidas rejeitadas                                |
+| AC-07 | Alterar colunas, excluir coluna ocupada e mudar categoria                                | Migração explícita e atômica; nenhuma atividade órfã                                   |
+| AC-08 | Concluir task com subtarefas abertas e reabrir subtarefa                                 | Regras de confirmação e reabertura consistentes                                        |
+| AC-09 | Editar simultaneamente mesmo item em dois clientes                                       | Sem sobrescrita silenciosa; conflito recuperável                                       |
+| AC-10 | Sprint com três projetos; usuário só acessa um                                           | Projeção e totais restritos ao projeto autorizado                                      |
+| AC-11 | Encerrar sprint, repartir pendências e repetir request                                   | Uma operação efetiva; histórico preservado; idempotência                               |
+| AC-12 | Alterar pendência entre preview e fechamento                                             | Conflito explícito; nada parcialmente movido                                           |
+| AC-13 | Enviar/citar/editar/apagar mensagem e reagir                                             | Conversa linear consistente; citação apagada não vaza trecho                           |
+| AC-14 | Repetir mutação, perder ACK e reconectar socket                                          | Sem duplicação; mensagem persistida recuperada pelo cursor                             |
+| AC-15 | Remover último projeto comum de um par de DM                                             | Novos envios/acessos bloqueados segundo regra; contatos não enumeram a organização     |
+| AC-16 | Menção a pessoa sem acesso; notificação em dispositivo bloqueado                         | Menção rejeitada; nenhuma prévia indevida                                              |
+| AC-17 | Inspecionar banco, objetos, logs, Redis e backups em ambiente de teste                   | Nenhum conteúdo de trabalho ou chave E2EE legível                                      |
+| AC-18 | Modificar ciphertext, trocar resourceId, chave/versão ou assinatura                      | Descriptografia/validação falha com segurança, sem exibir conteúdo parcial como válido |
+| AC-19 | Inserir chave de dispositivo pelo backend sem aprovação legítima                         | Cliente rejeita identidade não certificada; não entrega envelope                       |
+| AC-20 | Revogar membro e enviar conteúdo com chave antiga                                        | API bloqueia escrita antiga; rotação garante que removido não leia novo conteúdo       |
+| AC-21 | Desativar downloads mantendo leitura de tarefas/chat                                     | Novo externo não recebe chave de arquivo por payload indireto                          |
+| AC-22 | Perder dispositivos; recuperar via administrador                                         | Histórico recuperável no novo dispositivo sem segredo em claro no servidor             |
+| AC-23 | Redefinir senha sem recuperação; perder também chave de recuperação                      | UI distingue acesso à conta e histórico indisponível; não existe bypass secreto        |
+| AC-24 | Upload de 500.000.000 e 500.000.001 bytes                                                | Primeiro aceito e íntegro; segundo rejeitado; overhead tratado corretamente            |
+| AC-25 | Upload interrompido, parte duplicada/alterada, cancelamento e quota concorrente          | Retentativa segura; integridade, limite e limpeza preservados                          |
+| AC-26 | Download de 500 MB e manifesto truncado                                                  | Caminho válido sem buffer integral; truncamento detectado                              |
+| AC-27 | Autorizar seis pessoas ao mesmo tempo e reutilizar tokens                                | Nunca mais de cinco pessoas admitidas na chamada                                       |
+| AC-28 | Cinco câmeras, uma tela, troca de apresentador e saída                                   | Controles e permissões corretos; uma tela ativa                                        |
+| AC-29 | Revogar participante durante chamada e reconectar                                        | Removido não retorna com acesso vigente; mídia futura usa nova chave                   |
+| AC-30 | Navegador sem E2EE compatível                                                            | Chamada bloqueada com explicação; sem downgrade silencioso                             |
+| AC-31 | Testar UDP, fallback TCP/TURN e rede restritiva                                          | Conexão válida com E2EE ou falha explícita; documentar limites reais                   |
+| AC-32 | Duas chamadas de cinco simultâneas por 30 min                                            | Medir CPU, RAM, banda e mídia; atingir metas na infraestrutura escolhida               |
+| AC-33 | Teclado, leitor de tela, zoom e redução de movimento                                     | Fluxos principais utilizáveis; alternativa ao arraste e sem animações excessivas       |
+| AC-34 | Compose em host Linux limpo, migrar, reiniciar e restaurar backup                        | Aplicação volta com dados e conteúdo recuperável; portas e secrets corretos            |
+| AC-35 | Logs de erro durante login, upload, chamada e descriptografia                            | Ausência de tokens, chaves e plaintext                                                 |
 
 Testes unitários cobrem regras e políticas. Integração usa PostgreSQL real e verifica transações/locks. E2E usa múltiplos usuários e sessões isoladas. Chamadas exigem também dispositivos/redes reais; navegador headless sozinho não comprova qualidade de mídia. Testes criptográficos devem incluir vetores conhecidos das primitivas e casos negativos do formato da aplicação.
 
 ### 17.1 Aceite específico da migração para Go
 
-| ID | Cenário | Resultado obrigatório |
-| --- | --- | --- |
-| AC-36 | Regenerar OpenAPI, eventos e sqlc | Sem diff; cliente TS e servidor Go aceitam as mesmas fixtures |
-| AC-37 | Rodar testes concorrentes com `go test -race` | Nenhuma data race; sessões, filas e admissão preservam invariantes |
-| AC-38 | HTTP cancelado durante SQL/integração; SIGTERM com socket e job ativos | Contextos cancelados, goroutines drenadas e efeito durável recuperável |
-| AC-39 | Cliente lento, fila cheia, queda antes/depois do commit e retomada | Memória limitada; nenhum evento autorizado perdido nem duplicação de negócio |
-| AC-40 | Feed com transações commitadas fora da ordem de início e dois dispositivos | Cursores não pulam eventos; cada dispositivo sincroniza independentemente |
-| AC-41 | Criar job junto com mutação e forçar rollback; repetir efeito externo | Job não existe se rollback; retries não duplicam efeito de negócio |
-| AC-42 | Inicializar banco limpo e atualizar versão anterior, incluindo migrations River | Schema e queries compatíveis; migração concorrente impedida |
-| AC-43 | CI recebe commit com trailer de coautoria, inclusive variação de caixa | Gate rejeita o commit; nenhum bypass silencioso |
+| ID    | Cenário                                                                         | Resultado obrigatório                                                        |
+| ----- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| AC-36 | Regenerar OpenAPI, eventos e sqlc                                               | Sem diff; cliente TS e servidor Go aceitam as mesmas fixtures                |
+| AC-37 | Rodar testes concorrentes com `go test -race`                                   | Nenhuma data race; sessões, filas e admissão preservam invariantes           |
+| AC-38 | HTTP cancelado durante SQL/integração; SIGTERM com socket e job ativos          | Contextos cancelados, goroutines drenadas e efeito durável recuperável       |
+| AC-39 | Cliente lento, fila cheia, queda antes/depois do commit e retomada              | Memória limitada; nenhum evento autorizado perdido nem duplicação de negócio |
+| AC-40 | Feed com transações commitadas fora da ordem de início e dois dispositivos      | Cursores não pulam eventos; cada dispositivo sincroniza independentemente    |
+| AC-41 | Criar job junto com mutação e forçar rollback; repetir efeito externo           | Job não existe se rollback; retries não duplicam efeito de negócio           |
+| AC-42 | Inicializar banco limpo e atualizar versão anterior, incluindo migrations River | Schema e queries compatíveis; migração concorrente impedida                  |
+| AC-43 | CI recebe commit com trailer de coautoria, inclusive variação de caixa          | Gate rejeita o commit; nenhum bypass silencioso                              |
 
 `CLAUDE.md` define o ciclo TDD, comandos a implementar, cobertura, gates CI e regras de Git. Esses comandos são requisitos do futuro repositório, não ferramentas já entregues com esta documentação. A IA deve implementar e testar os scripts de gate como primeira etapa de bootstrap; alvo inexistente ou teste pulado não significa aprovação.
 
@@ -864,7 +864,6 @@ Fontes oficiais consultadas em 23/10/2026. Elas sustentam capacidades das tecnol
 - [S12 — LiveKit: React SDK e componentes](https://docs.livekit.io/transport/sdk-platforms/react/)
 - [S13 — WebRTC: conexões, sinalização, STUN/TURN](https://webrtc.org/getting-started/peer-connections)
 - [S14 — LiveKit: API de salas](https://docs.livekit.io/reference/other/roomservice-api/)
-
 
 - [S15 — LiveKit: SDK oficial Go](https://github.com/livekit/server-sdk-go)
 - [S16 — oapi-codegen](https://github.com/oapi-codegen/oapi-codegen)
