@@ -14,17 +14,16 @@ import { AuthLayout } from "./AuthLayout";
 import { ForgotDialog } from "./ForgotDialog";
 import { InviteDialog } from "./InviteDialog";
 import { LoginArt } from "./LoginArt";
-import { loginFailure, MIN_PASSWORD, type Notice } from "./rules";
+import { loginFailure, MIN_PASSWORD, noticeParts, type Notice } from "./rules";
 import type { PendingInvitation } from "./types";
 
-/** The banner under the password field. Credential errors speak with one voice. */
+/** The banner under the password field. Each failure says what went wrong. */
 function LoginNotice({ notice }: { notice: Notice }) {
+  const { strong, rest } = noticeParts(notice);
   return (
     <Banner kind={notice.kind} role="alert">
-      {notice.kind === "err" ? <b>E-mail ou senha incorretos.</b> : null}
-      {notice.kind === "err"
-        ? " Confira os dados e tente de novo."
-        : notice.text}
+      {strong === "" ? null : <b>{strong}</b>}
+      {rest}
     </Banner>
   );
 }

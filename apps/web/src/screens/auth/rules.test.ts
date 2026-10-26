@@ -6,6 +6,7 @@ import {
   LOGIN_LINES,
   loginFailure,
   MIN_PASSWORD,
+  noticeParts,
   parseInviteForm,
   passwordsMismatch,
   poseForLine,
@@ -139,5 +140,27 @@ describe("poseForLine", () => {
   it("thinks on the second line, waves on the third", () => {
     expect(LOGIN_LINES).toHaveLength(3);
     expect([0, 1, 2].map(poseForLine)).toEqual(["idle", "think", "wave"]);
+  });
+});
+
+describe("sign-in notice", () => {
+  it("emphasises the first sentence of a credentials error", () => {
+    expect(noticeParts(loginFailure("invalid-credentials"))).toEqual({
+      strong: "E-mail ou senha incorretos.",
+      rest: " Confira os dados e tente de novo.",
+    });
+  });
+
+  it("shows any other failure with its own words, not as a wrong password", () => {
+    expect(
+      noticeParts({
+        kind: "err",
+        text: "Não foi possível conectar ao Crewstead.",
+      }),
+    ).toEqual({ strong: "", rest: "Não foi possível conectar ao Crewstead." });
+    expect(noticeParts(loginFailure("rate-limited"))).toEqual({
+      strong: "",
+      rest: "Muitas tentativas. Aguarde um instante antes de tentar de novo.",
+    });
   });
 });

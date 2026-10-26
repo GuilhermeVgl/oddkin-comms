@@ -24,6 +24,18 @@ export function loginFailure(
   };
 }
 
+const CREDENTIALS_LEAD = "E-mail ou senha incorretos.";
+
+/** The sign-in notice split into an emphasised lead and the rest of the sentence. */
+export function noticeParts(notice: Notice): { strong: string; rest: string } {
+  if (notice.text.startsWith(CREDENTIALS_LEAD))
+    return {
+      strong: CREDENTIALS_LEAD,
+      rest: notice.text.slice(CREDENTIALS_LEAD.length),
+    };
+  return { strong: "", rest: notice.text };
+}
+
 /** The toast after asking for a reset link. The answer is the same for any address. */
 export function resetRequestOutcome(
   result: "accepted" | "rate-limited" | "unavailable",
