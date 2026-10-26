@@ -64,6 +64,23 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	var projectID pgtype.UUID
+	if payload.ProjectId != nil {
+		project, projectErr := sqlc.New(h.auth.pool).GetProject(ctx, pgUUID(uuidFrom(*payload.ProjectId)))
+		if errors.Is(projectErr, pgx.ErrNoRows) || (projectErr == nil && project.OrganizationID != membership.OrganizationID) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if projectErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if project.Archived {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		projectID = project.ID
+	}
 	historyMode := "ask"
 	if payload.HistoryMode != nil {
 		historyMode = string(*payload.HistoryMode)
@@ -111,7 +128,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 	created, err := queries.CreateOrganizationInvitation(ctx, sqlc.CreateOrganizationInvitationParams{
 		OrganizationID: membership.OrganizationID, EmailNormalized: email,
 		MembershipKind: string(payload.MembershipKind), TokenHash: record.Hash[:],
-		ExpiresAt: pgtype.Timestamptz{Time: record.ExpiresAt, Valid: true}, HistoryMode: historyMode,
+		ExpiresAt: pgtype.Timestamptz{Time: record.ExpiresAt, Valid: true}, HistoryMode: historyMode, ProjectID: projectID,
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -220,6 +237,34 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	if invitation.ProjectID.Valid {
+		// Invited from a project: the person lands in it, and the key domains learn about them.
+		err = queries.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: invitation.ProjectID, AccountID: account.ID, IsManager: false})
+		if err == nil {
+			err = refreshProjectDomains(ctx, queries, invitation.ProjectID)
+		}
+		if err == nil {
+			err = announceProjectChanged(ctx, queries, invitation.ProjectID)
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+	}
+	// Whoever invited is told that the person arrived, and open admin screens refresh.
+	if invitation.RequestedBy.Valid {
+		err = notifyAccount(ctx, queries, invitation.RequestedBy, "invitation_accepted", invitation.ID, pgtype.UUID{}, pgtype.UUID{})
+	}
+	if err == nil {
+		var admins []pgtype.UUID
+		if admins, err = queries.ListOrganizationAdmins(ctx, invitation.OrganizationID); err == nil {
+			err = emitEvent(ctx, queries, admins, eventSpec{Type: "invitation.changed", ResourceID: invitation.ID})
+		}
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	if err = queries.ClearInvitationDeliveryToken(ctx, invitation.ID); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -258,4 +303,58 @@ func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, payload any, li
 		return false
 	}
 	return true
+}
+
+// ListInvitations tells administrators which invitations are still waiting and
+// which were accepted.
+func (h *healthHandler) ListInvitations(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	rows, err := q.ListOrganizationInvitations(ctx, membership.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	now := time.Now()
+	list := make([]gen.InvitationStatus, 0, len(rows))
+	for _, row := range rows {
+		state := gen.InvitationStatusStatePending
+		switch {
+		case row.ConsumedAt.Valid:
+			state = gen.InvitationStatusStateAccepted
+		case row.ExpiresAt.Time.Before(now):
+			state = gen.InvitationStatusStateExpired
+		case row.DeliveryState == "failed":
+			state = gen.InvitationStatusStateFailed
+		}
+		entry := gen.InvitationStatus{
+			Id: fromPG(row.ID), Email: openapi_types.Email(row.EmailNormalized), State: state,
+			MembershipKind: gen.InvitationStatusMembershipKind(row.MembershipKind), HistoryMode: gen.HistoryMode(row.HistoryMode),
+			ExpiresAt: row.ExpiresAt.Time, CreatedAt: row.CreatedAt.Time,
+		}
+		if row.ProjectID.Valid {
+			project := fromPG(row.ProjectID)
+			entry.ProjectId = &project
+		}
+		if row.ConsumedAt.Valid {
+			accepted := row.ConsumedAt.Time
+			entry.AcceptedAt = &accepted
+		}
+		list = append(list, entry)
+	}
+	writeJSON(w, http.StatusOK, list)
 }

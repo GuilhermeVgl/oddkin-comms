@@ -1,6 +1,8 @@
 import {
   addMember,
   createInvitation,
+  listInvitations,
+  type InvitationStatus,
   getExternalPolicy,
   removeProjectMember,
   setProjectAppearance,
@@ -20,6 +22,8 @@ import { Avatar, Banner } from "../design/primitives";
 import { blip } from "../design/sound";
 import { toast } from "../design/toast";
 import { csrfToken, describeError } from "../errors";
+import { useEvents } from "../events";
+import { rel } from "../design/format";
 import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
 import { useOptionalE2EE } from "../e2ee/E2EE";
@@ -264,9 +268,11 @@ function EditProjectDialog({
 function InviteDialog({
   projectId,
   onClose,
+  onInvited,
 }: {
   projectId: string;
   onClose: () => void;
+  onInvited?: () => void;
 }) {
   const { client, reload } = useWorkspace();
   const [email, setEmail] = useState("");
@@ -310,6 +316,7 @@ function InviteDialog({
               ? { historyMode: "auto", linkExtra: grant.linkExtra }
               : { historyMode: "none" }
             : undefined,
+          projectId,
         );
         if (grant) {
           await e2ee?.rememberHistoryInvite(
@@ -319,6 +326,7 @@ function InviteDialog({
           );
         }
         toast("Convite criado e enfileirado para entrega.", { icon: "mail" });
+        onInvited?.();
       }
       onClose();
     } catch (error) {
@@ -448,6 +456,21 @@ export function Team({ account }: { account: CurrentAccount }) {
   const [editing, setEditing] = useState(false);
   const [rotation, setRotation] = useState<"" | "pending" | "done">("");
   const manager = current?.project.isManager === true || account.isAdmin;
+  const [invitations, setInvitations] = useState<InvitationStatus[] | null>(
+    null,
+  );
+  const loadInvitations = useCallback(() => {
+    if (!account.isAdmin) return;
+    listInvitations(client)
+      .then(setInvitations)
+      .catch(() => setInvitations([]));
+  }, [client, account.isAdmin]);
+  useEffect(loadInvitations, [loadInvitations]);
+  // Someone accepting shows up here without reloading.
+  useEvents((event) => {
+    if (event === "resync" || event.eventType === "invitation.changed")
+      loadInvitations();
+  });
   const externals = (current?.members ?? []).filter(
     (member) => member.membershipKind === "external",
   );
@@ -683,6 +706,49 @@ export function Team({ account }: { account: CurrentAccount }) {
                 </div>
               ))}
             </section>
+            {account.isAdmin &&
+            invitations !== null &&
+            invitations.length > 0 ? (
+              <section className="card pad">
+                <h2 className="h2" style={{ marginBottom: 6 }}>
+                  Convites
+                </h2>
+                {invitations.map((entry) => (
+                  <div className="list-i" key={entry.id}>
+                    <Avatar email={entry.email} id={entry.id} size="lg" />
+                    <div className="grow col">
+                      <b>{entry.email}</b>
+                      <span className="xs muted">
+                        {entry.membershipKind === "external"
+                          ? "Externo"
+                          : "Interno"}
+                        {" · "}
+                        {entry.state === "accepted" &&
+                        entry.acceptedAt !== undefined
+                          ? `aceito ${rel(entry.acceptedAt)}`
+                          : `enviado ${rel(entry.createdAt)}`}
+                        {entry.historyMode === "auto"
+                          ? " · com histórico"
+                          : entry.historyMode === "none"
+                            ? " · sem histórico"
+                            : ""}
+                      </span>
+                    </div>
+                    <span
+                      className={`tag ${entry.state === "accepted" ? "ok" : entry.state === "pending" ? "mute" : "warn"}`}
+                    >
+                      {entry.state === "accepted"
+                        ? "Aceito"
+                        : entry.state === "pending"
+                          ? "Aguardando"
+                          : entry.state === "expired"
+                            ? "Expirado"
+                            : "E-mail não entregue"}
+                    </span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
           </div>
           <section className="card pad">
             <div className="row">
@@ -808,6 +874,7 @@ export function Team({ account }: { account: CurrentAccount }) {
       {invite && current !== null ? (
         <InviteDialog
           onClose={() => setInvite(false)}
+          onInvited={loadInvitations}
           projectId={current.project.id}
         />
       ) : null}

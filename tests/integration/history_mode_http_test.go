@@ -138,3 +138,66 @@ func postJSON(handler http.Handler, client *workClient, path, body string) (int,
 	handler.ServeHTTP(result, req)
 	return result.Code, result.Body.String()
 }
+
+// An invitation made from a project lands the person in it, and the
+// administrator can see, and is told, that it was accepted.
+func TestInvitationFromAProjectAddsThePersonAndTellsTheAdministrator(t *testing.T) {
+	f := newE2EEFixture(t, "7e000000-0000-4000-8000-000000000001", "ip", []string{"admin"})
+	deliveryKey := bytes.Repeat([]byte{0x52}, identity.InvitationDeliveryKeySize)
+	handler, err := httpapi.NewAppHandlerWithConfig(f.pool, httpapi.AppConfig{InvitationDeliveryKey: deliveryKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.handler = handler
+	admin := f.clients["admin"]
+	admin.handler = handler
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM river_job WHERE kind = 'invitation_email' AND args->>'invitation_id' IN (SELECT id::text FROM organization_invitation WHERE email_normalized LIKE 'ip-%')`)
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM account WHERE email_normalized LIKE 'ip-%@example.test'`)
+	})
+	var project struct{ Id string }
+	admin.do(http.MethodPost, "/api/v1/projects", `{"name":"Convites"}`, &project)
+
+	if code, _ := postJSON(handler, admin, "/api/v1/invitations", `{"email":"ip-x@example.test","membershipKind":"internal","projectId":"00000000-0000-4000-8000-0000000000aa"}`); code != http.StatusBadRequest {
+		t.Fatalf("a project of nowhere: %d", code)
+	}
+	if code, body := postJSON(handler, admin, "/api/v1/invitations", fmt.Sprintf(`{"email":"ip-new@example.test","membershipKind":"internal","projectId":%q}`, project.Id)); code != http.StatusCreated {
+		t.Fatalf("invitation: %d %s", code, body)
+	}
+	var invitations []struct {
+		Email, State string
+		ProjectId    string
+	}
+	if code := admin.do(http.MethodGet, "/api/v1/invitations", "", &invitations); code != http.StatusOK || len(invitations) != 1 || invitations[0].State != "pending" || invitations[0].ProjectId != project.Id {
+		t.Fatalf("pending list: %d %+v", code, invitations)
+	}
+	var sealed []byte
+	if err := f.pool.QueryRow(f.ctx, `SELECT d.token_ciphertext FROM invitation_delivery d JOIN organization_invitation i ON i.id = d.invitation_id WHERE i.email_normalized = 'ip-new@example.test'`).Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	token, err := identity.OpenInvitationToken(deliveryKey, sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, body := postJSON(handler, nil, "/api/v1/invitations/accept", fmt.Sprintf(`{"email":"ip-new@example.test","token":%q,"password":"correct fixture password"}`, token)); code != http.StatusNoContent {
+		t.Fatalf("accept: %d %s", code, body)
+	}
+	person := f.login("ip-new@example.test")
+	person.handler = handler
+	var projects []struct{ Id string }
+	if code := person.do(http.MethodGet, "/api/v1/projects", "", &projects); code != http.StatusOK || len(projects) != 1 || projects[0].Id != project.Id {
+		t.Fatalf("the person must see the project they were invited to: %d %+v", code, projects)
+	}
+	admin.do(http.MethodGet, "/api/v1/invitations", "", &invitations)
+	if invitations[0].State != "accepted" {
+		t.Fatalf("accepted list: %+v", invitations)
+	}
+	var notes []struct{ Kind string }
+	admin.do(http.MethodGet, "/api/v1/notifications", "", &notes)
+	if len(notes) != 1 || notes[0].Kind != "invitation_accepted" {
+		t.Fatalf("the inviter is told: %+v", notes)
+	}
+	if code := person.do(http.MethodGet, "/api/v1/invitations", "", nil); code != http.StatusForbidden {
+		t.Fatalf("only administrators list invitations: %d", code)
+	}
+}

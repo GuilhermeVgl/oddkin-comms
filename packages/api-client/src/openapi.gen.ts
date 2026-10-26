@@ -46,7 +46,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** Invitations of the organization and whether they were accepted (administrators) */
+    get: operations["listInvitations"];
     put?: never;
     /** Invite a person to the organization */
     post: operations["createInvitation"];
@@ -1800,8 +1801,35 @@ export interface components {
       /** @enum {string} */
       membershipKind: "internal" | "external";
       historyMode?: components["schemas"]["HistoryMode"];
+      /**
+       * Format: uuid
+       * @description Also adds the person to this project when the invitation is accepted
+       */
+      projectId?: string;
       /** @description Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged */
       linkExtra?: string;
+    };
+    InvitationStatus: {
+      /** Format: uuid */
+      id: string;
+      /** Format: email */
+      email: string;
+      /** @enum {string} */
+      membershipKind: "internal" | "external";
+      historyMode: components["schemas"]["HistoryMode"];
+      /** Format: uuid */
+      projectId?: string;
+      /**
+       * @description failed = the e-mail could not be delivered
+       * @enum {string}
+       */
+      state: "pending" | "accepted" | "expired" | "failed";
+      /** Format: date-time */
+      expiresAt: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      acceptedAt?: string;
     };
     /**
      * @description ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
@@ -2285,7 +2313,8 @@ export interface components {
         | "direct_message"
         | "call_invite"
         | "recovery_access"
-        | "followed_update";
+        | "followed_update"
+        | "invitation_accepted";
       /** Format: uuid */
       resourceId: string;
       /** Format: uuid */
@@ -2744,6 +2773,40 @@ export interface operations {
       };
       /** @description No logo configured */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listInvitations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Invitations, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InvitationStatus"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrators only */
+      403: {
         headers: {
           [name: string]: unknown;
         };

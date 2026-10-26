@@ -17,7 +17,7 @@ SET consumed_at = clock_timestamp()
 WHERE token_hash = $1
   AND organization_invitation.email_normalized = $2
   AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp()
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at, history_mode
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at, history_mode, project_id
 `
 
 type ClaimOrganizationInvitationParams struct {
@@ -40,6 +40,7 @@ func (q *Queries) ClaimOrganizationInvitation(ctx context.Context, arg ClaimOrga
 		&i.RequestedBy,
 		&i.RevokedAt,
 		&i.HistoryMode,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -72,9 +73,9 @@ func (q *Queries) CreateInvitationDelivery(ctx context.Context, arg CreateInvita
 }
 
 const createOrganizationInvitation = `-- name: CreateOrganizationInvitation :one
-INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at, history_mode)
-VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6::text, ''), 'ask'))
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, history_mode
+INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at, history_mode, project_id)
+VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6::text, ''), 'ask'), $7)
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, history_mode, project_id
 `
 
 type CreateOrganizationInvitationParams struct {
@@ -84,6 +85,7 @@ type CreateOrganizationInvitationParams struct {
 	TokenHash       []byte
 	ExpiresAt       pgtype.Timestamptz
 	HistoryMode     string
+	ProjectID       pgtype.UUID
 }
 
 type CreateOrganizationInvitationRow struct {
@@ -96,6 +98,7 @@ type CreateOrganizationInvitationRow struct {
 	ConsumedAt      pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
 	HistoryMode     string
+	ProjectID       pgtype.UUID
 }
 
 func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOrganizationInvitationParams) (CreateOrganizationInvitationRow, error) {
@@ -106,6 +109,7 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		arg.TokenHash,
 		arg.ExpiresAt,
 		arg.HistoryMode,
+		arg.ProjectID,
 	)
 	var i CreateOrganizationInvitationRow
 	err := row.Scan(
@@ -118,6 +122,7 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		&i.ConsumedAt,
 		&i.CreatedAt,
 		&i.HistoryMode,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -152,6 +157,60 @@ func (q *Queries) GetInvitationDelivery(ctx context.Context, id pgtype.UUID) (Ge
 		&i.State,
 	)
 	return i, err
+}
+
+const listOrganizationInvitations = `-- name: ListOrganizationInvitations :many
+SELECT i.id, i.email_normalized, i.membership_kind, i.history_mode, i.project_id, i.expires_at,
+       i.consumed_at, i.revoked_at, i.created_at, COALESCE(d.state, 'pending')::text AS delivery_state
+FROM organization_invitation AS i
+LEFT JOIN invitation_delivery AS d ON d.invitation_id = i.id
+WHERE i.organization_id = $1 AND (i.revoked_at IS NULL OR i.consumed_at IS NOT NULL)
+ORDER BY i.created_at DESC, i.id
+LIMIT 100
+`
+
+type ListOrganizationInvitationsRow struct {
+	ID              pgtype.UUID
+	EmailNormalized string
+	MembershipKind  string
+	HistoryMode     string
+	ProjectID       pgtype.UUID
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+	RevokedAt       pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	DeliveryState   string
+}
+
+func (q *Queries) ListOrganizationInvitations(ctx context.Context, organizationID pgtype.UUID) ([]ListOrganizationInvitationsRow, error) {
+	rows, err := q.db.Query(ctx, listOrganizationInvitations, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrganizationInvitationsRow
+	for rows.Next() {
+		var i ListOrganizationInvitationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmailNormalized,
+			&i.MembershipKind,
+			&i.HistoryMode,
+			&i.ProjectID,
+			&i.ExpiresAt,
+			&i.ConsumedAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.DeliveryState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markInvitationDeliveryFailed = `-- name: MarkInvitationDeliveryFailed :execrows

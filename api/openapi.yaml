@@ -64,6 +64,24 @@ paths:
         "404":
           description: No logo configured
   /api/v1/invitations:
+    get:
+      operationId: listInvitations
+      summary: Invitations of the organization and whether they were accepted (administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Invitations, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvitationStatus"
+        "401":
+          description: No active session
+        "403":
+          description: Administrators only
     post:
       operationId: createInvitation
       summary: Invite a person to the organization
@@ -2848,11 +2866,33 @@ components:
           enum: [internal, external]
         historyMode:
           $ref: "#/components/schemas/HistoryMode"
+        projectId:
+          type: string
+          format: uuid
+          description: Also adds the person to this project when the invitation is accepted
         linkExtra:
           type: string
           maxLength: 300
           pattern: "^[A-Za-z0-9_=&.-]*$"
           description: Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged
+    InvitationStatus:
+      type: object
+      required:
+        [id, email, membershipKind, state, expiresAt, createdAt, historyMode]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        membershipKind: { type: string, enum: [internal, external] }
+        historyMode: { $ref: "#/components/schemas/HistoryMode" }
+        projectId: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [pending, accepted, expired, failed]
+          description: failed = the e-mail could not be delivered
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        acceptedAt: { type: string, format: date-time }
     HistoryMode:
       type: string
       enum: [ask, auto, none]
@@ -3481,6 +3521,7 @@ components:
                 call_invite,
                 recovery_access,
                 followed_update,
+                invitation_accepted,
               ],
           }
         resourceId: { type: string, format: uuid }

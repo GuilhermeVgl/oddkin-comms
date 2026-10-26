@@ -14,6 +14,7 @@ const LABEL: Record<Notification["kind"], string> = {
   call_invite: "Você foi chamado para uma conversa por voz e vídeo",
   recovery_access: "A administração restaurou seu acesso ao histórico cifrado",
   followed_update: "Uma atividade que você segue foi atualizada",
+  invitation_accepted: "Alguém aceitou seu convite e já pode entrar",
   direct_message: "Nova mensagem direta",
 };
 
@@ -23,6 +24,7 @@ const ICON: Record<Notification["kind"], IconName> = {
   call_invite: "video",
   recovery_access: "key",
   followed_update: "eye",
+  invitation_accepted: "team",
   direct_message: "chat",
 };
 
@@ -48,6 +50,9 @@ export function NotificationsMenu({
       case "assignment":
       case "followed_update":
         go(`work/${item.resourceId}`);
+        break;
+      case "invitation_accepted":
+        go("team");
         break;
       case "mention":
         go(

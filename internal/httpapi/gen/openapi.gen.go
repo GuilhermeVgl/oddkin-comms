@@ -522,6 +522,48 @@ func (e InvitationMembershipKind) Valid() bool {
 	}
 }
 
+// Defines values for InvitationStatusMembershipKind.
+const (
+	InvitationStatusMembershipKindExternal InvitationStatusMembershipKind = "external"
+	InvitationStatusMembershipKindInternal InvitationStatusMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the InvitationStatusMembershipKind enum.
+func (e InvitationStatusMembershipKind) Valid() bool {
+	switch e {
+	case InvitationStatusMembershipKindExternal:
+		return true
+	case InvitationStatusMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvitationStatusState.
+const (
+	InvitationStatusStateAccepted InvitationStatusState = "accepted"
+	InvitationStatusStateExpired  InvitationStatusState = "expired"
+	InvitationStatusStateFailed   InvitationStatusState = "failed"
+	InvitationStatusStatePending  InvitationStatusState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the InvitationStatusState enum.
+func (e InvitationStatusState) Valid() bool {
+	switch e {
+	case InvitationStatusStateAccepted:
+		return true
+	case InvitationStatusStateExpired:
+		return true
+	case InvitationStatusStateFailed:
+		return true
+	case InvitationStatusStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KeyDomainKind.
 const (
 	KeyDomainKindChat   KeyDomainKind = "chat"
@@ -572,12 +614,13 @@ func (e KeyDomainState) Valid() bool {
 
 // Defines values for NotificationKind.
 const (
-	Assignment     NotificationKind = "assignment"
-	CallInvite     NotificationKind = "call_invite"
-	DirectMessage  NotificationKind = "direct_message"
-	FollowedUpdate NotificationKind = "followed_update"
-	Mention        NotificationKind = "mention"
-	RecoveryAccess NotificationKind = "recovery_access"
+	Assignment         NotificationKind = "assignment"
+	CallInvite         NotificationKind = "call_invite"
+	DirectMessage      NotificationKind = "direct_message"
+	FollowedUpdate     NotificationKind = "followed_update"
+	InvitationAccepted NotificationKind = "invitation_accepted"
+	Mention            NotificationKind = "mention"
+	RecoveryAccess     NotificationKind = "recovery_access"
 )
 
 // Valid indicates whether the value is a known member of the NotificationKind enum.
@@ -590,6 +633,8 @@ func (e NotificationKind) Valid() bool {
 	case DirectMessage:
 		return true
 	case FollowedUpdate:
+		return true
+	case InvitationAccepted:
 		return true
 	case Mention:
 		return true
@@ -1050,6 +1095,9 @@ type CreateInvitationRequest struct {
 	// LinkExtra Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged
 	LinkExtra      *string                               `json:"linkExtra,omitempty"`
 	MembershipKind CreateInvitationRequestMembershipKind `json:"membershipKind"`
+
+	// ProjectId Also adds the person to this project when the invitation is accepted
+	ProjectId *openapi_types.UUID `json:"projectId,omitempty"`
 }
 
 // CreateInvitationRequestMembershipKind defines model for CreateInvitationRequest.MembershipKind.
@@ -1300,6 +1348,29 @@ type InvitationDeliveryState string
 
 // InvitationMembershipKind defines model for Invitation.MembershipKind.
 type InvitationMembershipKind string
+
+// InvitationStatus defines model for InvitationStatus.
+type InvitationStatus struct {
+	AcceptedAt *time.Time          `json:"acceptedAt,omitempty"`
+	CreatedAt  time.Time           `json:"createdAt"`
+	Email      openapi_types.Email `json:"email"`
+	ExpiresAt  time.Time           `json:"expiresAt"`
+
+	// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+	HistoryMode    HistoryMode                    `json:"historyMode"`
+	Id             openapi_types.UUID             `json:"id"`
+	MembershipKind InvitationStatusMembershipKind `json:"membershipKind"`
+	ProjectId      *openapi_types.UUID            `json:"projectId,omitempty"`
+
+	// State failed = the e-mail could not be delivered
+	State InvitationStatusState `json:"state"`
+}
+
+// InvitationStatusMembershipKind defines model for InvitationStatus.MembershipKind.
+type InvitationStatusMembershipKind string
+
+// InvitationStatusState failed = the e-mail could not be delivered
+type InvitationStatusState string
 
 // JoinCallRequest defines model for JoinCallRequest.
 type JoinCallRequest struct {
@@ -2149,6 +2220,9 @@ type ServerInterface interface {
 	// GetReadiness Check whether the API can access its required database
 	// (GET /api/v1/health/ready)
 	GetReadiness(w http.ResponseWriter, r *http.Request)
+	// ListInvitations Invitations of the organization and whether they were accepted (administrators)
+	// (GET /api/v1/invitations)
+	ListInvitations(w http.ResponseWriter, r *http.Request)
 	// CreateInvitation Invite a person to the organization
 	// (POST /api/v1/invitations)
 	CreateInvitation(w http.ResponseWriter, r *http.Request)
@@ -3416,6 +3490,20 @@ func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInvitations operation middleware
+func (siw *ServerInterfaceWrapper) ListInvitations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInvitations(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5223,6 +5311,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.GetOrganizationBranding)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.UpdateOrganizationBranding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/logo", wrapper.GetOrganizationLogo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invitations", wrapper.ListInvitations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations", wrapper.CreateInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations/accept", wrapper.AcceptInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.Login)

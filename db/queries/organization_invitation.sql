@@ -1,7 +1,7 @@
 -- name: CreateOrganizationInvitation :one
-INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at, history_mode)
-VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF(sqlc.arg('history_mode')::text, ''), 'ask'))
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, history_mode;
+INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at, history_mode, project_id)
+VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF(sqlc.arg('history_mode')::text, ''), 'ask'), sqlc.narg('project_id'))
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, history_mode, project_id;
 
 -- name: ClaimOrganizationInvitation :one
 UPDATE organization_invitation
@@ -9,7 +9,7 @@ SET consumed_at = clock_timestamp()
 WHERE token_hash = sqlc.arg(token_hash)
   AND organization_invitation.email_normalized = sqlc.arg(email_normalized)
   AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp()
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at, history_mode;
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at, history_mode, project_id;
 
 -- name: CreateInvitationDelivery :exec
 INSERT INTO invitation_delivery (invitation_id, token_ciphertext, extra_ciphertext)
@@ -51,3 +51,12 @@ WHERE invitation_id = $1 AND state = 'pending';
 UPDATE invitation_delivery
 SET token_ciphertext = '\x00', extra_ciphertext = NULL, updated_at = clock_timestamp()
 WHERE invitation_id = $1;
+
+-- name: ListOrganizationInvitations :many
+SELECT i.id, i.email_normalized, i.membership_kind, i.history_mode, i.project_id, i.expires_at,
+       i.consumed_at, i.revoked_at, i.created_at, COALESCE(d.state, 'pending')::text AS delivery_state
+FROM organization_invitation AS i
+LEFT JOIN invitation_delivery AS d ON d.invitation_id = i.id
+WHERE i.organization_id = $1 AND (i.revoked_at IS NULL OR i.consumed_at IS NOT NULL)
+ORDER BY i.created_at DESC, i.id
+LIMIT 100;

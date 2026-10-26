@@ -31,6 +31,7 @@ export async function updateOrganizationBranding(
   throw new Error(`Unexpected branding update status: ${response.status}`);
 }
 export type Invitation = components["schemas"]["Invitation"];
+export type InvitationStatus = components["schemas"]["InvitationStatus"];
 export type HistoryMode = components["schemas"]["HistoryMode"];
 export type MembershipKind =
   components["schemas"]["CreateInvitationRequest"]["membershipKind"];
@@ -122,6 +123,7 @@ export async function createInvitation(
   membershipKind: MembershipKind,
   csrfToken: string,
   history?: { historyMode: HistoryMode; linkExtra?: string },
+  projectId?: string,
 ): Promise<Invitation> {
   const { data, response } = await client.POST("/api/v1/invitations", {
     body: {
@@ -131,6 +133,7 @@ export async function createInvitation(
       ...(history?.linkExtra === undefined
         ? {}
         : { linkExtra: history.linkExtra }),
+      ...(projectId === undefined ? {} : { projectId }),
     },
     headers: { "X-CSRF-Token": csrfToken },
   });
@@ -218,4 +221,12 @@ export async function setHistoryMode(
   });
   if (response.status !== 204)
     throw new Error(`Unexpected history mode status: ${response.status}`);
+}
+
+export async function listInvitations(
+  client: ReturnType<typeof createApiClient>,
+): Promise<InvitationStatus[]> {
+  const { data, response } = await client.GET("/api/v1/invitations");
+  if (response.status === 200 && data !== undefined) return data;
+  throw new Error(`Unexpected invitations status: ${response.status}`);
 }

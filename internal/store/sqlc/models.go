@@ -280,6 +280,7 @@ type OrganizationInvitation struct {
 	RequestedBy     pgtype.UUID
 	RevokedAt       pgtype.Timestamptz
 	HistoryMode     string
+	ProjectID       pgtype.UUID
 }
 
 type OrganizationMembership struct {
