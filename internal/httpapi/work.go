@@ -177,52 +177,50 @@ func (h *apiServer) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	project, err := q.CreateProject(ctx, sqlc.CreateProjectParams{
-		OrganizationID: membership.OrganizationID, Name: payload.Name, Description: description,
-		Color: color, Icon: "folder", CreatedBy: session.AccountID,
-	})
-	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if err = q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: project.ID, AccountID: session.AccountID, IsManager: true}); err == nil {
-		err = q.CreateExternalProjectPolicy(ctx, project.ID)
-	}
-	if err == nil {
-		_, err = q.CreateConversation(ctx, sqlc.CreateConversationParams{ProjectID: project.ID, Name: "geral"})
-	}
-	for index, column := range defaultColumns {
+	var project sqlc.Project
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 		if err != nil {
-			break
+			return err
 		}
-		_, err = q.CreateBoardColumn(ctx, sqlc.CreateBoardColumnParams{
-			ProjectID: project.ID, Name: column.name, Position: int32(index), Category: column.category,
+		project, err = q.CreateProject(ctx, sqlc.CreateProjectParams{
+			OrganizationID: membership.OrganizationID, Name: payload.Name, Description: description,
+			Color: color, Icon: "folder", CreatedBy: session.AccountID,
 		})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		if isConstraintViolation(err) {
+			return statusError(http.StatusBadRequest)
+		}
+		if err != nil {
+			return err
+		}
+		return seedNewProject(ctx, q, project.ID, session.AccountID)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toProject(fieldsOf(project, work.Access{Kind: "internal", Manager: true})))
+}
+
+// seedNewProject gives a new project its creator as manager, the default
+// external policy, the "geral" channel and the default board columns.
+func seedNewProject(ctx context.Context, q *sqlc.Queries, projectID, creator pgtype.UUID) error {
+	if err := q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: projectID, AccountID: creator, IsManager: true}); err != nil {
+		return err
+	}
+	if err := q.CreateExternalProjectPolicy(ctx, projectID); err != nil {
+		return err
+	}
+	if _, err := q.CreateConversation(ctx, sqlc.CreateConversationParams{ProjectID: projectID, Name: "geral"}); err != nil {
+		return err
+	}
+	for index, column := range defaultColumns {
+		if _, err := q.CreateBoardColumn(ctx, sqlc.CreateBoardColumnParams{
+			ProjectID: projectID, Name: column.name, Position: int32(index), Category: column.category,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *apiServer) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
@@ -320,22 +318,13 @@ func (h *apiServer) AddProjectMember(w http.ResponseWriter, r *http.Request, pro
 	}
 	// A project manager never promotes an external member to manager.
 	manager := access.access.Manager && payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	inTx := sqlc.New(tx)
-	err = inTx.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager})
-	if err == nil {
-		err = refreshProjectDomains(ctx, inTx, pgUUID(projectId))
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager}); err != nil {
+			return err
+		}
+		return refreshProjectDomains(ctx, q, pgUUID(projectId))
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -388,42 +377,35 @@ func (h *apiServer) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request,
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	policy, err := q.UpdateExternalProjectPolicy(ctx, sqlc.UpdateExternalProjectPolicyParams{
-		ProjectID: pgUUID(projectId), Permissions: permissions, Version: int32(payload.Version),
+	var policy sqlc.UpdateExternalProjectPolicyRow
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
+		}
+		var err error
+		policy, err = q.UpdateExternalProjectPolicy(ctx, sqlc.UpdateExternalProjectPolicyParams{
+			ProjectID: pgUUID(projectId), Permissions: permissions, Version: int32(payload.Version),
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusConflict)
+		}
+		if err != nil {
+			return err
+		}
+		members, err := projectRecipients(ctx, q, pgUUID(projectId), "")
+		if err != nil {
+			return err
+		}
+		if err = emitEvent(ctx, q, members, eventSpec{Type: "policy.changed", ResourceID: pgUUID(projectId), Version: policy.Version, ProjectID: pgUUID(projectId)}); err != nil {
+			return err
+		}
+		return refreshProjectDomains(ctx, q, pgUUID(projectId))
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		var members []pgtype.UUID
-		if members, err = projectRecipients(ctx, q, pgUUID(projectId), ""); err == nil {
-			err = emitEvent(ctx, q, members, eventSpec{Type: "policy.changed", ResourceID: pgUUID(projectId), Version: policy.Version, ProjectID: pgUUID(projectId)})
-		}
-		if err == nil {
-			err = refreshProjectDomains(ctx, q, pgUUID(projectId))
-		}
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
@@ -545,66 +527,100 @@ func (h *apiServer) CreateWorkItem(w http.ResponseWriter, r *http.Request, proje
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	kind := string(payload.Kind)
-	if (kind == "task") == (payload.ParentId != nil) {
+	if (payload.Kind == "task") == (payload.ParentId != nil) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Can(work.WorkRead) || !access.access.Can(work.WorkCreate) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	var (
-		writer *encContext
-		fail   *encFailure
-	)
-	if encrypted {
-		var signerID *pgtype.UUID
-		if payload.SignerDeviceId != nil {
-			signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
+	var item sqlc.WorkItem
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+		if !ok {
+			return errResponded
 		}
-		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", signerID)
-		if err == nil && fail == nil {
-			id := toPG(*payload.Id)
-			if fail = writer.verify(session.AccountID, workItemResource(id, "title"), 1, string(*payload.TitleEnc)); fail == nil {
-				fail = writer.verify(session.AccountID, workItemResource(id, "desc"), 1, string(*payload.DescriptionEnc))
-			}
+		if !access.access.Can(work.WorkRead) || !access.access.Can(work.WorkCreate) {
+			return statusError(http.StatusForbidden)
 		}
-	} else {
-		fail, err = requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
-	}
-	if err != nil {
-		serverError(w, r, err)
+		if access.archived {
+			return statusError(http.StatusConflict)
+		}
+		writer, err := checkWorkItemCreateContent(ctx, w, q, session.AccountID, pgUUID(projectId), payload)
+		if err != nil {
+			return err
+		}
+		params, err := newWorkItemParams(ctx, q, session.AccountID, pgUUID(projectId), payload)
+		if err != nil {
+			return err
+		}
+		item, err = insertWorkItem(ctx, q, session.AccountID, params, writer, payload)
+		switch {
+		case isUniqueViolation(err):
+			return statusError(http.StatusConflict)
+		case isConstraintViolation(err):
+			return statusError(http.StatusBadRequest)
+		case err != nil:
+			return err
+		}
+		if err = emitWorkItemChanged(ctx, q, item); err != nil {
+			return err
+		}
+		return notifyAssignment(ctx, q, item, session.AccountID, pgtype.UUID{})
+	})
+	if respondError(w, r, err) {
 		return
+	}
+	writeJSON(w, http.StatusCreated, toWorkItem(item))
+}
+
+// checkWorkItemCreateContent validates the content of a new activity: an
+// encrypted one needs a usable domain and signed envelopes, a plain one is
+// refused once the project encrypts its work. It returns the validated writer
+// for an encrypted write and nil otherwise. A refusal is written to w and
+// reported as errResponded.
+func checkWorkItemCreateContent(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account, projectID pgtype.UUID, payload gen.CreateWorkItemRequest) (*encContext, error) {
+	if payload.TitleEnc == nil && payload.DescriptionEnc == nil {
+		fail, err := requirePlaintextAllowed(ctx, q, projectID, "work")
+		if err != nil {
+			return nil, err
+		}
+		if fail != nil {
+			fail.write(w)
+			return nil, errResponded
+		}
+		return nil, nil
+	}
+	var signerID *pgtype.UUID
+	if payload.SignerDeviceId != nil {
+		signerID = optionalUUIDValue(toPG(*payload.SignerDeviceId))
+	}
+	writer, fail, err := prepareEncrypted(ctx, q, account, projectID, "work", signerID)
+	if err != nil {
+		return nil, err
+	}
+	if fail == nil {
+		id := toPG(*payload.Id)
+		if fail = writer.verify(account, workItemResource(id, "title"), 1, string(*payload.TitleEnc)); fail == nil {
+			fail = writer.verify(account, workItemResource(id, "desc"), 1, string(*payload.DescriptionEnc))
+		}
 	}
 	if fail != nil {
 		fail.write(w)
-		return
+		return nil, errResponded
 	}
+	return writer, nil
+}
+
+// newWorkItemParams builds the plain insert for a new activity. Without a
+// requested column it lands in the board's first "todo" column.
+func newWorkItemParams(ctx context.Context, q *sqlc.Queries, account, projectID pgtype.UUID, payload gen.CreateWorkItemRequest) (sqlc.CreateWorkItemParams, error) {
 	title := ""
 	if payload.Title != nil {
 		title = *payload.Title
 	}
 	params := sqlc.CreateWorkItemParams{
-		ProjectID: pgUUID(projectId), Kind: kind, ParentID: optionalUUID(payload.ParentId), Title: title,
-		AssigneeID: optionalUUID(payload.AssigneeId), Priority: "normal", CreatedBy: session.AccountID,
+		ProjectID: projectID, Kind: string(payload.Kind), ParentID: optionalUUID(payload.ParentId), Title: title,
+		AssigneeID: optionalUUID(payload.AssigneeId), Priority: "normal", CreatedBy: account,
 	}
 	if payload.Description != nil {
 		params.Description = *payload.Description
@@ -617,55 +633,37 @@ func (h *apiServer) CreateWorkItem(w http.ResponseWriter, r *http.Request, proje
 	}
 	if payload.ColumnId != nil {
 		params.ColumnID = pgUUID(uuid.UUID(*payload.ColumnId))
-	} else {
-		columns, listErr := q.ListBoardColumns(ctx, pgUUID(projectId))
-		if listErr != nil || len(columns) == 0 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		params.ColumnID = columns[0].ID
-		for _, column := range columns {
-			if column.Category == "todo" {
-				params.ColumnID = column.ID
-				break
-			}
-		}
+		return params, nil
 	}
-	var item sqlc.WorkItem
-	if encrypted {
-		titleEnc, _ := unb64(string(*payload.TitleEnc), 0)
-		descriptionEnc, _ := unb64(string(*payload.DescriptionEnc), 0)
-		item, err = q.CreateEncryptedWorkItem(ctx, sqlc.CreateEncryptedWorkItemParams{
-			ID: toPG(*payload.Id), ProjectID: params.ProjectID, Kind: kind, ParentID: params.ParentID,
-			AssigneeID: params.AssigneeID, DueDate: params.DueDate, Priority: params.Priority, ColumnID: params.ColumnID,
-			CreatedBy: session.AccountID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
-		})
-	} else {
-		item, err = q.CreateWorkItem(ctx, params)
-	}
-	if isUniqueViolation(err) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err == nil {
-		err = emitWorkItemChanged(ctx, q, item)
-	}
-	if err == nil {
-		err = notifyAssignment(ctx, q, item, session.AccountID, pgtype.UUID{})
-	}
+	columns, err := q.ListBoardColumns(ctx, projectID)
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return params, err
 	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+	if len(columns) == 0 {
+		return params, errors.New("project has no board columns")
 	}
-	writeJSON(w, http.StatusCreated, toWorkItem(item))
+	params.ColumnID = columns[0].ID
+	for _, column := range columns {
+		if column.Category == "todo" {
+			params.ColumnID = column.ID
+			break
+		}
+	}
+	return params, nil
+}
+
+// insertWorkItem stores the activity, encrypted when a validated writer is given.
+func insertWorkItem(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, params sqlc.CreateWorkItemParams, writer *encContext, payload gen.CreateWorkItemRequest) (sqlc.WorkItem, error) {
+	if writer == nil {
+		return q.CreateWorkItem(ctx, params)
+	}
+	titleEnc, _ := unb64(string(*payload.TitleEnc), 0)
+	descriptionEnc, _ := unb64(string(*payload.DescriptionEnc), 0)
+	return q.CreateEncryptedWorkItem(ctx, sqlc.CreateEncryptedWorkItemParams{
+		ID: toPG(*payload.Id), ProjectID: params.ProjectID, Kind: params.Kind, ParentID: params.ParentID,
+		AssigneeID: params.AssigneeID, DueDate: params.DueDate, Priority: params.Priority, ColumnID: params.ColumnID,
+		CreatedBy: account, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
+	})
 }
 
 func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
@@ -685,30 +683,60 @@ func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workI
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
+	var updated sqlc.WorkItem
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		// Lock the row first; authorization is checked on the locked row's project.
+		item, err := q.GetWorkItemForUpdate(ctx, pgUUID(workItemId))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if err = authorizeWorkItemUpdate(access, item, payload); err != nil {
+			return err
+		}
+		writer, err := checkWorkItemContentWrite(ctx, w, q, session.AccountID, item, payload)
+		if err != nil {
+			return err
+		}
+		params, err := h.workItemUpdateParams(ctx, q, item, payload)
+		if err != nil {
+			return err
+		}
+		updated, err = q.UpdateWorkItem(ctx, params)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return statusError(http.StatusConflict)
+		case isConstraintViolation(err):
+			return statusError(http.StatusBadRequest)
+		case err != nil:
+			return err
+		}
+		if encContent {
+			if updated, err = storeWorkItemContent(ctx, q, session.AccountID, item.ID, writer, payload); err != nil {
+				return err
+			}
+		}
+		return announceWorkItemUpdate(ctx, q, session.AccountID, item, updated, payload.ColumnId != nil)
+	})
+	if respondError(w, r, err) {
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	// Lock the row first; authorization is checked on the locked row's project.
-	item, err := q.GetWorkItemForUpdate(ctx, pgUUID(workItemId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
+	writeJSON(w, http.StatusOK, toWorkItem(updated))
+}
+
+// authorizeWorkItemUpdate checks that the caller may make every kind of change
+// the request asks for, and that the activity is writable at the version the
+// caller saw.
+func authorizeWorkItemUpdate(access projectAccess, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest) error {
 	editing := payload.Title != nil || payload.Description != nil || payload.Priority != nil ||
 		payload.AssigneeId != nil || payload.ClearAssignee != nil || payload.DueDate != nil || payload.ClearDueDate != nil ||
-		payload.EpicId != nil || payload.ClearEpic != nil || encContent
+		payload.EpicId != nil || payload.ClearEpic != nil || payload.TitleEnc != nil || payload.DescriptionEnc != nil
 	moving := payload.ColumnId != nil
 	archiving := payload.Archived != nil
 	planning := payload.SprintId != nil || payload.ClearSprint != nil
@@ -717,47 +745,57 @@ func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workI
 		(moving && !access.access.Can(work.WorkMove)) ||
 		(archiving && !access.access.Can(work.WorkArchive)) ||
 		(planning && !access.access.Can(work.PlanningEdit)) {
-		w.WriteHeader(http.StatusForbidden)
-		return
+		return statusError(http.StatusForbidden)
 	}
 	if access.archived || int32(payload.Version) != item.Version {
-		w.WriteHeader(http.StatusConflict)
-		return
+		return statusError(http.StatusConflict)
 	}
+	return nil
+}
 
-	var writer *encContext
-	if encContent {
-		var fail *encFailure
+// checkWorkItemContentWrite validates the content part of an update: an
+// encrypted write must be signed, carry the next revision and use a usable
+// domain; a plain-text edit is refused once the project encrypts its work. It
+// returns the validated writer for an encrypted write and nil otherwise. A
+// refusal is written to w and reported as errResponded.
+func checkWorkItemContentWrite(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest) (*encContext, error) {
+	if payload.TitleEnc != nil || payload.DescriptionEnc != nil {
 		revision := int32(*payload.ContentRevision)
-		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
-		if err == nil && fail == nil && revision != item.ContentRevision+1 {
+		writer, fail, err := prepareEncrypted(ctx, q, account, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+		if err != nil {
+			return nil, err
+		}
+		if fail == nil && revision != item.ContentRevision+1 {
 			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
 		}
-		if err == nil && fail == nil {
-			if fail = writer.verify(session.AccountID, workItemResource(item.ID, "title"), revision, *payload.TitleEnc); fail == nil {
-				fail = writer.verify(session.AccountID, workItemResource(item.ID, "desc"), revision, *payload.DescriptionEnc)
+		if fail == nil {
+			if fail = writer.verify(account, workItemResource(item.ID, "title"), revision, *payload.TitleEnc); fail == nil {
+				fail = writer.verify(account, workItemResource(item.ID, "desc"), revision, *payload.DescriptionEnc)
 			}
 		}
+		if fail != nil {
+			fail.write(w)
+			return nil, errResponded
+		}
+		return writer, nil
+	}
+	if payload.Title != nil || payload.Description != nil {
+		fail, err := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
 		if err != nil {
-			serverError(w, r, err)
-			return
+			return nil, err
 		}
 		if fail != nil {
 			fail.write(w)
-			return
-		}
-	} else if payload.Title != nil || payload.Description != nil {
-		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
-		if planErr != nil {
-			serverError(w, r, planErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
+			return nil, errResponded
 		}
 	}
+	return nil, nil
+}
 
+// workItemUpdateParams turns the request into the optimistic update. Planning
+// references are checked here, and a move to another column applies the
+// completion rules of SPEC 6.5 inside the caller's transaction.
+func (h *apiServer) workItemUpdateParams(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest) (sqlc.UpdateWorkItemParams, error) {
 	params := sqlc.UpdateWorkItemParams{ID: item.ID, Version: item.Version}
 	if payload.Title != nil {
 		params.Title = pgtype.Text{String: *payload.Title, Valid: true}
@@ -776,16 +814,8 @@ func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workI
 	} else if payload.AssigneeId != nil {
 		params.SetAssignee, params.AssigneeID = true, optionalUUID(payload.AssigneeId)
 	}
-	if payload.ClearSprint != nil && *payload.ClearSprint {
-		params.SetSprint = true
-	} else if payload.SprintId != nil {
-		organizationID, orgErr := q.GetProjectOrganization(ctx, item.ProjectID)
-		sprint, sprintErr := q.GetSprint(ctx, toPG(*payload.SprintId))
-		if orgErr != nil || sprintErr != nil || sprint.OrganizationID != organizationID || sprint.State == "closed" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		params.SetSprint, params.SprintID = true, sprint.ID
+	if err := sprintChange(ctx, q, item, payload, &params); err != nil {
+		return params, err
 	}
 	if payload.ClearEpic != nil && *payload.ClearEpic {
 		params.SetEpic = true
@@ -797,125 +827,135 @@ func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workI
 	} else if payload.DueDate != nil {
 		params.SetDueDate, params.DueDate = true, pgtype.Date{Time: payload.DueDate.Time, Valid: true}
 	}
-
-	if moving {
-		target, moveErr := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: pgUUID(uuid.UUID(*payload.ColumnId)), ProjectID: item.ProjectID})
-		if errors.Is(moveErr, pgx.ErrNoRows) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+	if payload.ColumnId != nil {
+		target, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: pgUUID(uuid.UUID(*payload.ColumnId)), ProjectID: item.ProjectID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return params, statusError(http.StatusBadRequest)
 		}
-		if moveErr != nil {
-			serverError(w, r, moveErr)
-			return
+		if err != nil {
+			return params, err
 		}
 		params.ColumnID = target.ID
-		if status := h.applyMoveRules(ctx, q, item, target, payload.CompleteSubtasks != nil && *payload.CompleteSubtasks); status != 0 {
-			w.WriteHeader(status)
-			return
+		if err = h.applyMoveRules(ctx, q, item, target, payload.CompleteSubtasks != nil && *payload.CompleteSubtasks); err != nil {
+			return params, err
 		}
 	}
+	return params, nil
+}
 
-	updated, err := q.UpdateWorkItem(ctx, params)
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusConflict)
-		return
+// sprintChange sets the sprint of the update. A sprint must belong to the
+// project's organization and must not be closed.
+func sprintChange(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest, params *sqlc.UpdateWorkItemParams) error {
+	if payload.ClearSprint != nil && *payload.ClearSprint {
+		params.SetSprint = true
+		return nil
 	}
-	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if payload.SprintId == nil {
+		return nil
 	}
-	if err == nil && encContent {
-		titleEnc, _ := unb64(*payload.TitleEnc, 0)
-		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
-		var changed int64
-		changed, err = q.SetWorkItemContent(ctx, sqlc.SetWorkItemContentParams{
-			ID: item.ID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
-			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
-		})
-		if err == nil && changed == 0 {
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if err == nil {
-			updated, err = q.GetWorkItem(ctx, item.ID)
-		}
+	organizationID, orgErr := q.GetProjectOrganization(ctx, item.ProjectID)
+	sprint, sprintErr := q.GetSprint(ctx, toPG(*payload.SprintId))
+	if orgErr != nil || sprintErr != nil || sprint.OrganizationID != organizationID || sprint.State == "closed" {
+		return statusError(http.StatusBadRequest)
 	}
-	if err == nil {
-		err = emitWorkItemChanged(ctx, q, updated)
-	}
-	if err == nil {
-		err = notifyAssignment(ctx, q, updated, session.AccountID, item.AssigneeID)
-	}
-	if err == nil && updated.AssigneeID.Valid && updated.AssigneeID != item.AssigneeID {
-		// Whoever takes an activity follows it from then on.
-		err = q.FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: updated.ID, AccountID: updated.AssigneeID})
-	}
-	if err == nil && moving {
-		err = notifyFollowers(ctx, q, updated, session.AccountID)
-	}
+	params.SetSprint, params.SprintID = true, sprint.ID
+	return nil
+}
+
+// storeWorkItemContent saves the new envelopes and returns the activity as stored.
+func storeWorkItemContent(ctx context.Context, q *sqlc.Queries, account, itemID pgtype.UUID, writer *encContext, payload gen.UpdateWorkItemRequest) (sqlc.WorkItem, error) {
+	titleEnc, _ := unb64(*payload.TitleEnc, 0)
+	descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+	changed, err := q.SetWorkItemContent(ctx, sqlc.SetWorkItemContentParams{
+		ID: itemID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
+		ContentAuthorID: account, ContentSignerDeviceID: writer.signer.ID,
+	})
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return sqlc.WorkItem{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+	if changed == 0 {
+		return sqlc.WorkItem{}, statusError(http.StatusConflict)
 	}
-	writeJSON(w, http.StatusOK, toWorkItem(updated))
+	return q.GetWorkItem(ctx, itemID)
+}
+
+// announceWorkItemUpdate emits the change event and notifies the people it
+// concerns: the new assignee, who also follows the activity from then on, and
+// the followers when the activity moved.
+func announceWorkItemUpdate(ctx context.Context, q *sqlc.Queries, actor pgtype.UUID, before, after sqlc.WorkItem, moved bool) error {
+	if err := emitWorkItemChanged(ctx, q, after); err != nil {
+		return err
+	}
+	if err := notifyAssignment(ctx, q, after, actor, before.AssigneeID); err != nil {
+		return err
+	}
+	if after.AssigneeID.Valid && after.AssigneeID != before.AssigneeID {
+		// Whoever takes an activity follows it from then on.
+		if err := q.FollowWorkItem(ctx, sqlc.FollowWorkItemParams{WorkItemID: after.ID, AccountID: after.AssigneeID}); err != nil {
+			return err
+		}
+	}
+	if moved {
+		return notifyFollowers(ctx, q, after, actor)
+	}
+	return nil
 }
 
 // applyMoveRules enforces the completion rules of SPEC 6.5 inside the caller's
-// transaction. It returns a non-zero status when the move must be rejected.
-func (h *apiServer) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) int {
+// transaction. It returns statusError when the move must be rejected.
+func (h *apiServer) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) error {
 	current, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: item.ColumnID, ProjectID: item.ProjectID})
 	if err != nil {
-		return http.StatusServiceUnavailable
+		return err
 	}
 	switch {
 	case item.Kind == "task" && target.Category == "done" && current.Category != "done":
-		open, listErr := q.ListOpenSubtasks(ctx, item.ID)
-		if listErr != nil {
-			return http.StatusServiceUnavailable
+		open, err := q.ListOpenSubtasks(ctx, item.ID)
+		if err != nil {
+			return err
 		}
 		if len(open) > 0 && !completeSubtasks {
-			return http.StatusConflict
+			return statusError(http.StatusConflict)
 		}
 		for _, subtaskID := range open {
 			if err = q.MoveWorkItemToColumn(ctx, sqlc.MoveWorkItemToColumnParams{ID: subtaskID, ColumnID: target.ID}); err != nil {
-				return http.StatusServiceUnavailable
+				return err
 			}
 		}
 	case item.Kind == "task" && current.Category == "done" && target.Category != "done":
 		if item.EpicID.Valid {
-			if err = q.ReopenEpic(ctx, item.EpicID); err != nil {
-				return http.StatusServiceUnavailable
-			}
+			return q.ReopenEpic(ctx, item.EpicID)
 		}
 	case item.Kind == "subtask" && current.Category == "done" && target.Category != "done":
-		parent, parentErr := q.GetWorkItemForUpdate(ctx, item.ParentID)
-		if parentErr != nil {
-			return http.StatusServiceUnavailable
-		}
-		parentColumn, columnErr := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: parent.ColumnID, ProjectID: parent.ProjectID})
-		if columnErr != nil {
-			return http.StatusServiceUnavailable
-		}
-		if parentColumn.Category == "done" {
-			if parent.EpicID.Valid {
-				if err = q.ReopenEpic(ctx, parent.EpicID); err != nil {
-					return http.StatusServiceUnavailable
-				}
-			}
-			reopen, reopenErr := q.FirstColumnForReopen(ctx, item.ProjectID)
-			if reopenErr != nil {
-				return http.StatusServiceUnavailable
-			}
-			if err = q.MoveWorkItemToColumn(ctx, sqlc.MoveWorkItemToColumnParams{ID: parent.ID, ColumnID: reopen}); err != nil {
-				return http.StatusServiceUnavailable
-			}
+		return h.reopenParentOfSubtask(ctx, q, item)
+	}
+	return nil
+}
+
+// reopenParentOfSubtask moves a finished parent task back to the board's
+// reopen column, and reopens its epic, when one of its subtasks is reopened.
+func (h *apiServer) reopenParentOfSubtask(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem) error {
+	parent, err := q.GetWorkItemForUpdate(ctx, item.ParentID)
+	if err != nil {
+		return err
+	}
+	parentColumn, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: parent.ColumnID, ProjectID: parent.ProjectID})
+	if err != nil {
+		return err
+	}
+	if parentColumn.Category != "done" {
+		return nil
+	}
+	if parent.EpicID.Valid {
+		if err = q.ReopenEpic(ctx, parent.EpicID); err != nil {
+			return err
 		}
 	}
-	return 0
+	reopen, err := q.FirstColumnForReopen(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	return q.MoveWorkItemToColumn(ctx, sqlc.MoveWorkItemToColumnParams{ID: parent.ID, ColumnID: reopen})
 }
 
 // workItemAccess resolves an item and the caller's access without leaking the
@@ -1008,44 +1048,20 @@ func (h *apiServer) CreateWorkItemComment(w http.ResponseWriter, r *http.Request
 		err     error
 	)
 	if encrypted {
-		commentID := toPG(*payload.Id)
-		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
-		if prepErr == nil && fail == nil {
-			fail = writer.verify(session.AccountID, commentResource(commentID), 1, *payload.BodyEnc)
-		}
-		if prepErr != nil {
-			serverError(w, r, prepErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		bodyEnc, _ := unb64(*payload.BodyEnc, 0)
-		comment, err = q.CreateEncryptedComment(ctx, sqlc.CreateEncryptedCommentParams{
-			ID: commentID, WorkItemID: item.ID, AuthorID: session.AccountID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
-		})
+		comment, err = insertEncryptedComment(ctx, w, q, session.AccountID, item, payload)
 	} else {
-		fail, planErr := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
-		if planErr != nil {
-			serverError(w, r, planErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		comment, err = q.CreateWorkItemComment(ctx, sqlc.CreateWorkItemCommentParams{WorkItemID: item.ID, AuthorID: session.AccountID, Body: *payload.Body})
+		comment, err = insertPlainComment(ctx, w, q, session.AccountID, item, payload)
 	}
-	if isUniqueViolation(err) {
+	switch {
+	case errors.Is(err, errResponded):
+		return
+	case isUniqueViolation(err):
 		w.WriteHeader(http.StatusConflict)
 		return
-	}
-	if isConstraintViolation(err) {
+	case isConstraintViolation(err):
 		w.WriteHeader(http.StatusBadRequest)
 		return
-	}
-	if err != nil {
+	case err != nil:
 		serverError(w, r, err)
 		return
 	}
@@ -1061,6 +1077,42 @@ func (h *apiServer) CreateWorkItemComment(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, response)
 }
 
+// insertEncryptedComment stores a comment whose body arrives as an envelope
+// signed by the author's device. A refusal is written to w and reported as
+// errResponded.
+func insertEncryptedComment(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, item sqlc.WorkItem, payload gen.CreateCommentRequest) (sqlc.WorkItemComment, error) {
+	commentID := toPG(*payload.Id)
+	writer, fail, err := prepareEncrypted(ctx, q, account, item.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+	if err != nil {
+		return sqlc.WorkItemComment{}, err
+	}
+	if fail == nil {
+		fail = writer.verify(account, commentResource(commentID), 1, *payload.BodyEnc)
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.WorkItemComment{}, errResponded
+	}
+	bodyEnc, _ := unb64(*payload.BodyEnc, 0)
+	return q.CreateEncryptedComment(ctx, sqlc.CreateEncryptedCommentParams{
+		ID: commentID, WorkItemID: item.ID, AuthorID: account, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID,
+	})
+}
+
+// insertPlainComment stores a comment in the clear, which only a project that
+// has not started encrypting its work may still do.
+func insertPlainComment(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, item sqlc.WorkItem, payload gen.CreateCommentRequest) (sqlc.WorkItemComment, error) {
+	fail, err := requirePlaintextAllowed(ctx, q, item.ProjectID, "work")
+	if err != nil {
+		return sqlc.WorkItemComment{}, err
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.WorkItemComment{}, errResponded
+	}
+	return q.CreateWorkItemComment(ctx, sqlc.CreateWorkItemCommentParams{WorkItemID: item.ID, AuthorID: account, Body: *payload.Body})
+}
+
 // EncryptComment migrates the author's own legacy plaintext comment: the
 // plaintext is erased in the same statement that stores the envelope.
 func (h *apiServer) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
@@ -1074,57 +1126,44 @@ func (h *apiServer) EncryptComment(w http.ResponseWriter, r *http.Request, comme
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	comment, err := q.GetWorkItemComment(ctx, toPG(commentId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	item, err := q.GetWorkItem(ctx, comment.WorkItemID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
-	if comment.AuthorID != session.AccountID || !access.access.Can(work.WorkRead) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if comment.Encrypted || access.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
-	if err == nil && fail == nil {
-		fail = writer.verify(session.AccountID, commentResource(comment.ID), 1, payload.BodyEnc)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if fail != nil {
-		fail.write(w)
-		return
-	}
-	bodyEnc, _ := unb64(payload.BodyEnc, 0)
-	if _, err = q.SetCommentContent(ctx, sqlc.SetCommentContentParams{ID: comment.ID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID}); err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		comment, err := q.GetWorkItemComment(ctx, toPG(commentId))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		item, err := q.GetWorkItem(ctx, comment.WorkItemID)
+		if err != nil {
+			return err
+		}
+		access, ok := loadAccess(ctx, w, q, item.ProjectID, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if comment.AuthorID != session.AccountID || !access.access.Can(work.WorkRead) {
+			return statusError(http.StatusForbidden)
+		}
+		if comment.Encrypted || access.archived {
+			return statusError(http.StatusConflict)
+		}
+		writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, item.ProjectID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
+		if err != nil {
+			return err
+		}
+		if fail == nil {
+			fail = writer.verify(session.AccountID, commentResource(comment.ID), 1, payload.BodyEnc)
+		}
+		if fail != nil {
+			fail.write(w)
+			return errResponded
+		}
+		bodyEnc, _ := unb64(payload.BodyEnc, 0)
+		_, err = q.SetCommentContent(ctx, sqlc.SetCommentContentParams{ID: comment.ID, BodyEnc: bodyEnc, ContentSignerDeviceID: writer.signer.ID})
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1144,66 +1183,53 @@ func (h *apiServer) UpdateProject(w http.ResponseWriter, r *http.Request, projec
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	project, err := q.GetProjectForUpdate(ctx, pgUUID(projectId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	access, ok := loadAccess(ctx, w, q, project.ID, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Manager {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	revision := int32(payload.ContentRevision)
-	writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, project.ID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
-	if err == nil && fail == nil && revision != project.ContentRevision+1 {
-		fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
-	}
-	if err == nil && fail == nil {
-		if fail = writer.verify(session.AccountID, projectResource(project.ID, "name"), revision, payload.NameEnc); fail == nil {
-			fail = writer.verify(session.AccountID, projectResource(project.ID, "desc"), revision, payload.DescriptionEnc)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		project, err := q.GetProjectForUpdate(ctx, pgUUID(projectId))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
 		}
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if fail != nil {
-		fail.write(w)
-		return
-	}
-	nameEnc, _ := unb64(payload.NameEnc, 0)
-	descriptionEnc, _ := unb64(payload.DescriptionEnc, 0)
-	changed, err := q.SetProjectContent(ctx, sqlc.SetProjectContentParams{
-		ID: project.ID, NameEnc: nameEnc, DescriptionEnc: descriptionEnc, ContentRevision: revision,
-		ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		if err != nil {
+			return err
+		}
+		access, ok := loadAccess(ctx, w, q, project.ID, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.access.Manager {
+			return statusError(http.StatusForbidden)
+		}
+		revision := int32(payload.ContentRevision)
+		writer, fail, err := prepareEncrypted(ctx, q, session.AccountID, project.ID, "work", optionalUUIDValue(toPG(payload.SignerDeviceId)))
+		if err != nil {
+			return err
+		}
+		if fail == nil && revision != project.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		}
+		if fail == nil {
+			if fail = writer.verify(session.AccountID, projectResource(project.ID, "name"), revision, payload.NameEnc); fail == nil {
+				fail = writer.verify(session.AccountID, projectResource(project.ID, "desc"), revision, payload.DescriptionEnc)
+			}
+		}
+		if fail != nil {
+			fail.write(w)
+			return errResponded
+		}
+		nameEnc, _ := unb64(payload.NameEnc, 0)
+		descriptionEnc, _ := unb64(payload.DescriptionEnc, 0)
+		changed, err := q.SetProjectContent(ctx, sqlc.SetProjectContentParams{
+			ID: project.ID, NameEnc: nameEnc, DescriptionEnc: descriptionEnc, ContentRevision: revision,
+			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			return statusError(http.StatusConflict)
+		}
+		return announceProjectChanged(ctx, q, project.ID)
 	})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		err = announceProjectChanged(ctx, q, project.ID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
