@@ -454,6 +454,7 @@ export async function createCrypto(
   }
 
   return {
+    randomBytes: random,
     generateDeviceKeys,
     generateDomainKey,
     createFileEncryptor,

@@ -565,13 +565,15 @@ function Devices({
               </b>
               <span className="fp">{e2ee.deviceFingerprint}</span>
             </div>
-            <button
-              className="btn sm"
-              onClick={() => e2ee.lock()}
-              type="button"
-            >
-              Bloquear
-            </button>
+            {e2ee.autoManaged ? null : (
+              <button
+                className="btn sm"
+                onClick={() => e2ee.lock()}
+                type="button"
+              >
+                Bloquear
+              </button>
+            )}
           </div>
         ) : null}
       </section>
@@ -1003,7 +1005,6 @@ function Recovery() {
   const [audit, setAudit] = useState<RecoveryAuditEntry[]>([]);
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [passphrase, setPassphrase] = useState("");
   const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
@@ -1024,7 +1025,6 @@ function Recovery() {
   }, [e2ee.phase, e2ee.hasRecoveryIdentity, version]);
 
   const people = [...new Set(gaps.map((gap) => gap.device.email))];
-  const content = e2ee.backup();
 
   return (
     <div className="stack">
@@ -1065,19 +1065,41 @@ function Recovery() {
           histórico pode ficar irrecuperável. Não há chave-mestra escondida no
           servidor.
         </p>
-        {content === null ? null : (
+        {!e2ee.canBackup ? null : (
           <div>
             <button
               className="btn"
               onClick={() => {
+                const made = e2ee.createBackup();
+                if (made === null) return;
                 const url = URL.createObjectURL(
-                  new Blob([content], { type: "application/json" }),
+                  new Blob([made.content], { type: "application/json" }),
                 );
                 const link = document.createElement("a");
                 link.href = url;
                 link.download = "crewstead-recuperacao.json";
                 link.click();
                 URL.revokeObjectURL(url);
+                // The key opens the file and is shown only now: it is not stored anywhere.
+                void confirmDialog({
+                  title: "Guarde a chave deste backup",
+                  body: (
+                    <>
+                      <p className="muted">
+                        O arquivo baixado só abre com esta chave. Anote-a e
+                        guarde-a fora deste computador e do servidor. Ela não
+                        será mostrada de novo.
+                      </p>
+                      <p
+                        className="fp"
+                        style={{ fontSize: 17, margin: "12px 0" }}
+                      >
+                        {made.recoveryKey}
+                      </p>
+                    </>
+                  ),
+                  ok: "Anotei a chave",
+                });
               }}
               type="button"
             >
@@ -1165,28 +1187,14 @@ function Recovery() {
             A nova identidade recebe as chaves existentes antes de a atual ser
             revogada. A operação fica registrada.
           </p>
-          <div className="field">
-            <label htmlFor="rp">Senha de proteção deste navegador</label>
-            <input
-              autoComplete="current-password"
-              className="inp"
-              id="rp"
-              minLength={12}
-              onChange={(event) => setPassphrase(event.target.value)}
-              type="password"
-              value={passphrase}
-            />
-          </div>
           <div>
             <button
               className={`btn${rotating ? " loading" : ""}`}
-              disabled={passphrase.length < 12}
               onClick={() => {
                 setRotating(true);
                 e2ee
-                  .rotateRecoveryIdentity(passphrase)
+                  .rotateRecoveryIdentity()
                   .then(() => {
-                    setPassphrase("");
                     toast("Identidade de recuperação trocada.", {
                       icon: "key",
                     });

@@ -100,13 +100,16 @@ export type E2EEApi = {
   ): Promise<void>;
   /** Asks to be shown the key step after all (for accounts that chose not to). */
   requestHistoryAccess(): Promise<void>;
-  setupOrganization(passphrase: string): Promise<void>;
-  setupDevice(passphrase: string, confirmedFingerprint: string): Promise<void>;
+  setupOrganization(): Promise<void>;
+  setupDevice(): Promise<void>;
   unlock(passphrase: string, remember?: boolean): Promise<boolean>;
   lock(): void;
   approve(approval: PendingApproval): Promise<void>;
   revoke(deviceId: string): Promise<void>;
-  backup(): string | null;
+  /** Makes an offline recovery copy; the key that opens it is returned once, for the person to keep. */
+  createBackup(): { content: string; recoveryKey: string } | null;
+  /** True when this browser can make a backup. */
+  canBackup: boolean;
   resetThisBrowser(): Promise<void>;
   openScope(
     scope: Scope,
@@ -128,7 +131,7 @@ export type E2EEApi = {
   /** Administrative recovery; only the recovery administrator, only while unlocked. */
   recoveryGaps(): Promise<RecoveryGap[]>;
   restoreAccess(): Promise<{ granted: number; failed: number }>;
-  rotateRecoveryIdentity(passphrase: string): Promise<void>;
+  rotateRecoveryIdentity(): Promise<void>;
   recoveryAudit(): Promise<RecoveryAuditEntry[]>;
 };
 
@@ -471,15 +474,20 @@ export function E2EEProvider({
         window.location.reload();
       },
 
-      async setupOrganization(passphrase) {
+      async setupOrganization() {
         setError("");
         const { vault, crypto } = await runtimeOf();
         const token = csrf();
         // The keys are saved, wrapped, BEFORE the server hears about them: the
         // trust root can be set only once, so losing its private half to a
         // reload or a failed request would lock the organization out for good.
-        let draft = record.current?.incomplete === true ? record.current : null;
+        let draft =
+          record.current?.incomplete === true &&
+          record.current.autoPassphrase !== undefined
+            ? record.current
+            : null;
         if (draft === null) {
+          const passphrase = toBase64Url(crypto.generateDomainKey());
           const root = crypto.generateDeviceKeys();
           const device = crypto.generateDeviceKeys();
           const recovery = crypto.generateDeviceKeys();
@@ -487,6 +495,7 @@ export function E2EEProvider({
             version: 1,
             incomplete: true,
             accountId: account.id,
+            autoPassphrase: passphrase,
             deviceId: "",
             deviceName: "Este navegador",
             signPublicKey: toBase64Url(device.signPublicKey),
@@ -513,15 +522,10 @@ export function E2EEProvider({
           await vault.save(draft);
           record.current = draft;
         }
-        try {
-          await vault.unlock(draft, passphrase);
-        } catch (failure) {
-          if (failure instanceof PassphraseError)
-            throw new Error("use the passphrase of the earlier attempt", {
-              cause: failure,
-            });
-          throw failure;
-        }
+        const passphrase = draft.autoPassphrase;
+        if (passphrase === undefined)
+          throw new Error("the saved setup is unusable");
+        await vault.unlock(draft, passphrase);
         const rootSecret = vault.rootSecretKey();
         const draftRecovery = draft.recovery;
         if (rootSecret === undefined || draftRecovery === undefined)
@@ -590,19 +594,15 @@ export function E2EEProvider({
         await refresh();
       },
 
-      async setupDevice(passphrase, confirmedFingerprint) {
+      async setupDevice() {
         setError("");
         const { vault, crypto } = await runtimeOf();
+        // The organization's key is pinned the first time this browser sees it;
+        // its fingerprint stays in Settings for anyone who wants to compare.
         const root = await getTrustRoot(client);
         if (root === null) throw new Error("not configured");
-        const shown = crypto.fingerprint(fromBase64Url(root.signPublicKey));
-        if (
-          confirmedFingerprint.replace(/\s/g, "").toLowerCase() !==
-          shown.replace(/\s/g, "")
-        ) {
-          throw new Error("fingerprint mismatch");
-        }
         const keys = crypto.generateDeviceKeys();
+        const autoPassphrase = toBase64Url(crypto.generateDomainKey());
         const created = await registerDevice(client, csrf(), {
           name: "Navegador",
           signPublicKey: toBase64Url(keys.signPublicKey),
@@ -615,8 +615,9 @@ export function E2EEProvider({
           deviceName: created.name,
           signPublicKey: toBase64Url(keys.signPublicKey),
           boxPublicKey: toBase64Url(keys.boxPublicKey),
-          wrappedDevice: vault.wrapDevice(passphrase, keys),
+          wrappedDevice: vault.wrapDevice(autoPassphrase, keys),
           pinnedRoot: root.signPublicKey,
+          autoPassphrase,
         };
         await vault.save(next);
         record.current = next;
@@ -632,6 +633,17 @@ export function E2EEProvider({
         } catch (failure) {
           if (failure instanceof PassphraseError) return false;
           throw failure;
+        }
+        if (current.autoPassphrase === undefined) {
+          // A browser set up with a passphrase of its own: from now on it needs none.
+          const crypto = (await runtimeOf()).crypto;
+          const autoPassphrase = toBase64Url(crypto.generateDomainKey());
+          const converted = {
+            ...vault.rewrap(current, passphrase, autoPassphrase),
+            autoPassphrase,
+          };
+          await vault.save(converted);
+          record.current = converted;
         }
         if (remember) vault.rememberInTab(account.id);
         await buildKeyring();
@@ -690,7 +702,11 @@ export function E2EEProvider({
         await refresh();
       },
 
-      backup() {
+      canBackup:
+        record.current?.root !== undefined &&
+        record.current.autoPassphrase !== undefined,
+
+      createBackup() {
         const current = record.current;
         if (
           current === null ||
@@ -698,7 +714,14 @@ export function E2EEProvider({
           current.root === undefined
         )
           return null;
-        return runtime.current.vault.exportBackup(current);
+        const { vault, crypto } = runtime.current;
+        const recoveryKey = Vault.newRecoveryKey((length) =>
+          crypto.randomBytes(length),
+        );
+        return {
+          recoveryKey,
+          content: vault.exportBackup(current, recoveryKey),
+        };
       },
 
       async resetThisBrowser() {
@@ -777,7 +800,7 @@ export function E2EEProvider({
         return ring.recoverGaps();
       },
 
-      async rotateRecoveryIdentity(passphrase) {
+      async rotateRecoveryIdentity() {
         const { crypto, vault } = await runtimeOf();
         const current = record.current;
         const ring = keyring.current;
@@ -791,8 +814,9 @@ export function E2EEProvider({
         ) {
           throw new Error("recovery identity is unavailable");
         }
-        // Verify the local passphrase before registering a new recovery key.
-        vault.unwrapSecret(passphrase, current.wrappedDevice);
+        const passphrase = current.autoPassphrase;
+        if (passphrase === undefined)
+          throw new Error("this browser still has a passphrase of its own");
         const nextKeys = crypto.generateDeviceKeys();
         const created = await registerDevice(client, csrf(), {
           name: "Identidade de recuperação",

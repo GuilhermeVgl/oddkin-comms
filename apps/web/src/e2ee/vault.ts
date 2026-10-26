@@ -277,20 +277,68 @@ export class Vault {
     return this.crypto.fingerprint(fromBase64Url(publicKeyBase64));
   }
 
-  exportBackup(record: VaultRecord): string {
-    // Wrapped material only: useless without the passphrase.
+  /** The same record with every secret wrapped under another passphrase. */
+  rewrap(
+    record: VaultRecord,
+    from: string,
+    to: string,
+    options?: { opsLimit: number; memLimit: number },
+  ): VaultRecord {
+    const move = (wrapped: WrappedSecret) =>
+      this.keystore.wrap(to, this.keystore.unwrap(from, wrapped), options);
+    const next: VaultRecord = {
+      ...record,
+      wrappedDevice: move(record.wrappedDevice),
+    };
+    if (record.root !== undefined)
+      next.root = { ...record.root, wrapped: move(record.root.wrapped) };
+    if (record.recovery !== undefined)
+      next.recovery = {
+        ...record.recovery,
+        wrapped: move(record.recovery.wrapped),
+      };
+    return next;
+  }
+
+  /**
+   * An offline copy of what a lost browser would take with it (the root and the
+   * recovery identity), wrapped under a recovery key that is shown once and
+   * kept by the person, never by this app or the server.
+   */
+  exportBackup(
+    record: VaultRecord,
+    recoveryKey: string,
+    options?: { opsLimit: number; memLimit: number },
+  ): string {
+    if (record.autoPassphrase === undefined)
+      throw new Error("this browser still has a passphrase of its own");
+    const copy = this.rewrap(
+      record,
+      record.autoPassphrase,
+      recoveryKey,
+      options,
+    );
     return JSON.stringify(
       {
         format: "crewstead-recovery-backup",
-        version: 1,
-        root: record.root,
-        recovery: record.recovery,
+        version: 2,
+        root: copy.root,
+        recovery: copy.recovery,
         pinnedRoot: record.pinnedRoot,
         createdAt: new Date().toISOString(),
       },
       null,
       2,
     );
+  }
+
+  /** A recovery key people can write down: 25 characters, no look-alikes. */
+  static newRecoveryKey(random: (length: number) => Uint8Array): string {
+    const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    const bytes = random(25);
+    let key = "";
+    for (const byte of bytes) key += alphabet[byte % alphabet.length];
+    return key.replace(/(.{5})(?=.)/g, "$1-");
   }
 
   static encode(bytes: Uint8Array): string {

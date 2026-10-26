@@ -131,3 +131,57 @@ describe("remembering the unlock in one tab", () => {
     expect(newVault().restoreFromTab(record)).toBe(false);
   });
 });
+
+describe("one password for the person", () => {
+  it("rewraps a record from its own passphrase to a random one and the keys survive", async () => {
+    const vault = newVault();
+    const { record, device, root } = makeRecord(
+      vault,
+      "old passphrase here",
+      true,
+    );
+    const moved = vault.rewrap(
+      record,
+      "old passphrase here",
+      "new random wrapper",
+      OPTIONS,
+    );
+    const reader = newVault();
+    await reader.unlock(moved, "new random wrapper");
+    expect(reader.deviceKeys().signSecretKey).toEqual(device.signSecretKey);
+    expect(reader.rootSecretKey()).toEqual(root.signSecretKey);
+    // The old passphrase no longer opens it.
+    await expect(
+      newVault().unlock(moved, "old passphrase here"),
+    ).rejects.toThrow();
+  });
+
+  it("writes a backup that only its recovery key opens, never the browser's own wrapper", async () => {
+    const vault = newVault();
+    const base = makeRecord(vault, "browser wrapper", true);
+    const record = { ...base.record, autoPassphrase: "browser wrapper" };
+    const key = Vault.newRecoveryKey((length) => crypto.randomBytes(length));
+    const file = JSON.parse(vault.exportBackup(record, key, OPTIONS)) as {
+      root: { wrapped: Parameters<Vault["unwrapSecret"]>[1] };
+    };
+    expect(vault.unwrapSecret(key, file.root.wrapped)).toEqual(
+      base.root.signSecretKey,
+    );
+    expect(() =>
+      vault.unwrapSecret("browser wrapper", file.root.wrapped),
+    ).toThrow();
+  });
+
+  it("refuses to back up a browser that still has a passphrase of its own", () => {
+    const vault = newVault();
+    const { record } = makeRecord(vault, "a passphrase", true);
+    expect(() => vault.exportBackup(record, "KEY", OPTIONS)).toThrow();
+  });
+
+  it("makes recovery keys people can write down, different every time", () => {
+    const one = Vault.newRecoveryKey((length) => crypto.randomBytes(length));
+    const two = Vault.newRecoveryKey((length) => crypto.randomBytes(length));
+    expect(one).toMatch(/^([A-HJKMNP-Z2-9]{5}-){4}[A-HJKMNP-Z2-9]{5}$/);
+    expect(one).not.toEqual(two);
+  });
+});

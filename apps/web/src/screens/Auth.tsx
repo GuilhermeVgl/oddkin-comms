@@ -796,12 +796,8 @@ export function DeviceGate({
 }) {
   const e2ee = useE2EE();
   const [passphrase, setPassphrase] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [fingerprint, setFingerprint] = useState("");
-  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const mismatch = passphrase !== confirm || passphrase.length < MIN_PASSWORD;
 
   async function run(action: () => Promise<unknown>, failure: string) {
     setBusy(true);
@@ -809,7 +805,6 @@ export function DeviceGate({
     try {
       await action();
       setPassphrase("");
-      setConfirm("");
     } catch {
       setError(failure);
       blip("err");
@@ -821,40 +816,19 @@ export function DeviceGate({
   const phase = e2ee.phase;
   const pending = phase === "pending_approval";
 
-  const passphraseFields = (withConfirm: boolean) => (
-    <>
-      <div className="field">
-        <label htmlFor="gp">Senha de proteção deste navegador</label>
-        <input
-          autoComplete={withConfirm ? "new-password" : "current-password"}
-          className="inp"
-          id="gp"
-          minLength={MIN_PASSWORD}
-          onChange={(event) => setPassphrase(event.target.value)}
-          required
-          type="password"
-          value={passphrase}
-        />
-        <span className="hint">
-          Ela abre as chaves guardadas aqui e nunca sai deste navegador. Mínimo
-          de {MIN_PASSWORD} caracteres.
-        </span>
-      </div>
-      {withConfirm ? (
-        <div className="field">
-          <label htmlFor="gc">Repita a senha</label>
-          <input
-            autoComplete="new-password"
-            className="inp"
-            id="gc"
-            onChange={(event) => setConfirm(event.target.value)}
-            required
-            type="password"
-            value={confirm}
-          />
-        </div>
-      ) : null}
-    </>
+  const passphraseFields = () => (
+    <div className="field">
+      <label htmlFor="gp">Senha antiga deste navegador</label>
+      <input
+        autoComplete="current-password"
+        className="inp"
+        id="gp"
+        onChange={(event) => setPassphrase(event.target.value)}
+        required
+        type="password"
+        value={passphrase}
+      />
+    </div>
   );
 
   const skip = (label: string) => (
@@ -895,33 +869,32 @@ export function DeviceGate({
               onSubmit={(event) => {
                 event.preventDefault();
                 void run(
-                  () => e2ee.setupOrganization(passphrase),
-                  e2ee.setupInterrupted
-                    ? "Não foi possível concluir. Use a mesma senha da tentativa anterior."
-                    : "Não foi possível ativar. Tente de novo; o que já foi feito é aproveitado.",
+                  () => e2ee.setupOrganization(),
+                  "Não foi possível ativar. Tente de novo; o que já foi feito é aproveitado.",
                 );
               }}
             >
               <div>
                 <h1>Ative a criptografia</h1>
                 <p className="muted" style={{ marginTop: 8 }}>
-                  Será criada a chave de confiança da organização e a identidade
-                  de recuperação, protegidas pela senha abaixo. Guarde a senha e
-                  o arquivo de backup fora deste servidor: sem eles o histórico
-                  não pode ser recuperado.
+                  As chaves da equipe são criadas e guardadas neste navegador.
+                  Você continua usando só a senha da sua conta: não há outra
+                  senha para lembrar.
                 </p>
               </div>
-              {e2ee.setupInterrupted ? (
-                <Banner kind="warn">
-                  Uma ativação anterior ficou pela metade. Digite{" "}
-                  <b>a mesma senha</b> para concluí-la: as chaves já criadas são
-                  reaproveitadas.
+              <Banner>
+                Depois de ativar, gere em Configurações o{" "}
+                <b>backup de recuperação</b> e guarde a chave dele fora deste
+                computador: é o que salva o histórico se este navegador for
+                perdido.
+              </Banner>
+              {error === "" ? null : (
+                <Banner kind="err" role="alert">
+                  {error}
                 </Banner>
-              ) : null}
-              {passphraseFields(true)}
+              )}
               <button
                 className={`btn primary lg${busy ? " loading" : ""}`}
-                disabled={mismatch}
                 type="submit"
               >
                 Ativar criptografia
@@ -936,45 +909,36 @@ export function DeviceGate({
               onSubmit={(event) => {
                 event.preventDefault();
                 void run(
-                  () => e2ee.setupDevice(passphrase, fingerprint),
-                  "A impressão digital não confere com a do servidor ou o registro falhou.",
+                  () => e2ee.setupDevice(),
+                  "Não foi possível registrar este navegador agora.",
                 );
               }}
             >
               <div>
-                <h1>Registrar este navegador</h1>
+                <h1>Pedir acesso ao histórico</h1>
                 <p className="muted" style={{ marginTop: 8 }}>
-                  Você entrou na conta, mas este navegador ainda não pode
-                  descriptografar o conteúdo. Confira a impressão digital da
-                  organização com a administração, por outro canal, e digite-a
-                  para confirmar.
+                  Você entrou na conta, mas este navegador ainda não pode ler o
+                  conteúdo cifrado. Peça o acesso: a administração aprova e o
+                  histórico aparece aqui, sem senha extra.
                 </p>
               </div>
               <FingerprintCard
-                hint="Se a sequência for diferente da que a administração mostra, pare aqui."
+                hint="A chave da organização que este navegador vai reconhecer. A administração pode confirmar que é a mesma."
                 label="Impressão digital da organização"
                 value={e2ee.rootFingerprint ?? ""}
               />
-              <div className="field">
-                <label htmlFor="gf">Digite a impressão digital</label>
-                <input
-                  autoComplete="off"
-                  className="inp mono"
-                  id="gf"
-                  onChange={(event) => setFingerprint(event.target.value)}
-                  required
-                  value={fingerprint}
-                />
-              </div>
-              {passphraseFields(true)}
+              {error === "" ? null : (
+                <Banner kind="err" role="alert">
+                  {error}
+                </Banner>
+              )}
               <button
                 className={`btn primary lg${busy ? " loading" : ""}`}
-                disabled={mismatch}
                 type="submit"
               >
-                Registrar este navegador
+                Pedir acesso
               </button>
-              {skip("Continuar sem liberar")}
+              {skip("Continuar sem o histórico")}
             </form>
           ) : null}
 
@@ -1007,7 +971,7 @@ export function DeviceGate({
               onSubmit={(event) => {
                 event.preventDefault();
                 void run(async () => {
-                  if (!(await e2ee.unlock(passphrase, remember)))
+                  if (!(await e2ee.unlock(passphrase)))
                     throw new Error("wrong");
                   toast("Dispositivo liberado. Bem-vindo de volta.", {
                     mascot: "tela",
@@ -1018,22 +982,14 @@ export function DeviceGate({
               }}
             >
               <div>
-                <h1>Desbloqueie este navegador</h1>
+                <h1>Uma última vez</h1>
                 <p className="muted" style={{ marginTop: 8 }}>
-                  As chaves ficam guardadas aqui, protegidas pela senha deste
-                  navegador. Digite-a para ler e escrever conteúdo cifrado.
+                  Este navegador foi configurado com uma senha própria. Digite-a
+                  agora e ela deixa de existir: daqui em diante basta a senha da
+                  sua conta.
                 </p>
               </div>
-              {passphraseFields(false)}
-              <label className="row gap8 xs">
-                <input
-                  checked={remember}
-                  onChange={(event) => setRemember(event.target.checked)}
-                  type="checkbox"
-                />
-                Manter desbloqueado nesta aba (recarregar não pede a senha de
-                novo; fechar a aba ou sair apaga)
-              </label>
+              {passphraseFields()}
               {error === "" ? null : (
                 <Banner kind="err" role="alert">
                   {error}

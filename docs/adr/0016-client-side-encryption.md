@@ -47,3 +47,14 @@ Quem convida escolhe, na hora do convite, entre **incluir** o histórico cifrado
 - **Padrão (`ask`).** Contas existentes e administradores seguem como antes.
 
 Limites assumidos: (1) o segredo passa pelo servidor que monta o e-mail e pelo provedor de e-mail, então quem o interceptar **antes de o convite ser usado** pode registrar um dispositivo aprovável. É a mesma janela do token do convite, e por isso o segredo só vale com o convite aberto e uma única aprovação. (2) A liberação depende de o navegador de quem convidou estar aberto e desbloqueado. (3) A senha aleatória guardada ao lado protege contra uma olhada casual no armazenamento, não contra quem lê o armazenamento deste navegador; quem quiser uma senha de verdade pode registrar o navegador de novo pelo fluxo manual.
+
+## Uma senha só (atualização)
+
+A pessoa usa **apenas a senha da conta**. As chaves do navegador não têm mais uma senha própria: ficam guardadas aqui, envolvidas por um valor aleatório que mora ao lado delas (`autoPassphrase`), como os apps de mensagens que guardam a chave no próprio aparelho (o WhatsApp não pede senha; o Rocket.Chat pede uma "senha E2E" separada e é isso que se quer evitar).
+
+- **Administração:** "Ativar criptografia" é um botão só. A chave da organização e a identidade de recuperação nascem no navegador. O que protege contra a perda do navegador é o **backup de recuperação**: um arquivo cifrado por uma chave de 25 caracteres mostrada **uma vez**, que a pessoa guarda fora do computador. Essa chave não é guardada em lugar nenhum.
+- **Demais pessoas:** o convite com histórico já deixa tudo pronto; sem ele, "Pedir acesso" registra o navegador e a administração aprova. Não se digita senha nem impressão digital: o navegador fixa a chave da organização que viu pela primeira vez (e a mostra em Configurações para conferência). Isso troca a conferência manual por confiança no primeiro uso, e um servidor que servisse outra raiz **na primeira vez** enganaria aquele navegador.
+- **Navegadores antigos** (com senha própria) pedem a senha **uma última vez**: ao acertar, tudo é reembrulhado sob o valor aleatório e a senha deixa de existir.
+- **Um navegador por pessoa, por enquanto.** Outro dispositivo da mesma conta continua dependendo de aprovação (manual) e a sincronização entre dispositivos fica para depois. Perder o navegador sem backup significa pedir a restauração pela identidade de recuperação.
+
+O que protege as chaves em repouso é a mesma coisa que protege o navegador: quem lê o armazenamento deste navegador lê as chaves. Isso é o mesmo modelo das chaves de aparelho de um app de mensagens, sem a camada extra de uma senha.
