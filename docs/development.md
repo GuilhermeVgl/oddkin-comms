@@ -1,0 +1,48 @@
+# Desenvolvimento
+
+Detalhes de implementação e instruções para rodar o Crewstead localmente.
+
+## 🛠️ Stack
+
+| Camada         | Tecnologias                          |
+| -------------- | ------------------------------------ |
+| Backend        | Go · PostgreSQL · pgx/sqlc · River   |
+| Frontend       | React · TypeScript · Vite · Tailwind |
+| Comunicação    | WebSocket · LiveKit/WebRTC           |
+| Infraestrutura | Docker Compose · Cloudflare R2       |
+
+## 🔐 Privacidade por projeto
+
+A arquitetura prevê criptografia ponta a ponta para conteúdo de trabalho, arquivos e chamadas. O administrador autorizado poderá recuperar o histórico; metadados necessários ao funcionamento continuarão visíveis ao servidor. Os detalhes e limites estão na [spec](../SPEC.md#10-criptografia-e-recuperação-administrativa).
+
+## 🚧 Estado do projeto
+
+O produto inclui projetos, membros, externos, quadro de trabalho, épicos, atividades, subtarefas, comentários, sprints, canais, DMs, notificações, anexos de até 500 MB e chamadas para até cinco pessoas. O Compose da raiz inicia API (que também roda as migrations e os jobs), banco, armazenamento local, LiveKit e interface web. Conteúdo de trabalho, DMs, nomes de projetos, canais, sprints e arquivos usa envelopes E2EE no navegador; a mídia das chamadas também usa E2EE via LiveKit. Além disso: registro de cada chamada na conversa, toque de ligação com Atender e Recusar, compartilhamento de tela inteira com ou sem som sem sair da sala ([ADR 0020](./adr/0020-call-record-and-ringing.md)), placar pessoal com sequência de dias, conquistas, agradecimentos e modo foco, sem ranking entre pessoas ([ADR 0021](./adr/0021-personal-scoreboard.md)), fotos de perfil (enquadradas com zoom e giro no navegador, pequenas, visíveis para quem divide um projeto), regra de convites por projeto e papéis de gestor, gestão de colunas do quadro, remoção de membros com rotação de chaves, seguir atividades, redefinição de senha por link de uso único, cota de armazenamento visível ao administrador, canais criáveis, ordenáveis e arquiváveis, arquivamento de projeto, lista e encerramento de sessões, desativação de contas, retenção de dados, backup cifrado e a interface completa do [protótipo aprovado](../DESIGN.md) (personagens Capuz e Tela, sons opcionais, paleta Ctrl/Cmd K). O corpo dos anexos também é cifrado no navegador, em registros de 256 KiB com uma chave por arquivo e um domínio de chave próprio para quem pode baixar arquivos ([ADR 0019](./adr/0019-encrypted-file-bodies.md)); anexos anteriores continuam legíveis, sem essa cifra. O envio e o download de 500 MB com memória medida ainda não foram exercitados.
+
+Para contribuir com a implementação, consulte a [especificação](../SPEC.md) e as [regras de desenvolvimento](../CLAUDE.md).
+
+## Rodar localmente com Docker
+
+Com Docker Engine e Compose ativos, na raiz do repositório:
+
+```sh
+make start
+```
+
+Abra `http://127.0.0.1:3000` e entre pela interface. O mesmo endereço encaminha `/api/*` à API; `curl -i http://127.0.0.1:3000/api/v1/health/ready` deve responder `204`. No primeiro início, `make start` pede o e-mail e a senha do administrador no terminal (sem exibir a senha) e grava as credenciais em `.env` com permissão `0600`. O bootstrap é atômico e não altera uma instalação Crewstead já criada. Após entrar, o administrador escolhe o nome da equipe, pode enviar um logo PNG/JPEG/WebP de até 1 MB e decide se Capuz e Tela aparecem. Depois é possível alterar essas opções em **Configurações → Equipe**. `CREWSTEAD_APP_NAME` define o nome do produto (padrão: Crewstead); nome, logo e preferência da equipe ficam no banco. Em uma imagem web estática, informe o nome no build com `--build-arg VITE_APP_NAME="..."`. `make setup` configura sem iniciar containers. `docker compose up -d` diretamente requer credenciais já configuradas; não há senha de administrador padrão.
+
+**Instalações anteriores à troca de nome exigem migração manual.** O projeto Compose, as credenciais locais, cookies, armazenamento do navegador e rótulos criptográficos mudaram. Os volumes antigos não são removidos por esta alteração, mas não são montados automaticamente pela nova configuração. Um dump antigo e os objetos do bucket não bastam para abrir conteúdo cifrado: ele precisa ser decifrado com as chaves da versão anterior e recifrado no novo formato antes de ser importado. Faça backup e planeje essa migração antes de iniciar esta versão sobre dados existentes.
+
+O serviço `web` roda pelo Vite em modo de desenvolvimento. Arquivos de `apps/web`, `packages` e `assets` ficam montados no container; alterações em React e CSS aparecem por hot reload sem rebuild. O primeiro início instala as dependências no volume `web_node_modules`; os próximos reutilizam esse volume.
+
+O Compose tem só cinco serviços: `postgres`, `api` (migra o banco, cria o administrador na própria migração e roda os jobs), `livekit`, `storage` (MinIO, que simula o bucket R2 de arquivos; console em `http://127.0.0.1:9001`) e `web`. Não há containers de migrate, bootstrap, worker, Redis nem simulador de e-mail: edite o `.env` criado por `make start` para colocar suas chaves da Resend (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`) e uma `INVITATION_DELIVERY_KEY`. Sem as chaves, convites e redefinições de senha ficam na fila e saem quando forem configuradas. Para usar um bucket R2 real, defina as variáveis `R2_*` no `.env` (veja o arquivo). `docker compose down` para os serviços e mantém os dados; `docker compose down --volumes` também apaga banco e arquivos locais. A configuração usa credenciais sintéticas de desenvolvimento e expõe as portas apenas no loopback: não é uma implantação pública. Para outras portas, defina `CREWSTEAD_WEB_BIND`, `CREWSTEAD_STORAGE_PORT` e `CREWSTEAD_PUBLIC_URL` de forma coerente. A imagem do MinIO vem da Chainguard (`cgr.dev/chainguard/minio`), porque o projeto parou de publicar a sua.
+
+Para verificar mensagens de commits novos, use `make commit-check COMMIT_BASE=<base> COMMIT_HEAD=<head>`. Para validar uma mensagem preparada para squash, use `make commit-check COMMIT_MSG_FILE=<caminho>`. Os testes desse gate rodam com `make test-commitcheck`. O hook local pode ser instalado com `./scripts/install-hooks.sh`; o instalador preserva uma configuração `core.hooksPath` já existente.
+
+Instale as versões fixadas de Go e Node/pnpm e as versões mínimas de Docker Engine e Compose indicadas no repositório. Rode `corepack pnpm install --frozen-lockfile` e `corepack pnpm exec playwright install chromium firefox`. `make doctor` verifica ferramentas e portas de teste; `make gate` executa as verificações da fundação. Os testes com PostgreSQL e containers requerem o daemon Docker. `make generate` atualiza OpenAPI Go/TS e sqlc; `make check-generated` compara os resultados sem alterar o checkout.
+
+Para executar a API manualmente, configure `DATABASE_URL` para um PostgreSQL próprio de desenvolvimento, e rode `go run ./cmd/api`: ela aplica as migrations ao iniciar (`AUTO_MIGRATE=false` desliga; `go run ./cmd/migrate` faz o mesmo à mão) e, nessa mesma etapa de migração, cria o administrador se `CREWSTEAD_ADMIN_EMAIL` e `CREWSTEAD_ADMIN_PASSWORD` estiverem definidos (só em instalação vazia). `HTTP_ADDR` é opcional e usa `:8080` por padrão. `GET /api/v1/health/live` responde 204 com o processo ativo; `GET /api/v1/health/ready` responde 204 quando o banco está acessível ou 503 caso contrário. O frontend pode ser aberto com `corepack pnpm --filter @crewstead/web dev`; o proxy de desenvolvimento encaminha `/api` para a API local.
+
+Em uma implantação real, os jobs de e-mail da API exigem `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_PUBLIC_URL` e uma `INVITATION_DELIVERY_KEY` aleatória de 32 bytes. O remetente deve pertencer a um domínio verificado na Resend. Para verificar as credenciais separadamente, execute `go run ./cmd/email-smoke -to destinatario@exemplo.com`; o comando informa o ID aceito pelo provedor, mas não comprova entrega na caixa postal. Não use credenciais reais nos testes automatizados.
+
+Backup, retenção e observabilidade estão no [guia de operação](./operations.md). As decisões e limites deste incremento estão em [ADR 0001](./adr/0001-api-foundation.md), [ADR 0002](./adr/0002-bootstrap-tooling.md), [ADR 0003](./adr/0003-invitation-tokens.md), [ADR 0004](./adr/0004-organization-invitations.md), [ADR 0005](./adr/0005-resend-transactional-email.md), [ADR 0006](./adr/0006-password-hashing.md), [ADR 0007](./adr/0007-account-session-schema.md), [ADR 0008](./adr/0008-session-secrets.md), [ADR 0009](./adr/0009-http-sessions.md), [ADR 0010](./adr/0010-initial-administrator.md), [ADR 0011](./adr/0011-invitation-delivery.md), [ADR 0012](./adr/0012-work-and-chat-v1.md), [ADR 0013](./adr/0013-attachments-multipart.md) [ADR 0014](./adr/0014-calls-livekit.md), [ADR 0015](./adr/0015-e2ee-key-directory.md), [ADR 0016](./adr/0016-client-side-encryption.md) e [ADR 0017](./adr/0017-dm-names-and-recovery.md) e [ADR 0018](./adr/0018-lean-architecture.md).
