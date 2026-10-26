@@ -946,3 +946,112 @@ export async function getStorageUsage(client: Client): Promise<StorageUsage> {
   const { data, response } = await client.GET("/api/v1/storage/usage");
   return ensure("getStorageUsage", response, data, 200);
 }
+
+export async function createChannel(
+  client: Client,
+  token: string,
+  projectId: string,
+  body: Schemas["CreateChannelRequest"],
+): Promise<Conversation> {
+  const { data, response } = await client.POST(
+    "/api/v1/projects/{projectId}/conversations",
+    { params: { path: { projectId } }, body, headers: csrf(token) },
+  );
+  return ensure("createChannel", response, data, 201);
+}
+
+export async function reorderChannels(
+  client: Client,
+  token: string,
+  projectId: string,
+  ids: string[],
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/conversations/order",
+    { params: { path: { projectId } }, body: { ids }, headers: csrf(token) },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "reorderChannels");
+}
+
+export async function setChannelArchived(
+  client: Client,
+  token: string,
+  conversationId: string,
+  archived: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/conversations/{conversationId}/archive",
+    {
+      params: { path: { conversationId } },
+      body: { archived },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setChannelArchived");
+}
+
+export async function setProjectArchived(
+  client: Client,
+  token: string,
+  projectId: string,
+  archived: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/projects/{projectId}/archive",
+    {
+      params: { path: { projectId } },
+      body: { archived },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setProjectArchived");
+}
+
+export type AuthSession = Schemas["AuthSession"];
+export type OrganizationPerson = Schemas["OrganizationPerson"];
+
+export async function listSessions(client: Client): Promise<AuthSession[]> {
+  const { data, response } = await client.GET("/api/v1/sessions");
+  return ensure("listSessions", response, data, 200);
+}
+
+export async function revokeSession(
+  client: Client,
+  token: string,
+  sessionId: string,
+): Promise<void> {
+  const { response } = await client.DELETE("/api/v1/sessions/{sessionId}", {
+    params: { path: { sessionId } },
+    headers: csrf(token),
+  });
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "revokeSession");
+}
+
+export async function listOrganizationPeople(
+  client: Client,
+): Promise<OrganizationPerson[]> {
+  const { data, response } = await client.GET("/api/v1/organization/people");
+  return ensure("listOrganizationPeople", response, data, 200);
+}
+
+export async function setPersonActive(
+  client: Client,
+  token: string,
+  accountId: string,
+  active: boolean,
+): Promise<void> {
+  const { response } = await client.PUT(
+    "/api/v1/organization/people/{accountId}/active",
+    {
+      params: { path: { accountId } },
+      body: { active },
+      headers: csrf(token),
+    },
+  );
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "setPersonActive");
+}

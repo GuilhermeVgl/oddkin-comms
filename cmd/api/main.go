@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/calls"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/migration"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -72,7 +72,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 	handler, err := httpapi.NewAppHandlerWithConfig(pool, httpapi.AppConfig{
-		InvitationDeliveryKey: deliveryKey, ObjectStore: store, StorageQuotaBytes: quota, LiveKit: livekit,
+		AccessLog: logger, InvitationDeliveryKey: deliveryKey, ObjectStore: store, StorageQuotaBytes: quota, LiveKit: livekit,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize API authentication: %w", err)

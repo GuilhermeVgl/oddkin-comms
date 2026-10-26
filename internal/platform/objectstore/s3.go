@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -125,6 +126,21 @@ func (s *s3Store) Size(ctx context.Context, key string) (int64, error) {
 		return 0, fmt.Errorf("head object: %w", mapError(err))
 	}
 	return aws.ToInt64(out.ContentLength), nil
+}
+
+func (s *s3Store) ReadRange(ctx context.Context, key string, offset, length int64) ([]byte, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &s.bucket, Key: &key, Range: aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get object range: %w", mapError(err))
+	}
+	defer func() { _ = out.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(out.Body, length))
+	if err != nil {
+		return nil, fmt.Errorf("read object range: %w", err)
+	}
+	return data, nil
 }
 
 func (s *s3Store) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {

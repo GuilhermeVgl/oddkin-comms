@@ -15,7 +15,7 @@ import {
   type PendingDevice,
   type RecoveryAuditEntry,
   type RecoveryGap,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import {
   createCrypto,
   createKeystore,
@@ -24,7 +24,7 @@ import {
   PassphraseError,
   toBase64Url,
   type Crypto,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import React, {
   createContext,
   useCallback,
@@ -131,7 +131,7 @@ async function createRuntime(): Promise<Runtime> {
 }
 
 function csrf(): string {
-  const token = readCookie(document.cookie, "oddkin_csrf");
+  const token = readCookie(document.cookie, "crewstead_csrf");
   if (token === null) throw new Error("missing csrf cookie");
   return token;
 }

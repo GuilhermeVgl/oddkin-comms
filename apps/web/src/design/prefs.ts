@@ -10,7 +10,7 @@ export type Prefs = {
   sound: boolean;
 };
 
-const KEY = "oddkin.prefs.v1";
+const KEY = "crewstead.prefs.v1";
 const defaults: Prefs = { theme: "papel", motion: true, sound: false };
 
 function read(): Prefs {

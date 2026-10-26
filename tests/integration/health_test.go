@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

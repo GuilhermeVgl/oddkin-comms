@@ -9,10 +9,10 @@ import (
 	"slices"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/keys"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/keys"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -50,8 +50,11 @@ func toDevice(row sqlc.Device) gen.Device {
 
 // readPermission is the permission that makes someone a reader of a domain.
 func readPermission(kind string) string {
-	if kind == "chat" {
+	switch kind {
+	case "chat":
 		return work.ChatRead
+	case "files":
+		return work.FilesDownload
 	}
 	return work.WorkRead
 }
@@ -171,7 +174,7 @@ func announceDomain(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain)
 		members []pgtype.UUID
 		err     error
 	)
-	if domain.Kind == "work" || domain.Kind == "chat" {
+	if domain.Kind == "work" || domain.Kind == "chat" || domain.Kind == "files" {
 		members, err = projectRecipients(ctx, q, domain.ProjectID, "")
 	} else {
 		members, err = domainReaders(ctx, q, domain)

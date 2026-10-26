@@ -11,7 +11,7 @@ import {
   stopScreenShare,
   type Call,
   type CallTicket,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import {
   ExternalE2EEKeyProvider,
   Room,
@@ -35,7 +35,7 @@ import { useWorkspace } from "../workspace";
 type Client = ReturnType<typeof createApiClient>;
 
 function csrf(): string | null {
-  return readCookie(document.cookie, "oddkin_csrf");
+  return readCookie(document.cookie, "crewstead_csrf");
 }
 
 const CONFLICT_MESSAGE: Record<string, string> = {

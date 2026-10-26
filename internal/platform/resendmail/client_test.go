@@ -32,7 +32,7 @@ func TestSendPostsTransactionalEmailToResend(t *testing.T) {
 			t.Error("decode Resend request:", err)
 		}
 		if body.From != "notices@example.test" || len(body.To) != 1 || body.To[0] != "person@example.test" ||
-			body.Subject != "Convite ODDKIN" || body.Text != "Aceite seu convite." {
+			body.Subject != "Convite Crewstead" || body.Text != "Aceite seu convite." {
 			t.Errorf("unexpected email payload: %+v", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -45,7 +45,7 @@ func TestSendPostsTransactionalEmailToResend(t *testing.T) {
 	}
 	client.endpoint = server.URL + "/emails"
 	id, err := client.Send(context.Background(), Message{
-		To: "person@example.test", Subject: "Convite ODDKIN", Text: "Aceite seu convite.",
+		To: "person@example.test", Subject: "Convite Crewstead", Text: "Aceite seu convite.",
 		IdempotencyKey: "invitation/00000000-0000-4000-8000-000000000001",
 	})
 	if err != nil || id != "49a3999c-0ce1-4ea6-ab68-afcd6dc2e794" {
@@ -73,7 +73,7 @@ func TestSendRejectsInvalidDataBeforeNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.endpoint = "http://127.0.0.1:1/emails"
-	valid := Message{To: "person@example.test", Subject: "Convite ODDKIN", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1"}
+	valid := Message{To: "person@example.test", Subject: "Convite Crewstead", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1"}
 	for _, change := range []func(*Message){
 		func(m *Message) { m.To = "Other <other@example.test>" },
 		func(m *Message) { m.Subject = "Hello\r\nBcc: other@example.test" },
@@ -112,7 +112,7 @@ func TestSendClassifiesProviderFailuresWithoutLeakingBodies(t *testing.T) {
 			}
 			client.endpoint = server.URL + "/emails"
 			_, err = client.Send(context.Background(), Message{
-				To: "person@example.test", Subject: "Convite ODDKIN", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
+				To: "person@example.test", Subject: "Convite Crewstead", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
 			})
 			if err == nil || strings.Contains(err.Error(), "synthetic_test_key") || strings.Contains(err.Error(), "person@example.test") {
 				t.Fatalf("unsafe error: %v", err)
@@ -149,7 +149,7 @@ func TestSendHandlesIdempotencyConflictAndAmbiguousDelivery(t *testing.T) {
 			}
 			client.endpoint = server.URL + "/emails"
 			_, err = client.Send(context.Background(), Message{
-				To: "person@example.test", Subject: "Convite ODDKIN", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
+				To: "person@example.test", Subject: "Convite Crewstead", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
 			})
 			var sendErr *SendError
 			if !errors.As(err, &sendErr) || sendErr.Retryable != test.retryable {
@@ -168,7 +168,7 @@ func TestSendRespectsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = client.Send(ctx, Message{
-		To: "person@example.test", Subject: "Convite ODDKIN", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
+		To: "person@example.test", Subject: "Convite Crewstead", Text: "Aceite seu convite.", IdempotencyKey: "invitation/1",
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled request should not proceed: %v", err)

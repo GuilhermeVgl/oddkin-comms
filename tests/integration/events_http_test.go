@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -141,10 +141,10 @@ func TestEventsNotificationsAndReadCursors(t *testing.T) {
 		_ = resp.Body.Close()
 		c := &workClient{t: t, handler: handler}
 		for _, cookie := range resp.Cookies() {
-			if cookie.Name == "oddkin_session" {
+			if cookie.Name == "crewstead_session" {
 				c.session = cookie
 			}
-			if cookie.Name == "oddkin_csrf" {
+			if cookie.Name == "crewstead_csrf" {
 				c.csrf = cookie
 			}
 		}

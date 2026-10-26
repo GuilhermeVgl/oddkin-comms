@@ -1,4 +1,4 @@
-import type { Notification } from "@oddkin/api-client";
+import type { Notification } from "@crewstead/api-client";
 import { Icon, type IconName } from "../design/icons";
 import { Menu } from "../design/Menu";
 import { rel } from "../design/format";

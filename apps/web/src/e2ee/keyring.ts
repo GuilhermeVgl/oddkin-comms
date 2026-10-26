@@ -5,7 +5,7 @@ import {
   toBase64Url,
   type Crypto,
   type DirectoryRecord,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import {
   createKeyDomain,
   getDeviceRecord,
@@ -23,11 +23,11 @@ import {
   type EnvelopeInput,
   type KeyDomain,
   type RecoveryGap,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import type { Vault } from "./vault";
 
 type Client = ReturnType<typeof createApiClient>;
-export type DomainKind = "work" | "chat" | "dm" | "sprint";
+export type DomainKind = "work" | "chat" | "dm" | "sprint" | "files";
 
 /** A device the server listed whose certificate chain does not reach the pinned root. */
 export class UntrustedDeviceError extends Error {

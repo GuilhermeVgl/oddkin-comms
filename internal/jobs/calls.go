@@ -3,7 +3,7 @@ package jobs
 import (
 	"context"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/calls"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 )

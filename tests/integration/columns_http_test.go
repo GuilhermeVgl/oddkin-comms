@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -72,8 +72,8 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 	}
 	login := func(email string) *workClient {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct column password"}`))
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		req.Header.Set("Content-Type", "application/json")
 		result := httptest.NewRecorder()
 		handler.ServeHTTP(result, req)
@@ -83,9 +83,9 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		client := &workClient{t: t, handler: handler}
 		for _, cookie := range result.Result().Cookies() {
 			switch cookie.Name {
-			case "oddkin_session":
+			case "crewstead_session":
 				client.session = cookie
-			case "oddkin_csrf":
+			case "crewstead_csrf":
 				client.csrf = cookie
 			}
 		}
@@ -239,6 +239,50 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		t.Fatalf("order: %v", got)
 	}
 
+	// Channels: managers create, order and archive; archived channels are read-only.
+	type channel struct {
+		Id       string
+		Name     string
+		Archived *bool
+	}
+	if code := member.do(http.MethodPost, base+"/conversations", `{"name":"design"}`, nil); code != http.StatusForbidden {
+		t.Fatalf("channel as member: %d", code)
+	}
+	if code := admin.do(http.MethodPost, base+"/conversations", `{"name":"  "}`, nil); code != http.StatusBadRequest {
+		t.Fatalf("blank channel name: %d", code)
+	}
+	var design channel
+	if code := admin.do(http.MethodPost, base+"/conversations", `{"name":"design"}`, &design); code != http.StatusCreated || design.Name != "design" {
+		t.Fatalf("create channel: %d %+v", code, design)
+	}
+	var channels []channel
+	admin.do(http.MethodGet, base+"/conversations", "", &channels)
+	if len(channels) != 2 || channels[1].Id != design.Id {
+		t.Fatalf("new channels go last: %+v", channels)
+	}
+	if code := admin.do(http.MethodPut, base+"/conversations/order", fmt.Sprintf(`{"ids":[%q]}`, design.Id), nil); code != http.StatusBadRequest {
+		t.Fatalf("a partial order must be refused: %d", code)
+	}
+	if code := admin.do(http.MethodPut, base+"/conversations/order", fmt.Sprintf(`{"ids":[%q,%q]}`, design.Id, channels[0].Id), nil); code != http.StatusNoContent {
+		t.Fatalf("reorder: %d", code)
+	}
+	admin.do(http.MethodGet, base+"/conversations", "", &channels)
+	if channels[0].Id != design.Id {
+		t.Fatalf("order not applied: %+v", channels)
+	}
+	if code := member.do(http.MethodPut, "/api/v1/conversations/"+design.Id+"/archive", `{"archived":true}`, nil); code != http.StatusForbidden {
+		t.Fatalf("archive as member: %d", code)
+	}
+	if code := admin.do(http.MethodPut, "/api/v1/conversations/"+design.Id+"/archive", `{"archived":true}`, nil); code != http.StatusNoContent {
+		t.Fatalf("archive channel: %d", code)
+	}
+	if code := admin.do(http.MethodPost, "/api/v1/conversations/"+design.Id+"/messages", `{"body":"oi","clientMutationId":"00000000-0000-4000-8000-0000000000aa"}`, nil); code != http.StatusConflict {
+		t.Fatalf("an archived channel is read-only: %d", code)
+	}
+	if code := admin.do(http.MethodPut, "/api/v1/conversations/"+design.Id+"/archive", `{"archived":false}`, nil); code != http.StatusNoContent {
+		t.Fatalf("restore channel: %d", code)
+	}
+
 	// Managers choose the project colour; anyone else is refused and the format is checked.
 	if code := member.do(http.MethodPut, base+"/appearance", `{"color":"#112233"}`, nil); code != http.StatusForbidden {
 		t.Fatalf("colour as member: %d", code)
@@ -354,5 +398,39 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		if entry.Id == assigned.Id && entry.AssigneeId != nil {
 			t.Fatalf("assignment must be released: %v", *entry.AssigneeId)
 		}
+	}
+
+	// Archiving a project hides it from the default list, keeps it readable and blocks new work.
+	if code := external.do(http.MethodPut, base+"/archive", `{"archived":true}`, nil); code != http.StatusForbidden {
+		t.Fatalf("archive as external: %d", code)
+	}
+	if code := admin.do(http.MethodPut, base+"/archive", `{"archived":true}`, nil); code != http.StatusNoContent {
+		t.Fatalf("archive project: %d", code)
+	}
+	var listed []struct {
+		Id       string
+		Archived *bool
+	}
+	hasProject := func(path string) bool {
+		listed = nil
+		admin.do(http.MethodGet, path, "", &listed)
+		for _, entry := range listed {
+			if base == "/api/v1/projects/"+entry.Id {
+				return true
+			}
+		}
+		return false
+	}
+	if hasProject("/api/v1/projects") || !hasProject("/api/v1/projects?includeArchived=true") {
+		t.Fatal("archived projects appear only on request")
+	}
+	if code := admin.do(http.MethodGet, base, "", nil); code != http.StatusOK {
+		t.Fatalf("an archived project stays readable: %d", code)
+	}
+	if code := admin.do(http.MethodPost, base+"/work-items", `{"kind":"task","title":"Novo"}`, nil); code != http.StatusConflict {
+		t.Fatalf("an archived project takes no new work: %d", code)
+	}
+	if code := admin.do(http.MethodPut, base+"/archive", `{"archived":false}`, nil); code != http.StatusNoContent || !hasProject("/api/v1/projects") {
+		t.Fatalf("restore project: %d", code)
 	}
 }

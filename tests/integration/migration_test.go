@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/db/migrations"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration"
+	"github.com/GuilhermeVgl/crewstead-comms/db/migrations"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/migration"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -52,14 +52,14 @@ func TestMigrationUpgradesExistingOrganizationDatabase(t *testing.T) {
 		t.Fatal("configure admin test pool:", err)
 	}
 	defer adminPool.Close()
-	const databaseName = "oddkin_upgrade_test"
-	if _, err := adminPool.Exec(ctx, `CREATE DATABASE oddkin_upgrade_test`); err != nil {
+	const databaseName = "crewstead_upgrade_test"
+	if _, err := adminPool.Exec(ctx, `CREATE DATABASE crewstead_upgrade_test`); err != nil {
 		t.Fatal("create upgrade test database:", err)
 	}
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		if _, err := adminPool.Exec(cleanupCtx, `DROP DATABASE oddkin_upgrade_test WITH (FORCE)`); err != nil {
+		if _, err := adminPool.Exec(cleanupCtx, `DROP DATABASE crewstead_upgrade_test WITH (FORCE)`); err != nil {
 			t.Error("drop upgrade test database:", err)
 		}
 	}()

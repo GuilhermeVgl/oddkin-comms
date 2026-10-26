@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -174,9 +174,26 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if payload.Size > MaxFileBytes {
+	bodyEncrypted := payload.BodyEncrypted != nil && *payload.BodyEncrypted
+	if payload.Size > MaxFileBytes+maxFileOverhead || (!bodyEncrypted && payload.Size > MaxFileBytes) {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		return
+	}
+	if bodyEncrypted {
+		original, valid := plaintextSizeFor(payload.Size)
+		if !valid {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if original > MaxFileBytes {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			return
+		}
+		// The manifest is bound to the attachment id, so the client chooses it first.
+		if payload.SignerDeviceId == nil || payload.Id == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	encryptedName := payload.NameEnc != nil
 	if encryptedName == (payload.Name != nil) || (encryptedName && (payload.Id == nil || payload.SignerDeviceId == nil)) {
@@ -245,6 +262,24 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		failure.write(w)
 		return
 	}
+	var bodySigner pgtype.UUID
+	domain, found, err := bodyDomain(ctx, q, target)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if failure = bodyEncryptionFailure(domain, found, bodyEncrypted); failure == nil && bodyEncrypted {
+		bodySigner = pgUUID(uuidFrom(*payload.SignerDeviceId))
+		_, failure, err = prepareEncryptedWith(ctx, q, session.AccountID, domain, found, &bodySigner)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+	}
+	if failure != nil {
+		failure.write(w)
+		return
+	}
 	if err = q.LockOrganization(ctx, target.organizationID); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -277,6 +312,7 @@ func (h *healthHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 			return pgtype.UUID{}
 		}(),
 		ContentType: contentType, DeclaredSize: payload.Size, PartSize: uploadPartSize, PartCount: partCount,
+		BodyEncrypted: bodyEncrypted, BodySignerDeviceID: bodySigner,
 	})
 	if isUniqueViolation(err) {
 		// The partial unique index allows one active upload per person.
@@ -355,7 +391,13 @@ func toAttachment(row sqlc.Attachment, uploaderEmail string) gen.Attachment {
 	attachment := gen.Attachment{
 		Id: fromPG(row.ID), Name: row.Name, ContentType: row.ContentType, Size: row.StoredSize.Int64,
 		UploaderEmail: uploaderEmail, CreatedAt: row.CreatedAt.Time, Encrypted: row.Encrypted,
+		BodyEncrypted: &row.BodyEncrypted,
 	}
+	contentSize := row.StoredSize.Int64
+	if row.BodyEncrypted {
+		contentSize, _ = plaintextSizeFor(contentSize)
+	}
+	attachment.ContentSize = &contentSize
 	if row.Encrypted {
 		attachment.NameEnc = blob(row.NameEnc)
 		if row.ContentAuthorID.Valid {
@@ -420,15 +462,33 @@ func (h *healthHandler) CompleteUpload(w http.ResponseWriter, r *http.Request, u
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	// Plaintext v0: stored bytes equal the reservation. The E2EE format will
-	// replace this with the computed ciphertext bound.
-	if size != attachment.DeclaredSize {
-		_ = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "deleted"})
+	// Stored bytes equal the reservation: the file for a plaintext body, the
+	// computed ciphertext size for an encrypted one.
+	discard := func(state string, status int, failure *encFailure) {
+		_ = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: state})
 		if store.Delete(ctx, attachment.ObjectKey) == nil {
 			_ = q.MarkAttachmentObjectRemoved(ctx, attachment.ID)
 		}
-		w.WriteHeader(http.StatusBadRequest)
+		if failure != nil {
+			failure.write(w)
+			return
+		}
+		w.WriteHeader(status)
+	}
+	if size != attachment.DeclaredSize {
+		discard("deleted", http.StatusBadRequest, nil)
 		return
+	}
+	if attachment.BodyEncrypted {
+		failure, verifyErr := verifyStoredManifest(ctx, q, store, attachment)
+		if verifyErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if failure != nil {
+			discard("aborted", http.StatusBadRequest, failure)
+			return
+		}
 	}
 	changed, err := q.MarkAttachmentReady(ctx, sqlc.MarkAttachmentReadyParams{ID: attachment.ID, StoredSize: pgtype.Int8{Int64: size, Valid: true}})
 	if err != nil {
@@ -543,8 +603,7 @@ func (h *healthHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	attachment.State = "deleted"
-	h.releaseObject(ctx, q, attachment)
+	// The object stays 30 days (see ReleaseStorage) so a database restore still finds it.
 	w.WriteHeader(http.StatusNoContent)
 }
 

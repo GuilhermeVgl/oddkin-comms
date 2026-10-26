@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
 )
 
 func main() {
@@ -63,7 +63,7 @@ func sendDiagnostic(ctx context.Context, to string, sender emailSender) (string,
 	}
 	id, err := sender.Send(ctx, resendmail.Message{
 		To:             address,
-		Subject:        "ODDKIN: teste de e-mail",
+		Subject:        "Crewstead: teste de e-mail",
 		Text:           "Este e-mail confirma que a integracao com a Resend aceitou um envio de teste.",
 		IdempotencyKey: "email-smoke/" + hex.EncodeToString(random[:]),
 	})

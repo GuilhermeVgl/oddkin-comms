@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+  "/api/v1/organization/branding": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Team identity for signed-in members */
+    get: operations["getOrganizationBranding"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Configure the team identity (administrator) */
+    patch: operations["updateOrganizationBranding"];
+    trace?: never;
+  };
+  "/api/v1/organization/logo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Team logo for signed-in members */
+    get: operations["getOrganizationLogo"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/invitations": {
     parameters: {
       query?: never;
@@ -89,6 +124,78 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's active sessions */
+    get: operations["listSessions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/sessions/{sessionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** End one of the caller's sessions, current or not */
+    delete: operations["revokeSession"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/organization/people": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Everyone in the organization (administrators) */
+    get: operations["listOrganizationPeople"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/organization/people/{accountId}/active": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Deactivate or reactivate an account; deactivating ends every session (administrators) */
+    put: operations["setPersonActive"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/me": {
     parameters: {
       query?: never;
@@ -147,7 +254,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List projects the account belongs to */
+    /** List projects the account belongs to; archived ones only on request */
     get: operations["listProjects"];
     put?: never;
     /** Create a project with the default board (organization administrators) */
@@ -409,6 +516,64 @@ export interface paths {
     /** List the project channels */
     get: operations["listConversations"];
     put?: never;
+    /** Create a channel; the name is encrypted when the project is (project managers) */
+    post: operations["createChannel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/conversations/order": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Set the order of every channel of the project (project managers) */
+    put: operations["reorderChannels"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/conversations/{conversationId}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Archive or restore a channel; archived channels are read-only (project managers) */
+    put: operations["setChannelArchived"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Archive or restore a project (project managers) */
+    put: operations["setProjectArchived"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1225,7 +1390,7 @@ export interface paths {
     /** Key domains of a project */
     get: operations["listKeyDomains"];
     put?: never;
-    /** Create the work or chat key domain (it waits for its first generation) */
+    /** Create the work, chat or files key domain (it waits for its first generation) */
     post: operations["createKeyDomain"];
     delete?: never;
     options?: never;
@@ -1591,6 +1756,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    OrganizationBranding: {
+      /** @description Empty until initial team setup */
+      name: string;
+      hasLogo: boolean;
+      showDuo: boolean;
+    };
+    UpdateOrganizationBrandingRequest: {
+      name: string;
+      showDuo: boolean;
+      /** @description Optional base64 image */
+      logoBase64?: string;
+      /** @enum {string} */
+      logoMime?: "image/png" | "image/jpeg" | "image/webp";
+      removeLogo?: boolean;
+    };
     AcceptInvitationRequest: {
       token: string;
       /** Format: email */
@@ -1630,6 +1810,7 @@ export interface components {
       isAdmin: boolean;
     };
     Project: {
+      archived?: boolean;
       nameEnc?: components["schemas"]["EncryptedBlob"];
       descriptionEnc?: components["schemas"]["EncryptedBlob"];
       /** Format: uuid */
@@ -1715,6 +1896,45 @@ export interface components {
     };
     ProjectAppearanceRequest: {
       color: string;
+    };
+    /** @description Plain `name`, or an encrypted name with a client-chosen id */
+    CreateChannelRequest: {
+      name?: string;
+      /** Format: uuid */
+      id?: string;
+      nameEnc?: components["schemas"]["EncryptedBlob"];
+      /** Format: uuid */
+      signerDeviceId?: string;
+    };
+    ReorderRequest: {
+      ids: string[];
+    };
+    ArchiveRequest: {
+      archived: boolean;
+    };
+    AuthSession: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      lastSeenAt: string;
+      /** Format: date-time */
+      expiresAt: string;
+      current: boolean;
+    };
+    OrganizationPerson: {
+      /** Format: uuid */
+      id: string;
+      /** Format: email */
+      email: string;
+      active: boolean;
+      /** @enum {string} */
+      membershipKind: "internal" | "external";
+      isAdmin: boolean;
+    };
+    SetActiveRequest: {
+      active: boolean;
     };
     BoardColumn: {
       /** Format: uuid */
@@ -1858,6 +2078,7 @@ export interface components {
       contentRevision: number;
       /** Format: uuid */
       contentAuthorId?: string;
+      archived?: boolean;
       /** Format: uuid */
       id: string;
       name: string;
@@ -2064,6 +2285,8 @@ export interface components {
       /** Format: uuid */
       signerDeviceId?: string;
       contentType?: string;
+      /** @description The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required */
+      bodyEncrypted?: boolean;
       /** Format: int64 */
       size: number;
     };
@@ -2096,6 +2319,12 @@ export interface components {
       contentType: string;
       /** Format: int64 */
       size: number;
+      bodyEncrypted?: boolean;
+      /**
+       * Format: int64
+       * @description Size of the original file; equals size unless the body is encrypted
+       */
+      contentSize?: number;
       uploaderEmail: string;
       /** Format: date-time */
       createdAt: string;
@@ -2237,7 +2466,7 @@ export interface components {
     };
     CreateKeyDomainRequest: {
       /** @enum {string} */
-      kind: "work" | "chat";
+      kind: "work" | "chat" | "files";
     };
     KeyDomain: {
       /** Format: uuid */
@@ -2249,7 +2478,7 @@ export interface components {
       /** Format: uuid */
       conversationId?: string;
       /** @enum {string} */
-      kind: "work" | "chat" | "dm" | "sprint";
+      kind: "work" | "chat" | "files" | "dm" | "sprint";
       currentGeneration: number;
       /** @enum {string} */
       state: "ok" | "pending_keys" | "rotation_required";
@@ -2334,7 +2563,7 @@ export interface components {
       /** Format: uuid */
       domainId: string;
       /** @enum {string} */
-      kind: "work" | "chat" | "dm" | "sprint";
+      kind: "work" | "chat" | "files" | "dm" | "sprint";
       /** Format: uuid */
       projectId?: string;
       /** Format: uuid */
@@ -2372,6 +2601,114 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  getOrganizationBranding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Team identity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationBranding"];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateOrganizationBranding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrganizationBrandingRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated team identity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationBranding"];
+        };
+      };
+      /** @description Invalid name or image */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an administrator or invalid CSRF token */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getOrganizationLogo: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Image bytes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": string;
+          "image/jpeg": string;
+          "image/webp": string;
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No logo configured */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   createInvitation: {
     parameters: {
       query?: never;
@@ -2617,6 +2954,160 @@ export interface operations {
       };
     };
   };
+  listSessions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sessions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthSession"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revokeSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown session */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listOrganizationPeople: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description People */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationPerson"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrators only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setPersonActive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetActiveRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown person */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The last active administrator cannot be deactivated */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getCurrentAccount: {
     parameters: {
       query?: never;
@@ -2731,7 +3222,9 @@ export interface operations {
   };
   listProjects: {
     parameters: {
-      query?: never;
+      query?: {
+        includeArchived?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -3863,6 +4356,223 @@ export interface operations {
         content?: never;
       };
       /** @description Profile does not allow reading chat */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createChannel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateChannelRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Conversation"];
+        };
+      };
+      /** @description Invalid name */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Project is archived or the encryption state does not allow this write */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reorderChannels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReorderRequest"];
+      };
+    };
+    responses: {
+      /** @description Reordered */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The list must contain every channel exactly once */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Project is archived */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setChannelArchived: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        conversationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Project is archived */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setProjectArchived: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or role rejected */
       403: {
         headers: {
           [name: string]: unknown;

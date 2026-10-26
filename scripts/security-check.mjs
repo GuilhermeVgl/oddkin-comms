@@ -29,7 +29,7 @@ if (!secretsOnly) {
   });
 }
 
-const scanDir = mkdtempSync(path.join(os.tmpdir(), "oddkin-secret-scan-"));
+const scanDir = mkdtempSync(path.join(os.tmpdir(), "crewstead-secret-scan-"));
 try {
   const files = run("git", ["ls-files", "-co", "--exclude-standard", "-z"])
     .split("\0")

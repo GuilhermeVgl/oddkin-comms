@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-project="oddkin-e2e-$$"
+project="crewstead-e2e-$$"
 compose_file="infra/compose.test.yaml"
 
 cleanup() {
@@ -16,8 +16,8 @@ if [ -z "$database_port" ]; then
   echo "Could not determine test PostgreSQL port" >&2
   exit 1
 fi
-TEST_DATABASE_URL="postgres://oddkin_test:synthetic_test_password@127.0.0.1:$database_port/oddkin_test"
+TEST_DATABASE_URL="postgres://crewstead_test:synthetic_test_password@127.0.0.1:$database_port/crewstead_test"
 export TEST_DATABASE_URL
 # The API migrates and creates the administrator itself; the E2E suite starts it.
-export DATABASE_URL="$TEST_DATABASE_URL" ODDKIN_ADMIN_EMAIL="admin@example.test" ODDKIN_ADMIN_PASSWORD="synthetic-admin-password" ODDKIN_TIMEZONE="UTC"
+export DATABASE_URL="$TEST_DATABASE_URL" CREWSTEAD_ADMIN_EMAIL="admin@example.test" CREWSTEAD_ADMIN_PASSWORD="synthetic-admin-password" CREWSTEAD_TIMEZONE="UTC"
 corepack pnpm test:e2e

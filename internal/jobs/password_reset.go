@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,8 +62,8 @@ func (worker *passwordResetEmailWorker) Work(ctx context.Context, job *river.Job
 		return river.JobCancel(errors.New("invalid reset public URL"))
 	}
 	if _, err = worker.mailer.Send(ctx, resendmail.Message{
-		To: delivery.EmailNormalized, Subject: "Redefinir senha no ODDKIN",
-		Text: "Alguém pediu para redefinir a senha desta conta no ODDKIN.\n\nAbra este link para escolher uma nova senha:\n" + link +
+		To: delivery.EmailNormalized, Subject: "Redefinir senha no " + appDisplayName(),
+		Text: "Alguém pediu para redefinir a senha desta conta no " + appDisplayName() + ".\n\nAbra este link para escolher uma nova senha:\n" + link +
 			"\n\nO link vale por uma hora e funciona uma única vez. Se não foi você, ignore este e-mail." +
 			"\n\nRedefinir a senha não restaura o histórico cifrado: este dispositivo ainda precisa ser liberado depois.",
 		IdempotencyKey: "password-reset/" + job.Args.ResetID,

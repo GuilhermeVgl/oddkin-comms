@@ -1,4 +1,8 @@
-import type { BoardColumn, CurrentAccount, WorkItem } from "@oddkin/api-client";
+import type {
+  BoardColumn,
+  CurrentAccount,
+  WorkItem,
+} from "@crewstead/api-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { blip } from "../design/sound";
 import { daysTo, fmtD } from "../design/format";
@@ -809,8 +813,8 @@ export function Work({
   const filters = useMenu();
   useEffect(() => {
     const open = () => setNewProject(true);
-    window.addEventListener("oddkin:new-project", open);
-    return () => window.removeEventListener("oddkin:new-project", open);
+    window.addEventListener("crewstead:new-project", open);
+    return () => window.removeEventListener("crewstead:new-project", open);
   }, []);
   const [newProject, setNewProject] = useState(false);
 

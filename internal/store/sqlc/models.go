@@ -39,6 +39,9 @@ type Attachment struct {
 	NameEnc               []byte
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	ReleasedAt            pgtype.Timestamptz
+	BodyEncrypted         bool
+	BodySignerDeviceID    pgtype.UUID
 }
 
 type AuthSession struct {
@@ -125,6 +128,8 @@ type Conversation struct {
 	ContentRevision       int32
 	ContentAuthorID       pgtype.UUID
 	ContentSignerDeviceID pgtype.UUID
+	Archived              bool
+	Position              int32
 }
 
 type ConversationReadCursor struct {
@@ -255,6 +260,10 @@ type Organization struct {
 	Singleton bool
 	Timezone  string
 	CreatedAt pgtype.Timestamptz
+	Name      pgtype.Text
+	LogoData  []byte
+	LogoMime  pgtype.Text
+	ShowDuo   bool
 }
 
 type OrganizationInvitation struct {

@@ -239,14 +239,17 @@ func (e CreateInvitationRequestMembershipKind) Valid() bool {
 
 // Defines values for CreateKeyDomainRequestKind.
 const (
-	CreateKeyDomainRequestKindChat CreateKeyDomainRequestKind = "chat"
-	CreateKeyDomainRequestKindWork CreateKeyDomainRequestKind = "work"
+	CreateKeyDomainRequestKindChat  CreateKeyDomainRequestKind = "chat"
+	CreateKeyDomainRequestKindFiles CreateKeyDomainRequestKind = "files"
+	CreateKeyDomainRequestKindWork  CreateKeyDomainRequestKind = "work"
 )
 
 // Valid indicates whether the value is a known member of the CreateKeyDomainRequestKind enum.
 func (e CreateKeyDomainRequestKind) Valid() bool {
 	switch e {
 	case CreateKeyDomainRequestKindChat:
+		return true
+	case CreateKeyDomainRequestKindFiles:
 		return true
 	case CreateKeyDomainRequestKindWork:
 		return true
@@ -502,6 +505,7 @@ func (e InvitationMembershipKind) Valid() bool {
 const (
 	KeyDomainKindChat   KeyDomainKind = "chat"
 	KeyDomainKindDm     KeyDomainKind = "dm"
+	KeyDomainKindFiles  KeyDomainKind = "files"
 	KeyDomainKindSprint KeyDomainKind = "sprint"
 	KeyDomainKindWork   KeyDomainKind = "work"
 )
@@ -512,6 +516,8 @@ func (e KeyDomainKind) Valid() bool {
 	case KeyDomainKindChat:
 		return true
 	case KeyDomainKindDm:
+		return true
+	case KeyDomainKindFiles:
 		return true
 	case KeyDomainKindSprint:
 		return true
@@ -573,6 +579,24 @@ func (e NotificationKind) Valid() bool {
 	}
 }
 
+// Defines values for OrganizationPersonMembershipKind.
+const (
+	OrganizationPersonMembershipKindExternal OrganizationPersonMembershipKind = "external"
+	OrganizationPersonMembershipKindInternal OrganizationPersonMembershipKind = "internal"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationPersonMembershipKind enum.
+func (e OrganizationPersonMembershipKind) Valid() bool {
+	switch e {
+	case OrganizationPersonMembershipKindExternal:
+		return true
+	case OrganizationPersonMembershipKindInternal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProjectMemberMembershipKind.
 const (
 	ProjectMemberMembershipKindExternal ProjectMemberMembershipKind = "external"
@@ -595,6 +619,7 @@ func (e ProjectMemberMembershipKind) Valid() bool {
 const (
 	RecoveryGapKindChat   RecoveryGapKind = "chat"
 	RecoveryGapKindDm     RecoveryGapKind = "dm"
+	RecoveryGapKindFiles  RecoveryGapKind = "files"
 	RecoveryGapKindSprint RecoveryGapKind = "sprint"
 	RecoveryGapKindWork   RecoveryGapKind = "work"
 )
@@ -605,6 +630,8 @@ func (e RecoveryGapKind) Valid() bool {
 	case RecoveryGapKindChat:
 		return true
 	case RecoveryGapKindDm:
+		return true
+	case RecoveryGapKindFiles:
 		return true
 	case RecoveryGapKindSprint:
 		return true
@@ -669,6 +696,27 @@ func (e UpdateBoardColumnRequestCategory) Valid() bool {
 	case UpdateBoardColumnRequestCategoryInProgress:
 		return true
 	case UpdateBoardColumnRequestCategoryTodo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateOrganizationBrandingRequestLogoMime.
+const (
+	Imagejpeg UpdateOrganizationBrandingRequestLogoMime = "image/jpeg"
+	Imagepng  UpdateOrganizationBrandingRequestLogoMime = "image/png"
+	Imagewebp UpdateOrganizationBrandingRequestLogoMime = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the UpdateOrganizationBrandingRequestLogoMime enum.
+func (e UpdateOrganizationBrandingRequestLogoMime) Valid() bool {
+	switch e {
+	case Imagejpeg:
+		return true
+	case Imagepng:
+		return true
+	case Imagewebp:
 		return true
 	default:
 		return false
@@ -762,20 +810,38 @@ type ApiError struct {
 // ApiErrorCode defines model for ApiError.Code.
 type ApiErrorCode string
 
+// ArchiveRequest defines model for ArchiveRequest.
+type ArchiveRequest struct {
+	Archived bool `json:"archived"`
+}
+
 // Attachment defines model for Attachment.
 type Attachment struct {
+	BodyEncrypted   *bool               `json:"bodyEncrypted,omitempty"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
-	ContentType     string              `json:"contentType"`
-	CreatedAt       time.Time           `json:"createdAt"`
-	Encrypted       bool                `json:"encrypted"`
-	Id              openapi_types.UUID  `json:"id"`
-	Name            string              `json:"name"`
+
+	// ContentSize Size of the original file; equals size unless the body is encrypted
+	ContentSize *int64             `json:"contentSize,omitempty"`
+	ContentType string             `json:"contentType"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Encrypted   bool               `json:"encrypted"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
 
 	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
 	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
 	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
 	Size           int64               `json:"size"`
 	UploaderEmail  string              `json:"uploaderEmail"`
+}
+
+// AuthSession defines model for AuthSession.
+type AuthSession struct {
+	CreatedAt  time.Time          `json:"createdAt"`
+	Current    bool               `json:"current"`
+	ExpiresAt  time.Time          `json:"expiresAt"`
+	Id         openapi_types.UUID `json:"id"`
+	LastSeenAt time.Time          `json:"lastSeenAt"`
 }
 
 // AuthorizeDeviceRequest defines model for AuthorizeDeviceRequest.
@@ -893,6 +959,7 @@ type CompleteUploadRequest struct {
 
 // Conversation defines model for Conversation.
 type Conversation struct {
+	Archived        *bool               `json:"archived,omitempty"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
 	ContentRevision int                 `json:"contentRevision"`
 	Encrypted       bool                `json:"encrypted"`
@@ -913,6 +980,16 @@ type CreateBoardColumnRequest struct {
 
 // CreateBoardColumnRequestCategory defines model for CreateBoardColumnRequest.Category.
 type CreateBoardColumnRequestCategory string
+
+// CreateChannelRequest Plain `name`, or an encrypted name with a client-chosen id
+type CreateChannelRequest struct {
+	Id   *openapi_types.UUID `json:"id,omitempty"`
+	Name *string             `json:"name,omitempty"`
+
+	// NameEnc Unpadded base64url of a content envelope (header, ciphertext and signature)
+	NameEnc        *EncryptedBlob      `json:"nameEnc,omitempty"`
+	SignerDeviceId *openapi_types.UUID `json:"signerDeviceId,omitempty"`
+}
 
 // CreateCommentRequest defines model for CreateCommentRequest.
 type CreateCommentRequest struct {
@@ -980,9 +1057,11 @@ type CreateSprintRequest struct {
 
 // CreateUploadRequest defines model for CreateUploadRequest.
 type CreateUploadRequest struct {
-	ContentType *string                        `json:"contentType,omitempty"`
-	ContextId   openapi_types.UUID             `json:"contextId"`
-	ContextType CreateUploadRequestContextType `json:"contextType"`
+	// BodyEncrypted The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required
+	BodyEncrypted *bool                          `json:"bodyEncrypted,omitempty"`
+	ContentType   *string                        `json:"contentType,omitempty"`
+	ContextId     openapi_types.UUID             `json:"contextId"`
+	ContextType   CreateUploadRequestContextType `json:"contextType"`
 
 	// Id Client-chosen ID, required when nameEnc is present so the envelope can bind to the attachment
 	Id   *openapi_types.UUID `json:"id,omitempty"`
@@ -1275,6 +1354,27 @@ type OpenDirectConversationRequest struct {
 	AccountId openapi_types.UUID `json:"accountId"`
 }
 
+// OrganizationBranding defines model for OrganizationBranding.
+type OrganizationBranding struct {
+	HasLogo bool `json:"hasLogo"`
+
+	// Name Empty until initial team setup
+	Name    string `json:"name"`
+	ShowDuo bool   `json:"showDuo"`
+}
+
+// OrganizationPerson defines model for OrganizationPerson.
+type OrganizationPerson struct {
+	Active         bool                             `json:"active"`
+	Email          openapi_types.Email              `json:"email"`
+	Id             openapi_types.UUID               `json:"id"`
+	IsAdmin        bool                             `json:"isAdmin"`
+	MembershipKind OrganizationPersonMembershipKind `json:"membershipKind"`
+}
+
+// OrganizationPersonMembershipKind defines model for OrganizationPerson.MembershipKind.
+type OrganizationPersonMembershipKind string
+
 // PasswordResetConfirmRequest defines model for PasswordResetConfirmRequest.
 type PasswordResetConfirmRequest struct {
 	Password string `json:"password"`
@@ -1301,6 +1401,7 @@ type PresignedUrl struct {
 
 // Project defines model for Project.
 type Project struct {
+	Archived        *bool               `json:"archived,omitempty"`
 	Color           string              `json:"color"`
 	ContentAuthorId *openapi_types.UUID `json:"contentAuthorId,omitempty"`
 	ContentRevision int                 `json:"contentRevision"`
@@ -1409,6 +1510,11 @@ type ReorderBoardColumnsRequest struct {
 	ColumnIds []openapi_types.UUID `json:"columnIds"`
 }
 
+// ReorderRequest defines model for ReorderRequest.
+type ReorderRequest struct {
+	Ids []openapi_types.UUID `json:"ids"`
+}
+
 // SendMessageRequest defines model for SendMessageRequest.
 type SendMessageRequest struct {
 	Body *string `json:"body,omitempty"`
@@ -1419,6 +1525,11 @@ type SendMessageRequest struct {
 	MentionIds       *[]openapi_types.UUID `json:"mentionIds,omitempty"`
 	ReplyToId        *openapi_types.UUID   `json:"replyToId,omitempty"`
 	SignerDeviceId   *openapi_types.UUID   `json:"signerDeviceId,omitempty"`
+}
+
+// SetActiveRequest defines model for SetActiveRequest.
+type SetActiveRequest struct {
+	Active bool `json:"active"`
 }
 
 // SetTrustRootRequest defines model for SetTrustRootRequest.
@@ -1525,6 +1636,19 @@ type UpdateExternalPolicyRequest struct {
 	Permissions []ExternalPermission `json:"permissions"`
 	Version     int                  `json:"version"`
 }
+
+// UpdateOrganizationBrandingRequest defines model for UpdateOrganizationBrandingRequest.
+type UpdateOrganizationBrandingRequest struct {
+	// LogoBase64 Optional base64 image
+	LogoBase64 *string                                    `json:"logoBase64,omitempty"`
+	LogoMime   *UpdateOrganizationBrandingRequestLogoMime `json:"logoMime,omitempty"`
+	Name       string                                     `json:"name"`
+	RemoveLogo *bool                                      `json:"removeLogo,omitempty"`
+	ShowDuo    bool                                       `json:"showDuo"`
+}
+
+// UpdateOrganizationBrandingRequestLogoMime defines model for UpdateOrganizationBrandingRequest.LogoMime.
+type UpdateOrganizationBrandingRequestLogoMime string
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
@@ -1673,6 +1797,11 @@ type ListMessagesParams struct {
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListProjectsParams defines parameters for ListProjects.
+type ListProjectsParams struct {
+	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
+}
+
 // DeleteBoardColumnParams defines parameters for DeleteBoardColumn.
 type DeleteBoardColumnParams struct {
 	// MoveTo Destination column; required when the column holds activities
@@ -1702,6 +1831,9 @@ type EncryptCommentJSONRequestBody = EncryptCommentRequest
 
 // UpdateConversationJSONRequestBody defines body for UpdateConversation for application/json ContentType.
 type UpdateConversationJSONRequestBody = UpdateConversationRequest
+
+// SetChannelArchivedJSONRequestBody defines body for SetChannelArchived for application/json ContentType.
+type SetChannelArchivedJSONRequestBody = ArchiveRequest
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
@@ -1745,6 +1877,12 @@ type EditMessageJSONRequestBody = EditMessageRequest
 // ToggleReactionJSONRequestBody defines body for ToggleReaction for application/json ContentType.
 type ToggleReactionJSONRequestBody = ToggleReactionRequest
 
+// UpdateOrganizationBrandingJSONRequestBody defines body for UpdateOrganizationBranding for application/json ContentType.
+type UpdateOrganizationBrandingJSONRequestBody = UpdateOrganizationBrandingRequest
+
+// SetPersonActiveJSONRequestBody defines body for SetPersonActive for application/json ContentType.
+type SetPersonActiveJSONRequestBody = SetActiveRequest
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
@@ -1754,6 +1892,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // SetProjectAppearanceJSONRequestBody defines body for SetProjectAppearance for application/json ContentType.
 type SetProjectAppearanceJSONRequestBody = ProjectAppearanceRequest
 
+// SetProjectArchivedJSONRequestBody defines body for SetProjectArchived for application/json ContentType.
+type SetProjectArchivedJSONRequestBody = ArchiveRequest
+
 // CreateBoardColumnJSONRequestBody defines body for CreateBoardColumn for application/json ContentType.
 type CreateBoardColumnJSONRequestBody = CreateBoardColumnRequest
 
@@ -1762,6 +1903,12 @@ type ReorderBoardColumnsJSONRequestBody = ReorderBoardColumnsRequest
 
 // UpdateBoardColumnJSONRequestBody defines body for UpdateBoardColumn for application/json ContentType.
 type UpdateBoardColumnJSONRequestBody = UpdateBoardColumnRequest
+
+// CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
+type CreateChannelJSONRequestBody = CreateChannelRequest
+
+// ReorderChannelsJSONRequestBody defines body for ReorderChannels for application/json ContentType.
+type ReorderChannelsJSONRequestBody = ReorderRequest
 
 // CreateEpicJSONRequestBody defines body for CreateEpic for application/json ContentType.
 type CreateEpicJSONRequestBody = CreateEpicRequest
@@ -1873,6 +2020,9 @@ type ServerInterface interface {
 	// UpdateConversation Encrypt the name of a channel (project managers)
 	// (PATCH /api/v1/conversations/{conversationId})
 	UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
+	// SetChannelArchived Archive or restore a channel; archived channels are read-only (project managers)
+	// (PUT /api/v1/conversations/{conversationId}/archive)
+	SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
 	// ListConversationAttachments Ready attachments of a channel or DM
 	// (GET /api/v1/conversations/{conversationId}/attachments)
 	ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID)
@@ -1987,9 +2137,24 @@ type ServerInterface interface {
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/v1/notifications/{notificationId}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID)
-	// ListProjects List projects the account belongs to
+	// GetOrganizationBranding Team identity for signed-in members
+	// (GET /api/v1/organization/branding)
+	GetOrganizationBranding(w http.ResponseWriter, r *http.Request)
+	// UpdateOrganizationBranding Configure the team identity (administrator)
+	// (PATCH /api/v1/organization/branding)
+	UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request)
+	// GetOrganizationLogo Team logo for signed-in members
+	// (GET /api/v1/organization/logo)
+	GetOrganizationLogo(w http.ResponseWriter, r *http.Request)
+	// ListOrganizationPeople Everyone in the organization (administrators)
+	// (GET /api/v1/organization/people)
+	ListOrganizationPeople(w http.ResponseWriter, r *http.Request)
+	// SetPersonActive Deactivate or reactivate an account; deactivating ends every session (administrators)
+	// (PUT /api/v1/organization/people/{accountId}/active)
+	SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID)
+	// ListProjects List projects the account belongs to; archived ones only on request
 	// (GET /api/v1/projects)
-	ListProjects(w http.ResponseWriter, r *http.Request)
+	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
 	// CreateProject Create a project with the default board (organization administrators)
 	// (POST /api/v1/projects)
 	CreateProject(w http.ResponseWriter, r *http.Request)
@@ -2002,6 +2167,9 @@ type ServerInterface interface {
 	// SetProjectAppearance Choose the project's colour (project managers)
 	// (PUT /api/v1/projects/{projectId}/appearance)
 	SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// SetProjectArchived Archive or restore a project (project managers)
+	// (PUT /api/v1/projects/{projectId}/archive)
+	SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListBoardColumns List board columns
 	// (GET /api/v1/projects/{projectId}/columns)
 	ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2020,6 +2188,12 @@ type ServerInterface interface {
 	// ListConversations List the project channels
 	// (GET /api/v1/projects/{projectId}/conversations)
 	ListConversations(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// CreateChannel Create a channel; the name is encrypted when the project is (project managers)
+	// (POST /api/v1/projects/{projectId}/conversations)
+	CreateChannel(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ReorderChannels Set the order of every channel of the project (project managers)
+	// (PUT /api/v1/projects/{projectId}/conversations/order)
+	ReorderChannels(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// GetProjectDirectory Active device keys of the project members and of the recovery identity
 	// (GET /api/v1/projects/{projectId}/directory)
 	GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -2038,7 +2212,7 @@ type ServerInterface interface {
 	// ListKeyDomains Key domains of a project
 	// (GET /api/v1/projects/{projectId}/key-domains)
 	ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId ProjectId)
-	// CreateKeyDomain Create the work or chat key domain (it waits for its first generation)
+	// CreateKeyDomain Create the work, chat or files key domain (it waits for its first generation)
 	// (POST /api/v1/projects/{projectId}/key-domains)
 	CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListProjectMembers List project members
@@ -2062,6 +2236,12 @@ type ServerInterface interface {
 	// ListRecoveryGaps Authorized devices that lack the key of a generation (recovery administrator)
 	// (GET /api/v1/recovery/gaps)
 	ListRecoveryGaps(w http.ResponseWriter, r *http.Request)
+	// ListSessions The caller's active sessions
+	// (GET /api/v1/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession End one of the caller's sessions, current or not
+	// (DELETE /api/v1/sessions/{sessionId})
+	RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID)
 	// ListSprints List sprints visible to the account
 	// (GET /api/v1/sprints)
 	ListSprints(w http.ResponseWriter, r *http.Request)
@@ -2668,6 +2848,32 @@ func (siw *ServerInterfaceWrapper) UpdateConversation(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateConversation(w, r, conversationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetChannelArchived operation middleware
+func (siw *ServerInterfaceWrapper) SetChannelArchived(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "conversationId" -------------
+	var conversationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversationId", r.PathValue("conversationId"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChannelArchived(w, r, conversationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3490,11 +3696,112 @@ func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetOrganizationBranding operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationBranding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganizationBranding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganizationBranding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationLogo operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationLogo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizationPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPersonActive operation middleware
+func (siw *ServerInterfaceWrapper) SetPersonActive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPersonActive(w, r, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectsParams
+
+	// ------------- Optional query parameter "includeArchived" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeArchived", r.URL.Query(), &params.IncludeArchived, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeArchived"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeArchived", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListProjects(w, r)
+		siw.Handler.ListProjects(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3587,6 +3894,32 @@ func (siw *ServerInterfaceWrapper) SetProjectAppearance(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetProjectAppearance(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectArchived operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectArchived(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectArchived(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3777,6 +4110,58 @@ func (siw *ServerInterfaceWrapper) ListConversations(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListConversations(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateChannel operation middleware
+func (siw *ServerInterfaceWrapper) CreateChannel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateChannel(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderChannels operation middleware
+func (siw *ServerInterfaceWrapper) ReorderChannels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderChannels(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4126,6 +4511,46 @@ func (siw *ServerInterfaceWrapper) ListRecoveryGaps(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListRecoveryGaps(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, sessionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4724,11 +5149,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.GetOrganizationBranding)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.UpdateOrganizationBranding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/logo", wrapper.GetOrganizationLogo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations", wrapper.CreateInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations/accept", wrapper.AcceptInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.Login)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/password-reset", wrapper.RequestPasswordReset)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/password-reset/confirm", wrapper.ConfirmPasswordReset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/sessions/{sessionId}", wrapper.RevokeSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/people", wrapper.ListOrganizationPeople)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/organization/people/{accountId}/active", wrapper.SetPersonActive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)
@@ -4756,6 +5188,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.ListWorkItemComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/work-items/{workItemId}/comments", wrapper.CreateWorkItemComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.ListConversations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations", wrapper.CreateChannel)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/conversations/order", wrapper.ReorderChannels)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/archive", wrapper.SetChannelArchived)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/archive", wrapper.SetProjectArchived)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.ListMessages)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/conversations/{conversationId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}/epics", wrapper.ListEpics)

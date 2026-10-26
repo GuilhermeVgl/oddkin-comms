@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
 )
 
 type DatabaseProbe interface {
@@ -20,7 +20,7 @@ type healthHandler struct {
 var _ gen.ServerInterface = (*healthHandler)(nil)
 
 func NewHandler(database DatabaseProbe) http.Handler {
-	return gen.Handler(&healthHandler{database: database})
+	return withObservability(gen.Handler(&healthHandler{database: database}), nil)
 }
 
 func (h *healthHandler) GetLiveness(w http.ResponseWriter, r *http.Request) {

@@ -64,8 +64,8 @@ func openToken(key, aad, sealed []byte) (string, error) {
 }
 
 var (
-	invitationDeliveryAAD = []byte("oddkin/invitation-delivery/v1")
-	resetDeliveryAAD      = []byte("oddkin/password-reset-delivery/v1")
+	invitationDeliveryAAD = []byte("crewstead/invitation-delivery/v1")
+	resetDeliveryAAD      = []byte("crewstead/password-reset-delivery/v1")
 )
 
 func invitationAEAD(key []byte) (cipher.AEAD, error) {

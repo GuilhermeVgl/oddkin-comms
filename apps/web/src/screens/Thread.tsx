@@ -10,7 +10,7 @@ import {
   toggleReaction,
   type Message,
   type ProjectMember,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import {
   useCallback,
   useEffect,

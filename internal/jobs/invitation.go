@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -70,8 +70,8 @@ func (worker *invitationEmailWorker) Work(ctx context.Context, job *river.Job[In
 		return river.JobCancel(errors.New("invalid invitation public URL"))
 	}
 	providerID, err := worker.mailer.Send(ctx, resendmail.Message{
-		To: delivery.EmailNormalized, Subject: "Convite ODDKIN",
-		Text: "Você recebeu um convite para colaborar no ODDKIN.\n\nAbra este link para aceitar:\n" + link +
+		To: delivery.EmailNormalized, Subject: "Convite " + appDisplayName(),
+		Text: "Você recebeu um convite para colaborar no " + appDisplayName() + ".\n\nAbra este link para aceitar:\n" + link +
 			"\n\nEste convite expira em sete dias.",
 		IdempotencyKey: "invitation/" + job.Args.InvitationID,
 	})

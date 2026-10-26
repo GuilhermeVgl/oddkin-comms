@@ -6,17 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/calls"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,8 +27,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-const sessionCookieName = "oddkin_session"
-const csrfCookieName = "oddkin_csrf"
+const sessionCookieName = "crewstead_session"
+const csrfCookieName = "crewstead_csrf"
 
 type authService struct {
 	pool                  *pgxpool.Pool
@@ -53,6 +54,8 @@ type AppConfig struct {
 	EventCursorKey []byte
 	// ObjectStore holds attachment bytes; nil disables uploads (503).
 	ObjectStore objectstore.Store
+	// AccessLog, when set, receives one line per request (see withObservability).
+	AccessLog *slog.Logger
 	// StorageQuotaBytes caps reserved attachment bytes per organization.
 	StorageQuotaBytes int64
 	// LiveKit enables calls; Rooms overrides the administrative client (tests).
@@ -87,10 +90,10 @@ func NewAppHandlerWithConfig(pool *pgxpool.Pool, config AppConfig) (http.Handler
 	if err != nil {
 		return nil, err
 	}
-	return gen.Handler(&healthHandler{database: pool, auth: &authService{
+	return withObservability(gen.Handler(&healthHandler{database: pool, auth: &authService{
 		pool: pool, dummyHash: dummyHash, limiter: newLoginLimiter(),
 		invitationDeliveryKey: append([]byte(nil), config.InvitationDeliveryKey...), jobs: jobClient, cursorKey: cursorKey, store: config.ObjectStore, quota: quota, livekit: config.LiveKit, rooms: rooms,
-	}}), nil
+	}}), config.AccessLog), nil
 }
 
 func (h *healthHandler) Login(w http.ResponseWriter, r *http.Request) {

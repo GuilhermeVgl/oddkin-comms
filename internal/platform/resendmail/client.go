@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 )
 
 const sendEndpoint = "https://api.resend.com/emails"
@@ -97,7 +97,7 @@ func (client *Client) Send(ctx context.Context, message Message) (id string, sen
 	request.Header.Set("Authorization", "Bearer "+client.apiKey)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", message.IdempotencyKey)
-	request.Header.Set("User-Agent", "oddkin-comms/1")
+	request.Header.Set("User-Agent", "crewstead-comms/1")
 	response, err := client.http.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {

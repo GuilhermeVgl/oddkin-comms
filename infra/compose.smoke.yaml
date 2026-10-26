@@ -2,11 +2,11 @@ services:
   postgres:
     image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
     environment:
-      POSTGRES_USER: oddkin_smoke
+      POSTGRES_USER: crewstead_smoke
       POSTGRES_PASSWORD: synthetic_smoke_password
-      POSTGRES_DB: oddkin_smoke
+      POSTGRES_DB: crewstead_smoke
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oddkin_smoke -d oddkin_smoke"]
+      test: ["CMD-SHELL", "pg_isready -U crewstead_smoke -d crewstead_smoke"]
       interval: 1s
       timeout: 2s
       retries: 20
@@ -17,7 +17,7 @@ services:
       args:
         TARGET: api
     environment:
-      DATABASE_URL: postgres://oddkin_smoke:synthetic_smoke_password@postgres:5432/oddkin_smoke
+      DATABASE_URL: postgres://crewstead_smoke:synthetic_smoke_password@postgres:5432/crewstead_smoke
       HTTP_ADDR: :8080
     ports:
       - "127.0.0.1::8080"

@@ -1,9 +1,68 @@
 openapi: 3.0.3
 info:
-  title: ODDKIN API
+  title: Crewstead API
   version: 0.1.0
   description: Operational and account session endpoints.
 paths:
+  /api/v1/organization/branding:
+    get:
+      operationId: getOrganizationBranding
+      summary: Team identity for signed-in members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Team identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationBranding"
+        "401":
+          description: No active session
+    patch:
+      operationId: updateOrganizationBranding
+      summary: Configure the team identity (administrator)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationBrandingRequest"
+      responses:
+        "200":
+          description: Updated team identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationBranding"
+        "400":
+          description: Invalid name or image
+        "401":
+          description: No active session
+        "403":
+          description: Not an administrator or invalid CSRF token
+  /api/v1/organization/logo:
+    get:
+      operationId: getOrganizationLogo
+      summary: Team logo for signed-in members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        "401":
+          description: No active session
+        "404":
+          description: No logo configured
   /api/v1/invitations:
     post:
       operationId: createInvitation
@@ -113,6 +172,90 @@ paths:
           description: The token is invalid, used or expired
         "429":
           description: Too many attempts
+  /api/v1/sessions:
+    get:
+      operationId: listSessions
+      summary: The caller's active sessions
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: No active session
+  /api/v1/sessions/{sessionId}:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeSession
+      summary: End one of the caller's sessions, current or not
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "404":
+          description: Unknown session
+  /api/v1/organization/people:
+    get:
+      operationId: listOrganizationPeople
+      summary: Everyone in the organization (administrators)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: People
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationPerson"
+        "401":
+          description: No active session
+        "403":
+          description: Administrators only
+  /api/v1/organization/people/{accountId}/active:
+    parameters:
+      - name: accountId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setPersonActive
+      summary: Deactivate or reactivate an account; deactivating ends every session (administrators)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetActiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown person
+        "409":
+          description: The last active administrator cannot be deactivated
   /api/v1/auth/me:
     get:
       operationId: getCurrentAccount
@@ -163,9 +306,14 @@ paths:
   /api/v1/projects:
     get:
       operationId: listProjects
-      summary: List projects the account belongs to
+      summary: List projects the account belongs to; archived ones only on request
       security:
         - sessionCookie: []
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          schema: { type: boolean }
       responses:
         "200":
           description: Projects
@@ -734,6 +882,112 @@ paths:
           description: No active session
         "403":
           description: Profile does not allow reading chat
+        "404":
+          description: Unknown or inaccessible project
+    post:
+      operationId: createChannel
+      summary: Create a channel; the name is encrypted when the project is (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          description: Invalid name
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived or the encryption state does not allow this write
+  /api/v1/projects/{projectId}/conversations/order:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: reorderChannels
+      summary: Set the order of every channel of the project (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderRequest"
+      responses:
+        "204":
+          description: Reordered
+        "400":
+          description: The list must contain every channel exactly once
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible project
+        "409":
+          description: Project is archived
+  /api/v1/conversations/{conversationId}/archive:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setChannelArchived
+      summary: Archive or restore a channel; archived channels are read-only (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
+        "404":
+          description: Unknown or inaccessible channel
+        "409":
+          description: Project is archived
+  /api/v1/projects/{projectId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    put:
+      operationId: setProjectArchived
+      summary: Archive or restore a project (project managers)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveRequest"
+      responses:
+        "204":
+          description: Updated
+        "401":
+          description: No active session
+        "403":
+          description: Origin, CSRF token, or role rejected
         "404":
           description: Unknown or inaccessible project
   /api/v1/conversations/{conversationId}/messages:
@@ -1943,7 +2197,7 @@ paths:
           description: Unknown or inaccessible project
     post:
       operationId: createKeyDomain
-      summary: Create the work or chat key domain (it waits for its first generation)
+      summary: Create the work, chat or files key domain (it waits for its first generation)
       security:
         - sessionCookie: []
       requestBody:
@@ -2521,8 +2775,27 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: oddkin_session
+      name: crewstead_session
   schemas:
+    OrganizationBranding:
+      type: object
+      required: [name, hasLogo, showDuo]
+      additionalProperties: false
+      properties:
+        name: { type: string, description: Empty until initial team setup }
+        hasLogo: { type: boolean }
+        showDuo: { type: boolean }
+    UpdateOrganizationBrandingRequest:
+      type: object
+      required: [name, showDuo]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        showDuo: { type: boolean }
+        logoBase64:
+          { type: string, description: Optional base64 image, at most 1 MiB }
+        logoMime: { type: string, enum: [image/png, image/jpeg, image/webp] }
+        removeLogo: { type: boolean }
     AcceptInvitationRequest:
       type: object
       required: [token, email]
@@ -2618,6 +2891,7 @@ components:
         ]
       additionalProperties: false
       properties:
+        archived: { type: boolean }
         nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         descriptionEnc: { $ref: "#/components/schemas/EncryptedBlob" }
         signerDeviceId: { type: string, format: uuid }
@@ -2733,6 +3007,55 @@ components:
       additionalProperties: false
       properties:
         color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$" }
+    CreateChannelRequest:
+      type: object
+      additionalProperties: false
+      description: Plain `name`, or an encrypted name with a client-chosen id
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        id: { type: string, format: uuid }
+        nameEnc: { $ref: "#/components/schemas/EncryptedBlob" }
+        signerDeviceId: { type: string, format: uuid }
+    ReorderRequest:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          items: { type: string, format: uuid }
+    ArchiveRequest:
+      type: object
+      required: [archived]
+      additionalProperties: false
+      properties:
+        archived: { type: boolean }
+    AuthSession:
+      type: object
+      required: [id, createdAt, lastSeenAt, expiresAt, current]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        current: { type: boolean }
+    OrganizationPerson:
+      type: object
+      required: [id, email, active, membershipKind, isAdmin]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        active: { type: boolean }
+        membershipKind: { type: string, enum: [internal, external] }
+        isAdmin: { type: boolean }
+    SetActiveRequest:
+      type: object
+      required: [active]
+      additionalProperties: false
+      properties:
+        active: { type: boolean }
     BoardColumn:
       type: object
       required: [id, name, position, category]
@@ -2880,6 +3203,7 @@ components:
         encrypted: { type: boolean }
         contentRevision: { type: integer }
         contentAuthorId: { type: string, format: uuid }
+        archived: { type: boolean }
         id: { type: string, format: uuid }
         name: { type: string }
         unread: { type: integer, format: int64 }
@@ -3144,6 +3468,9 @@ components:
           $ref: "#/components/schemas/EncryptedBlob"
         signerDeviceId: { type: string, format: uuid }
         contentType: { type: string, maxLength: 255 }
+        bodyEncrypted:
+          type: boolean
+          description: The body is an encrypted file object (ADR 0019); then `size` is the encrypted size and `signerDeviceId` is required
         size: { type: integer, format: int64, minimum: 1 }
     Upload:
       type: object
@@ -3190,6 +3517,11 @@ components:
         signerDeviceId: { type: string, format: uuid }
         contentType: { type: string }
         size: { type: integer, format: int64 }
+        bodyEncrypted: { type: boolean }
+        contentSize:
+          type: integer
+          format: int64
+          description: Size of the original file; equals size unless the body is encrypted
         uploaderEmail: { type: string }
         createdAt: { type: string, format: date-time }
     StartCallRequest:
@@ -3387,7 +3719,7 @@ components:
       required: [kind]
       additionalProperties: false
       properties:
-        kind: { type: string, enum: [work, chat] }
+        kind: { type: string, enum: [work, chat, files] }
     KeyDomain:
       type: object
       required: [id, organizationId, kind, currentGeneration, state, writable]
@@ -3397,7 +3729,7 @@ components:
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
-        kind: { type: string, enum: [work, chat, dm, sprint] }
+        kind: { type: string, enum: [work, chat, files, dm, sprint] }
         currentGeneration: { type: integer }
         state: { type: string, enum: [ok, pending_keys, rotation_required] }
         writable:
@@ -3517,7 +3849,7 @@ components:
       additionalProperties: false
       properties:
         domainId: { type: string, format: uuid }
-        kind: { type: string, enum: [work, chat, dm, sprint] }
+        kind: { type: string, enum: [work, chat, files, dm, sprint] }
         projectId: { type: string, format: uuid }
         conversationId: { type: string, format: uuid }
         generation: { type: integer }

@@ -12,7 +12,7 @@ Pequenas equipes que constroem e mantêm vários produtos de microSaaS. Há admi
 
 ## Product Purpose
 
-ODDKIN reúne planejamento, execução, conversas, arquivos e chamadas no contexto dos projetos. O produto deve permitir que uma equipe acompanhe o trabalho de vários produtos sem espalhar contexto por ferramentas diferentes.
+Crewstead reúne planejamento, execução, conversas, arquivos e chamadas no contexto dos projetos. O produto deve permitir que uma equipe acompanhe o trabalho de vários produtos sem espalhar contexto por ferramentas diferentes.
 
 ## Positioning
 
@@ -36,7 +36,7 @@ O fluxo começa por instalação de uma organização e convite de pessoas. A eq
 
 ## Brand Commitments
 
-O nome é ODDKIN. A assinatura é “Pequenos passos. Grandes entregas.” A personalidade usa personagens pixelados e pequenas celebrações ao concluir entregas, sem pontos, ranking ou gamificação competitiva.
+O nome padrão é Crewstead, configurável por instalação. A assinatura é “Pequenos passos. Grandes entregas.” A personalidade usa personagens pixelados e pequenas celebrações ao concluir entregas, sem pontos, ranking ou gamificação competitiva.
 
 ## Evidence on Hand
 

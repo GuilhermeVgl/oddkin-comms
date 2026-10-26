@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/jobs"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -75,8 +75,8 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 	}
 	login := func(h http.Handler, email string) *workClient {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct attachment password"}`))
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		req.Header.Set("Content-Type", "application/json")
 		result := httptest.NewRecorder()
 		h.ServeHTTP(result, req)
@@ -85,10 +85,10 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 		}
 		c := &workClient{t: t, handler: h}
 		for _, cookie := range result.Result().Cookies() {
-			if cookie.Name == "oddkin_session" {
+			if cookie.Name == "crewstead_session" {
 				c.session = cookie
 			}
-			if cookie.Name == "oddkin_csrf" {
+			if cookie.Name == "crewstead_csrf" {
 				c.csrf = cookie
 			}
 		}
@@ -215,8 +215,24 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 	if code := admin.do(http.MethodDelete, "/api/v1/attachments/"+ready.Id, "", nil); code != http.StatusNoContent {
 		t.Fatalf("manager delete: %d", code)
 	}
+	// The object outlives the deletion by 30 days, so a database restore still finds it.
+	if !memory.Has(objectKey) {
+		t.Fatal("a deleted attachment keeps its object for 30 days")
+	}
+	if err := jobs.ReleaseStorage(ctx, pool, memory); err != nil {
+		t.Fatal(err)
+	}
+	if !memory.Has(objectKey) {
+		t.Fatal("the cleanup must wait for the 30 days")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE attachment SET released_at = now() - interval '31 days' WHERE id = $1`, ready.Id); err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.ReleaseStorage(ctx, pool, memory); err != nil {
+		t.Fatal(err)
+	}
 	if memory.Has(objectKey) {
-		t.Fatal("deleted attachment must release its object")
+		t.Fatal("after 30 days the deleted attachment must release its object")
 	}
 	if code := member.do(http.MethodGet, "/api/v1/attachments/"+ready.Id+"/download", "", nil); code != http.StatusNotFound {
 		t.Fatalf("download after delete: %d", code)

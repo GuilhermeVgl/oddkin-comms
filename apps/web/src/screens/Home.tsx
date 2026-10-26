@@ -1,4 +1,4 @@
-import type { CurrentAccount, Sprint, WorkItem } from "@oddkin/api-client";
+import type { CurrentAccount, Sprint, WorkItem } from "@crewstead/api-client";
 import { useEffect, useMemo } from "react";
 import {
   dueLabel,
@@ -18,6 +18,7 @@ import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
 import { useShell } from "../shell/context";
 import { isDone, useWorkspace } from "../workspace";
+import { APP_NAME } from "../brand";
 
 export const PRIORITY_ICON: Record<WorkItem["priority"], IconName> = {
   low: "pBaixa",
@@ -134,7 +135,7 @@ export function Home({ account }: { account: CurrentAccount }) {
   const canCreate = (projects ?? []).length > 0;
 
   useEffect(() => {
-    document.title = "ODDKIN · Visão geral";
+    document.title = `${APP_NAME} · Visão geral`;
   }, []);
 
   const feed = [...items]

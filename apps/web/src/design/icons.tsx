@@ -14,7 +14,7 @@ export function Icon({ name, size }: { name: IconName; size?: "sm" | "lg" }) {
   );
 }
 
-/** The ODDKIN arch mark. It takes the colour of the surrounding text. */
+/** The Crewstead arch mark. It takes the colour of the surrounding text. */
 export function Logo() {
   return (
     <svg aria-hidden="true" viewBox="152 138 485 467">

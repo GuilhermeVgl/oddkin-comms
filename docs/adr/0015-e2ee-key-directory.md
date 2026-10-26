@@ -7,7 +7,7 @@ Proposta implementada **sem revisão criptográfica independente**. Existem o fo
 ## Formato (packages/crypto, libsodium)
 
 - Primitivas: XChaCha20-Poly1305 (IETF) para conteúdo pequeno, `crypto_box_seal` para entregar a chave de um domínio a um dispositivo, Ed25519 destacado para assinaturas. Nenhum algoritmo foi inventado; o que é novo é a composição.
-- Todo campo assinado ou autenticado usa concatenação com prefixo de 32 bits de comprimento, o que elimina ambiguidades entre campos. Os rótulos `oddkin/v1/...` separam os usos de assinatura.
+- Todo campo assinado ou autenticado usa concatenação com prefixo de 32 bits de comprimento, o que elimina ambiguidades entre campos. Os rótulos `crewstead/v1/...` separam os usos de assinatura.
 - **Envelope de conteúdo**: `versão(1) | suíte(1) | geração(u32) | nonce(24) | ciphertext+tag | assinatura(64)`. Contexto autenticado (AAD): organização, domínio, recurso, autor e revisão; o cabeçalho (versão, suíte, geração) também entra no AAD. A assinatura do dispositivo autor cobre cabeçalho, contexto e ciphertext e é verificada **antes** de decifrar. Trocar o registro, o projeto, a revisão ou a geração invalida a leitura. O nonce é aleatório de 192 bits.
 - **Envelope de chave**: a chave do domínio é selada para a chave pública do dispositivo destinatário e assinada pelo dispositivo remetente sobre (destinatário, domínio, geração, bytes selados). O servidor não consegue reetiquetar o envelope para outro destino.
 - **Certificado de dispositivo**: assinatura sobre (conta, dispositivo, chave de assinatura, chave de caixa) pela raiz de confiança ou por um dispositivo ativo da mesma conta.

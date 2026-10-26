@@ -7,7 +7,7 @@ import {
   type Sprint,
   type SprintClosePreview,
   type WorkItem,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useEffect, useMemo, useState } from "react";
 import { showFinale } from "../design/celebrate";
 import { addDays, daysTo, fmtD, todayIso } from "../design/format";

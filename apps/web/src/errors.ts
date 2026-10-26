@@ -2,12 +2,12 @@ import {
   ApiStatusError,
   EncryptionError,
   readCookie,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { EncryptionUnavailableError } from "./e2ee/content";
 
 /** The CSRF token the API expects on every mutation; throws when the session cookie is gone. */
 export function csrfToken(): string {
-  const token = readCookie(document.cookie, "oddkin_csrf");
+  const token = readCookie(document.cookie, "crewstead_csrf");
   if (token === null) throw new Error("missing csrf cookie");
   return token;
 }

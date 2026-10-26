@@ -2,11 +2,11 @@ FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e
 WORKDIR /src
 COPY . .
 ARG TARGET
-RUN test -n "$TARGET" && CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/oddkin "./cmd/$TARGET"
+RUN test -n "$TARGET" && CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/crewstead "./cmd/$TARGET"
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /out/oddkin /oddkin
+COPY --from=build /out/crewstead /crewstead
 USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["/oddkin"]
+ENTRYPOINT ["/crewstead"]

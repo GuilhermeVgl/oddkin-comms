@@ -121,12 +121,17 @@ describe("account session", () => {
 
   it("reads a cookie by exact name", () => {
     expect(
-      readCookie("one=1; oddkin_csrf=token-value; another=2", "oddkin_csrf"),
+      readCookie(
+        "one=1; crewstead_csrf=token-value; another=2",
+        "crewstead_csrf",
+      ),
     ).toBe("token-value");
-    expect(readCookie("oddkin_csrf=a%20value%3D", "oddkin_csrf")).toBe(
+    expect(readCookie("crewstead_csrf=a%20value%3D", "crewstead_csrf")).toBe(
       "a value=",
     );
-    expect(readCookie("oddkin_csrf_extra=wrong", "oddkin_csrf")).toBeNull();
+    expect(
+      readCookie("crewstead_csrf_extra=wrong", "crewstead_csrf"),
+    ).toBeNull();
   });
 
   it("creates an invitation with CSRF protection", async () => {

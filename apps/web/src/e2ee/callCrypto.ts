@@ -6,13 +6,13 @@ import {
   type Call,
   type DirectoryDevice,
   type createApiClient,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import {
   CryptoError,
   fromBase64Url,
   toBase64Url,
   type Crypto,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import type { Keyring } from "./keyring";
 import type { Vault } from "./vault";
 

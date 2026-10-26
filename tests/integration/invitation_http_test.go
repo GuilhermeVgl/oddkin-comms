@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/jobs"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -87,8 +87,8 @@ func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
 	}
 	request := func(method, path, body string) *http.Request {
 		req := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		if body != "" {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -103,9 +103,9 @@ func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
 		var session, csrf *http.Cookie
 		for _, cookie := range result.Result().Cookies() {
 			switch cookie.Name {
-			case "oddkin_session":
+			case "crewstead_session":
 				session = cookie
-			case "oddkin_csrf":
+			case "crewstead_csrf":
 				csrf = cookie
 			}
 		}
@@ -198,7 +198,7 @@ func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
 		t.Fatalf("cross-origin acceptance: status=%d", crossOriginAcceptResult.Code)
 	}
 	mailer := &recordingInvitationMailer{messages: make(chan resendmail.Message, 1)}
-	workers := jobs.NewWorkersWithInvitationEmail(pool, mailer, deliveryKey, "https://oddkin.example")
+	workers := jobs.NewWorkersWithInvitationEmail(pool, mailer, deliveryKey, "https://crewstead.example")
 	jobClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 1},
@@ -223,7 +223,7 @@ func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
 	}()
 	select {
 	case message := <-mailer.messages:
-		if message.To != "new-person@example.test" || message.Subject != "Convite ODDKIN" ||
+		if message.To != "new-person@example.test" || message.Subject != "Convite Crewstead" ||
 			!bytes.Contains([]byte(message.Text), []byte("#accept-invitation?")) ||
 			!bytes.Contains([]byte(message.Text), []byte(token)) {
 			t.Fatalf("unexpected invitation email: %+v", message)

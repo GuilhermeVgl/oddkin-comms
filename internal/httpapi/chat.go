@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -45,7 +45,7 @@ func (h *healthHandler) ListConversations(w http.ResponseWriter, r *http.Request
 	}
 	channels := make([]gen.Conversation, 0, len(rows))
 	for _, row := range rows {
-		channel := gen.Conversation{Id: fromPG(row.ID), Name: row.Name, Unread: row.Unread, Encrypted: row.Encrypted, ContentRevision: int(row.ContentRevision)}
+		channel := gen.Conversation{Id: fromPG(row.ID), Archived: &row.Archived, Name: row.Name, Unread: row.Unread, Encrypted: row.Encrypted, ContentRevision: int(row.ContentRevision)}
 		if row.Encrypted {
 			channel.NameEnc = blob(row.NameEnc)
 			if row.ContentAuthorID.Valid {
@@ -96,7 +96,7 @@ func resolveChatAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 	}
 	read := access.access.Can(work.ChatRead)
 	return conversation, chatAccess{
-		read: read, send: read && access.access.Can(work.ChatSend), manager: access.access.Manager, archived: access.archived,
+		read: read, send: read && access.access.Can(work.ChatSend), manager: access.access.Manager, archived: access.archived || conversation.Archived,
 	}, true
 }
 

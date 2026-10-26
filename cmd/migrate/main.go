@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/migration"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/migration"
 )
 
 func main() {

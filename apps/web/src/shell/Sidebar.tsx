@@ -1,4 +1,4 @@
-import type { CurrentAccount } from "@oddkin/api-client";
+import type { CurrentAccount } from "@crewstead/api-client";
 import { useRef, useState } from "react";
 import { Icon, Logo, type IconName } from "../design/icons";
 import { Menu } from "../design/Menu";
@@ -10,6 +10,9 @@ import { Duo, type DuoRef } from "../design/Sprite";
 import { toast } from "../design/toast";
 import { useInbox } from "../inbox";
 import { useWorkspace } from "../workspace";
+import { TeamLogo, useOrganization } from "../organization";
+import { useDuoVisible } from "../design/duoVisibility";
+import { APP_NAME } from "../brand";
 
 const SAYS = [
   "Pequenos passos. Grandes entregas.",
@@ -39,6 +42,8 @@ export function Sidebar({
 }) {
   const route = useRoute();
   const { projects, current, setCurrentProjectId } = useWorkspace();
+  const { branding } = useOrganization();
+  const showDuo = useDuoVisible();
   const { unread, channels } = useInbox();
   const dock = useRef<DuoRef>(null);
   const [menu, setMenu] = useState<{
@@ -78,13 +83,13 @@ export function Sidebar({
 
   return (
     <aside aria-label="Navegação principal" className="side">
-      <a aria-label="ODDKIN, início" className="brand" href="#/home">
+      <a aria-label={`${APP_NAME}, início`} className="brand" href="#/home">
         <Logo />
-        <span>Oddkin</span>
+        <span>{APP_NAME}</span>
       </a>
       <button className="orgbtn" onClick={toggle("org")} type="button">
-        <span className="tile">O</span>
-        <span className="nm">Oddkin Labs</span>
+        <TeamLogo />
+        <span className="nm">{branding.name || "Equipe"}</span>
         <Icon name="down" size="sm" />
       </button>
       <nav aria-label="Seções" className="nav">
@@ -103,7 +108,8 @@ export function Sidebar({
               onClick={() => {
                 go("work");
                 window.setTimeout(
-                  () => window.dispatchEvent(new Event("oddkin:new-project")),
+                  () =>
+                    window.dispatchEvent(new Event("crewstead:new-project")),
                   50,
                 );
               }}
@@ -156,24 +162,26 @@ export function Sidebar({
         ) : null}
       </nav>
       <div className="spacer" />
-      <button
-        aria-label="Falar com Capuz e Tela"
-        className="mascot-dock"
-        onClick={() => {
-          dock.current?.set("wave", 1600);
-          toast(
-            SAYS[Math.floor(Math.random() * SAYS.length)] ?? SAYS[0] ?? "",
-            {
-              mascot: Math.random() < 0.5 ? "tela" : "capuz",
-              pose: "wave",
-              ms: 2600,
-            },
-          );
-        }}
-        type="button"
-      >
-        <Duo gap={4} ref={dock} scale={2} />
-      </button>
+      {showDuo ? (
+        <button
+          aria-label="Falar com Capuz e Tela"
+          className="mascot-dock"
+          onClick={() => {
+            dock.current?.set("wave", 1600);
+            toast(
+              SAYS[Math.floor(Math.random() * SAYS.length)] ?? SAYS[0] ?? "",
+              {
+                mascot: Math.random() < 0.5 ? "tela" : "capuz",
+                pose: "wave",
+                ms: 2600,
+              },
+            );
+          }}
+          type="button"
+        >
+          <Duo gap={4} ref={dock} scale={2} />
+        </button>
+      ) : null}
       <button className="me" onClick={toggle("me")} type="button">
         <Avatar email={account.email} id={account.id} />
         <span className="nm">
@@ -187,7 +195,7 @@ export function Sidebar({
           <div className="mh">Organização</div>
           <button aria-current="true" role="menuitem" type="button">
             <Icon name="check" size="sm" />
-            Oddkin Labs
+            {branding.name || "Equipe"}
           </button>
           <div className="mh" style={{ fontWeight: 500, maxWidth: 220 }}>
             Uma organização por instalação, sem cadastro público.

@@ -4,7 +4,7 @@ import {
   logout,
   readCookie,
   type CurrentAccount,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { FinaleHost } from "./design/celebrate";
@@ -22,7 +22,9 @@ import {
   type PendingInvitation,
 } from "./screens/Auth";
 import { Workspace } from "./shell/Shell";
+import { OrganizationGate } from "./organization";
 import "./styles.css";
+import { APP_NAME } from "./brand";
 
 type SessionState =
   | { status: "checking" }
@@ -56,7 +58,7 @@ function readEntry(): Entry {
   return null;
 }
 
-const SKIP_KEY = "oddkin.gate.skipped";
+const SKIP_KEY = "crewstead.gate.skipped";
 
 function gateSkipped(accountId: string): boolean {
   try {
@@ -80,7 +82,7 @@ function Authenticated({
   const phase = e2ee?.phase ?? "unlocked";
 
   async function leave() {
-    const token = readCookie(document.cookie, "oddkin_csrf");
+    const token = readCookie(document.cookie, "crewstead_csrf");
     e2ee?.lock();
     if (token !== null) await logout(client, token).catch(() => undefined);
     onLogout();
@@ -111,7 +113,11 @@ function Authenticated({
       />
     );
   }
-  return <Workspace account={account} onLogout={onLogout} />;
+  return (
+    <OrganizationGate account={account}>
+      <Workspace account={account} onLogout={onLogout} />
+    </OrganizationGate>
+  );
 }
 
 function App() {
@@ -155,7 +161,7 @@ function App() {
     screen = <StatusScreen title="Preparando seu espaço…" />;
   } else if (session.status === "unavailable") {
     screen = (
-      <StatusScreen title="Não foi possível abrir o ODDKIN.">
+      <StatusScreen title={`Não foi possível abrir o ${APP_NAME}.`}>
         <p className="muted">
           Confira se os serviços estão ativos e recarregue a página.
         </p>
@@ -228,6 +234,10 @@ function App() {
 
 const root = document.getElementById("root");
 if (root === null) throw new Error("Root element is missing");
+document.title = `${APP_NAME} · Pequenos passos. Grandes entregas.`;
+document
+  .querySelector('meta[name="description"]')
+  ?.setAttribute("content", `${APP_NAME} — pequenos passos, grandes entregas.`);
 
 createRoot(root).render(
   <React.StrictMode>

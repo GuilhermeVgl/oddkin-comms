@@ -4,7 +4,7 @@ import {
   setFollowing,
   type WorkItem,
   type WorkItemComment,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Attachments } from "../Attachments";
 import { dueLabel, daysTo, fmtD } from "../design/format";

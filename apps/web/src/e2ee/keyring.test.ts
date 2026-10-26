@@ -1,11 +1,11 @@
-import { createApiClient, type KeyDomain } from "@oddkin/api-client";
+import { createApiClient, type KeyDomain } from "@crewstead/api-client";
 import {
   createCrypto,
   loadSodium,
   toBase64Url,
   type Crypto,
   type DeviceKeys,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Keyring, UntrustedDeviceError } from "./keyring";
 import type { Vault } from "./vault";

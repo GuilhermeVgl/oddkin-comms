@@ -67,7 +67,7 @@ FROM project AS p
 JOIN project_member AS pm ON pm.project_id = p.id
 JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
 LEFT JOIN external_project_policy AS ep ON ep.project_id = p.id
-WHERE pm.account_id = $1 AND NOT p.archived
+WHERE pm.account_id = sqlc.arg('account_id') AND (NOT p.archived OR sqlc.arg('include_archived')::boolean)
 ORDER BY p.created_at, p.id;
 
 -- name: UpdateProjectColor :exec
@@ -185,15 +185,33 @@ WHERE c.work_item_id = $1
 ORDER BY c.created_at, c.id;
 
 -- name: CreateConversation :one
-INSERT INTO conversation (project_id, name) VALUES ($1, $2)
+INSERT INTO conversation (project_id, name, position)
+VALUES ($1, $2, (SELECT COALESCE(max(position) + 1, 0) FROM conversation WHERE project_id = $1 AND kind = 'channel'))
 RETURNING *;
+
+-- name: CreateEncryptedConversation :one
+INSERT INTO conversation (id, project_id, name, encrypted, name_enc, content_revision, content_author_id, content_signer_device_id, position)
+VALUES ($1, $2, '', true, $3, 1, $4, $5, (SELECT COALESCE(max(position) + 1, 0) FROM conversation WHERE project_id = $2 AND kind = 'channel'))
+RETURNING *;
+
+-- name: SetConversationArchived :execrows
+UPDATE conversation SET archived = $2 WHERE id = $1 AND kind = 'channel';
+
+-- name: SetConversationPosition :exec
+UPDATE conversation SET position = $3 WHERE id = $1 AND project_id = $2 AND kind = 'channel';
+
+-- name: ListChannelIDs :many
+SELECT id FROM conversation WHERE project_id = $1 AND kind = 'channel' ORDER BY position, created_at, id;
+
+-- name: SetProjectArchived :exec
+UPDATE project SET archived = $2, version = version + 1 WHERE id = $1;
 
 -- name: ListConversations :many
 SELECT c.*, GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
 FROM conversation AS c
 LEFT JOIN conversation_read_cursor AS r ON r.conversation_id = c.id AND r.account_id = sqlc.arg('account_id')
 WHERE c.project_id = sqlc.arg('project_id') AND c.kind = 'channel'
-ORDER BY c.created_at, c.id;
+ORDER BY c.position, c.created_at, c.id;
 
 -- name: GetConversation :one
 SELECT *
@@ -461,8 +479,9 @@ WHERE organization_id = $1 AND state IN ('uploading', 'ready');
 
 -- name: CreateAttachment :one
 INSERT INTO attachment (id, organization_id, project_id, work_item_id, conversation_id, uploader_id, object_key, upload_id,
-                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                        name, encrypted, name_enc, content_author_id, content_signer_device_id, content_type, declared_size, part_size, part_count,
+                        body_encrypted, body_signer_device_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 RETURNING *;
 
 -- name: SetAttachmentUploadID :exec
@@ -478,7 +497,7 @@ SELECT * FROM attachment WHERE id = $1 FOR UPDATE;
 UPDATE attachment SET state = 'ready', stored_size = $2, ready_at = now() WHERE id = $1 AND state = 'uploading';
 
 -- name: MarkAttachmentReleased :exec
-UPDATE attachment SET state = $2, object_removed = false WHERE id = $1 AND state IN ('uploading', 'ready');
+UPDATE attachment SET state = $2, object_removed = false, released_at = now() WHERE id = $1 AND state IN ('uploading', 'ready');
 
 -- name: MarkAttachmentObjectRemoved :exec
 UPDATE attachment SET object_removed = true WHERE id = $1;
@@ -504,7 +523,8 @@ RETURNING id;
 
 -- name: ListPendingRelease :many
 SELECT * FROM attachment
-WHERE state IN ('aborted', 'deleted') AND NOT object_removed
+WHERE NOT object_removed
+  AND (state = 'aborted' OR (state = 'deleted' AND released_at < now() - interval '30 days'))
 ORDER BY created_at
 LIMIT 100;
 

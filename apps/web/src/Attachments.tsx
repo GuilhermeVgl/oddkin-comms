@@ -9,7 +9,7 @@ import {
   type Attachment,
   type UploadContext,
   type UploadNameEncryption,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { bytes } from "./design/format";
 import { Icon } from "./design/icons";
@@ -135,7 +135,7 @@ export function Attachments({
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    const csrf = readCookie(document.cookie, "oddkin_csrf");
+    const csrf = readCookie(document.cookie, "crewstead_csrf");
     if (file === undefined || csrf === null) return;
     if (file.size === 0 || file.size > MAX_BYTES) {
       notify("Escolha um arquivo de até 500 MB.");
@@ -197,7 +197,7 @@ export function Attachments({
   }
 
   async function remove(item: Attachment) {
-    const csrf = readCookie(document.cookie, "oddkin_csrf");
+    const csrf = readCookie(document.cookie, "crewstead_csrf");
     if (csrf === null) return;
     try {
       await deleteAttachment(client, csrf, item.id);

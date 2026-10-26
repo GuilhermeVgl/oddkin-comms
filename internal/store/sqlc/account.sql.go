@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*)::integer
+FROM organization_membership AS m
+JOIN account AS a ON a.id = m.account_id
+WHERE m.organization_id = $1 AND m.is_admin AND a.active
+`
+
+func (q *Queries) CountActiveAdmins(ctx context.Context, organizationID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveAdmins, organizationID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO account (email_normalized, password_hash)
 VALUES ($1, $2)
@@ -130,4 +144,91 @@ func (q *Queries) GetOrganizationMembershipForAccount(ctx context.Context, accou
 	var i GetOrganizationMembershipForAccountRow
 	err := row.Scan(&i.OrganizationID, &i.MembershipKind, &i.IsAdmin)
 	return i, err
+}
+
+const getOrganizationPerson = `-- name: GetOrganizationPerson :one
+SELECT a.id, a.active, m.membership_kind, m.is_admin
+FROM organization_membership AS m
+JOIN account AS a ON a.id = m.account_id
+WHERE m.organization_id = $1 AND a.id = $2
+`
+
+type GetOrganizationPersonParams struct {
+	OrganizationID pgtype.UUID
+	ID             pgtype.UUID
+}
+
+type GetOrganizationPersonRow struct {
+	ID             pgtype.UUID
+	Active         bool
+	MembershipKind string
+	IsAdmin        bool
+}
+
+func (q *Queries) GetOrganizationPerson(ctx context.Context, arg GetOrganizationPersonParams) (GetOrganizationPersonRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationPerson, arg.OrganizationID, arg.ID)
+	var i GetOrganizationPersonRow
+	err := row.Scan(
+		&i.ID,
+		&i.Active,
+		&i.MembershipKind,
+		&i.IsAdmin,
+	)
+	return i, err
+}
+
+const listOrganizationPeople = `-- name: ListOrganizationPeople :many
+SELECT a.id, a.email_normalized, a.active, m.membership_kind, m.is_admin
+FROM organization_membership AS m
+JOIN account AS a ON a.id = m.account_id
+WHERE m.organization_id = $1
+ORDER BY a.email_normalized
+`
+
+type ListOrganizationPeopleRow struct {
+	ID              pgtype.UUID
+	EmailNormalized string
+	Active          bool
+	MembershipKind  string
+	IsAdmin         bool
+}
+
+func (q *Queries) ListOrganizationPeople(ctx context.Context, organizationID pgtype.UUID) ([]ListOrganizationPeopleRow, error) {
+	rows, err := q.db.Query(ctx, listOrganizationPeople, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrganizationPeopleRow
+	for rows.Next() {
+		var i ListOrganizationPeopleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmailNormalized,
+			&i.Active,
+			&i.MembershipKind,
+			&i.IsAdmin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setAccountActive = `-- name: SetAccountActive :exec
+UPDATE account SET active = $2 WHERE id = $1
+`
+
+type SetAccountActiveParams struct {
+	ID     pgtype.UUID
+	Active bool
+}
+
+func (q *Queries) SetAccountActive(ctx context.Context, arg SetAccountActiveParams) error {
+	_, err := q.db.Exec(ctx, setAccountActive, arg.ID, arg.Active)
+	return err
 }

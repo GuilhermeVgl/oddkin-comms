@@ -1,4 +1,4 @@
-# CLAUDE.md — ODDKIN
+# CLAUDE.md — Crewstead
 
 Este arquivo orienta Claude e outros agentes que implementam ou revisam este repositório. Aplique estas regras ao código que você criar. Trabalhe em incrementos pequenos e verificáveis; não trate código que compila como funcionalidade concluída.
 

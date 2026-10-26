@@ -1,7 +1,7 @@
 import {
   openDirectConversation,
   type CurrentAccount,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../design/icons";
 import { nameOf } from "../design/people";
@@ -13,7 +13,8 @@ import { toast } from "../design/toast";
 import { csrfToken } from "../errors";
 import { useInbox } from "../inbox";
 import { Page } from "../shell/Page";
-import { can, useWorkspace } from "../workspace";
+import { can, useWorkspace, type ProjectState } from "../workspace";
+import { ChannelsDialog } from "./ChannelsDialog";
 import { Thread, type ThreadTarget } from "./Thread";
 
 const last = createStore({ id: "" });
@@ -30,6 +31,7 @@ export function Chat({
   const { channels, dms, contacts, reloadChat } = useInbox();
   const remembered = last.use().id;
   const [narrow, setNarrow] = useState(window.innerWidth <= 900);
+  const [managing, setManaging] = useState<string | null>(null);
 
   useEffect(() => {
     const resize = () => setNarrow(window.innerWidth <= 900);
@@ -76,7 +78,7 @@ export function Chat({
         members: state.members,
         crypto: state.crypto,
         moderator: state.project.isManager,
-        canSend: can(state, "chat.send"),
+        canSend: can(state, "chat.send") && !channel.archived,
         canCall: can(state, "calls.start"),
         canReact: can(state, "chat.send"),
         canUpload: can(state, "files.upload"),
@@ -167,12 +169,24 @@ export function Chat({
           <nav aria-label="Conversas" className="clist">
             {groups.map((group) => (
               <div key={group.state.project.id}>
-                <h4>{group.state.project.name}</h4>
+                <h4 className="row">
+                  <span className="grow">{group.state.project.name}</span>
+                  {group.state.project.isManager ? (
+                    <button
+                      aria-label={`Gerenciar canais de ${group.state.project.name}`}
+                      className="iconbtn"
+                      onClick={() => setManaging(group.state.project.id)}
+                      type="button"
+                    >
+                      <Icon name="gear" size="sm" />
+                    </button>
+                  ) : null}
+                </h4>
                 {group.items.map((entry) =>
                   item(
                     entry.id,
                     <Icon name="hash" size="sm" />,
-                    entry.name,
+                    entry.archived ? `${entry.name} (arquivado)` : entry.name,
                     entry.unread,
                     () => go(`chat/${entry.id}`),
                   ),
@@ -223,6 +237,17 @@ export function Chat({
           )}
         </div>
       )}
+      {managing !== null &&
+      projects?.find((entry) => entry.project.id === managing) ? (
+        <ChannelsDialog
+          onClose={() => setManaging(null)}
+          state={
+            projects.find(
+              (entry) => entry.project.id === managing,
+            ) as ProjectState
+          }
+        />
+      ) : null}
     </Page>
   );
 }

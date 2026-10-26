@@ -2,7 +2,7 @@ import {
   declineCall,
   listCallInvitations,
   type CallInvitation,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, {
   createContext,
   useCallback,
