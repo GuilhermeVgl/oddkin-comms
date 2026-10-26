@@ -53,21 +53,13 @@ func (h *apiServer) PutAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	if _, err = q.UpsertAvatar(ctx, sqlc.UpsertAvatarParams{AccountID: session.AccountID, ContentType: contentType, Data: data}); err == nil {
-		err = announceAvatar(ctx, q, session.AccountID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.UpsertAvatar(ctx, sqlc.UpsertAvatarParams{AccountID: session.AccountID, ContentType: contentType, Data: data}); err != nil {
+			return err
+		}
+		return announceAvatar(ctx, q, session.AccountID)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -80,21 +72,13 @@ func (h *apiServer) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	if _, err = q.DeleteAvatar(ctx, session.AccountID); err == nil {
-		err = announceAvatar(ctx, q, session.AccountID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.DeleteAvatar(ctx, session.AccountID); err != nil {
+			return err
+		}
+		return announceAvatar(ctx, q, session.AccountID)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

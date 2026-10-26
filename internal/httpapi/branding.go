@@ -69,7 +69,7 @@ func (h *apiServer) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Re
 		ID: membership.OrganizationID, LogoChanged: changed, LogoData: logo,
 		LogoMime: pgtype.Text{String: mimeType, Valid: mimeType != ""},
 	}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	row, err := q.GetOrganizationBranding(ctx)
