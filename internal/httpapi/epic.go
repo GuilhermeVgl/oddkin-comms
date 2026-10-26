@@ -97,55 +97,64 @@ func (h *apiServer) CreateEpic(w http.ResponseWriter, r *http.Request, projectId
 		err  error
 	)
 	if encrypted {
-		id := toPG(*payload.Id)
-		writer, fail, prepErr := prepareEncrypted(ctx, q, session.AccountID, pgUUID(projectId), "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
-		if prepErr == nil && fail == nil {
-			if fail = writer.verify(session.AccountID, epicResource(id, "title"), 1, *payload.TitleEnc); fail == nil {
-				fail = writer.verify(session.AccountID, epicResource(id, "desc"), 1, *payload.DescriptionEnc)
-			}
-		}
-		if prepErr != nil {
-			serverError(w, r, prepErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		titleEnc, _ := unb64(*payload.TitleEnc, 0)
-		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
-		epic, err = q.CreateEncryptedEpic(ctx, sqlc.CreateEncryptedEpicParams{
-			ID: id, ProjectID: pgUUID(projectId), CreatedBy: session.AccountID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
-		})
+		epic, err = insertEncryptedEpic(ctx, w, q, session.AccountID, pgUUID(projectId), payload)
 	} else {
-		fail, planErr := requirePlaintextAllowed(ctx, q, pgUUID(projectId), "work")
-		if planErr != nil {
-			serverError(w, r, planErr)
-			return
-		}
-		if fail != nil {
-			fail.write(w)
-			return
-		}
-		description := ""
-		if payload.Description != nil {
-			description = *payload.Description
-		}
-		epic, err = q.CreateEpic(ctx, sqlc.CreateEpicParams{ProjectID: pgUUID(projectId), Title: *payload.Title, Description: description, CreatedBy: session.AccountID})
+		epic, err = insertPlainEpic(ctx, w, q, session.AccountID, pgUUID(projectId), payload)
 	}
-	if isUniqueViolation(err) {
+	switch {
+	case errors.Is(err, errResponded):
+	case isUniqueViolation(err):
 		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if isConstraintViolation(err) {
+	case isConstraintViolation(err):
 		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err != nil {
+	case err != nil:
 		serverError(w, r, err)
-		return
+	default:
+		writeJSON(w, http.StatusCreated, toEpic(epic))
 	}
-	writeJSON(w, http.StatusCreated, toEpic(epic))
+}
+
+// insertEncryptedEpic stores an epic whose title and description arrive as
+// envelopes signed by the author's device. A refusal is written to w and
+// reported as errResponded.
+func insertEncryptedEpic(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account, projectID pgtype.UUID, payload gen.CreateEpicRequest) (sqlc.Epic, error) {
+	id := toPG(*payload.Id)
+	writer, fail, err := prepareEncrypted(ctx, q, account, projectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+	if err != nil {
+		return sqlc.Epic{}, err
+	}
+	if fail == nil {
+		if fail = writer.verify(account, epicResource(id, "title"), 1, *payload.TitleEnc); fail == nil {
+			fail = writer.verify(account, epicResource(id, "desc"), 1, *payload.DescriptionEnc)
+		}
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.Epic{}, errResponded
+	}
+	titleEnc, _ := unb64(*payload.TitleEnc, 0)
+	descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+	return q.CreateEncryptedEpic(ctx, sqlc.CreateEncryptedEpicParams{
+		ID: id, ProjectID: projectID, CreatedBy: account, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentSignerDeviceID: writer.signer.ID,
+	})
+}
+
+// insertPlainEpic stores an epic in the clear, which only a project that has
+// not started encrypting its work may still do.
+func insertPlainEpic(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account, projectID pgtype.UUID, payload gen.CreateEpicRequest) (sqlc.Epic, error) {
+	fail, err := requirePlaintextAllowed(ctx, q, projectID, "work")
+	if err != nil {
+		return sqlc.Epic{}, err
+	}
+	if fail != nil {
+		fail.write(w)
+		return sqlc.Epic{}, errResponded
+	}
+	description := ""
+	if payload.Description != nil {
+		description = *payload.Description
+	}
+	return q.CreateEpic(ctx, sqlc.CreateEpicParams{ProjectID: projectID, Title: *payload.Title, Description: description, CreatedBy: account})
 }
 
 func (h *apiServer) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID) {
@@ -165,66 +174,95 @@ func (h *apiServer) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId op
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	epic, err := q.GetEpicForUpdate(ctx, toPG(epicId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	access, ok := loadAccess(ctx, w, q, epic.ProjectID, session.AccountID)
-	if !ok {
-		return
-	}
-	if !access.access.Can(work.WorkRead) || !access.access.Can(work.PlanningEdit) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if access.archived || int32(payload.Version) != epic.Version {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	var writer *encContext
-	if encContent {
-		var fail *encFailure
-		revision := int32(*payload.ContentRevision)
-		writer, fail, err = prepareEncrypted(ctx, q, session.AccountID, epic.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
-		if err == nil && fail == nil && revision != epic.ContentRevision+1 {
-			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
-		}
-		if err == nil && fail == nil {
-			if fail = writer.verify(session.AccountID, epicResource(epic.ID, "title"), revision, *payload.TitleEnc); fail == nil {
-				fail = writer.verify(session.AccountID, epicResource(epic.ID, "desc"), revision, *payload.DescriptionEnc)
-			}
+	var updated sqlc.Epic
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		epic, err := q.GetEpicForUpdate(ctx, toPG(epicId))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
 		}
 		if err != nil {
-			serverError(w, r, err)
-			return
+			return err
+		}
+		access, ok := loadAccess(ctx, w, q, epic.ProjectID, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if !access.access.Can(work.WorkRead) || !access.access.Can(work.PlanningEdit) {
+			return statusError(http.StatusForbidden)
+		}
+		if access.archived || int32(payload.Version) != epic.Version {
+			return statusError(http.StatusConflict)
+		}
+		writer, err := checkEpicContentWrite(ctx, w, q, session.AccountID, epic, payload)
+		if err != nil {
+			return err
+		}
+		params, err := epicUpdateParams(ctx, q, epic, payload)
+		if err != nil {
+			return err
+		}
+		updated, err = q.UpdateEpic(ctx, params)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return statusError(http.StatusConflict)
+		case isConstraintViolation(err):
+			return statusError(http.StatusBadRequest)
+		case err != nil:
+			return err
+		}
+		if encContent {
+			updated, err = storeEpicContent(ctx, q, session.AccountID, epic.ID, writer, payload)
+		}
+		return err
+	})
+	if respondError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, toEpic(updated))
+}
+
+// checkEpicContentWrite validates the content part of an epic update: an
+// encrypted write must be signed, carry the next revision and use a usable
+// domain; a plain-text edit is refused once the project encrypts its work. It
+// returns the validated writer for an encrypted write and nil otherwise. A
+// refusal is written to w and reported as errResponded.
+func checkEpicContentWrite(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, epic sqlc.Epic, payload gen.UpdateEpicRequest) (*encContext, error) {
+	if payload.TitleEnc != nil || payload.DescriptionEnc != nil {
+		revision := int32(*payload.ContentRevision)
+		writer, fail, err := prepareEncrypted(ctx, q, account, epic.ProjectID, "work", optionalUUIDValue(toPG(*payload.SignerDeviceId)))
+		if err != nil {
+			return nil, err
+		}
+		if fail == nil && revision != epic.ContentRevision+1 {
+			fail = &encFailure{http.StatusConflict, gen.ApiErrorCodeBadRevision}
+		}
+		if fail == nil {
+			if fail = writer.verify(account, epicResource(epic.ID, "title"), revision, *payload.TitleEnc); fail == nil {
+				fail = writer.verify(account, epicResource(epic.ID, "desc"), revision, *payload.DescriptionEnc)
+			}
 		}
 		if fail != nil {
 			fail.write(w)
-			return
+			return nil, errResponded
 		}
-	} else if payload.Title != nil || payload.Description != nil {
-		fail, planErr := requirePlaintextAllowed(ctx, q, epic.ProjectID, "work")
-		if planErr != nil {
-			serverError(w, r, planErr)
-			return
+		return writer, nil
+	}
+	if payload.Title != nil || payload.Description != nil {
+		fail, err := requirePlaintextAllowed(ctx, q, epic.ProjectID, "work")
+		if err != nil {
+			return nil, err
 		}
 		if fail != nil {
 			fail.write(w)
-			return
+			return nil, errResponded
 		}
 	}
+	return nil, nil
+}
+
+// epicUpdateParams builds the optimistic update. An epic cannot be marked done
+// while it still has open tasks.
+func epicUpdateParams(ctx context.Context, q *sqlc.Queries, epic sqlc.Epic, payload gen.UpdateEpicRequest) (sqlc.UpdateEpicParams, error) {
 	params := sqlc.UpdateEpicParams{ID: epic.ID, Version: epic.Version}
 	if payload.Title != nil {
 		params.Title = pgtype.Text{String: *payload.Title, Valid: true}
@@ -234,54 +272,32 @@ func (h *apiServer) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId op
 	}
 	if payload.Done != nil {
 		if *payload.Done && !epic.Done {
-			open, countErr := q.CountOpenEpicTasks(ctx, epic.ID)
-			if countErr != nil {
-				serverError(w, r, countErr)
-				return
+			open, err := q.CountOpenEpicTasks(ctx, epic.ID)
+			if err != nil {
+				return params, err
 			}
 			if open > 0 {
-				w.WriteHeader(http.StatusConflict)
-				return
+				return params, statusError(http.StatusConflict)
 			}
 		}
 		params.Done = pgtype.Bool{Bool: *payload.Done, Valid: true}
 	}
-	updated, err := q.UpdateEpic(ctx, params)
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if isConstraintViolation(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	return params, nil
+}
+
+// storeEpicContent saves the new envelopes and returns the epic as stored.
+func storeEpicContent(ctx context.Context, q *sqlc.Queries, account, epicID pgtype.UUID, writer *encContext, payload gen.UpdateEpicRequest) (sqlc.Epic, error) {
+	titleEnc, _ := unb64(*payload.TitleEnc, 0)
+	descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
+	changed, err := q.SetEpicContent(ctx, sqlc.SetEpicContentParams{
+		ID: epicID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
+		ContentAuthorID: account, ContentSignerDeviceID: writer.signer.ID,
+	})
 	if err != nil {
-		serverError(w, r, err)
-		return
+		return sqlc.Epic{}, err
 	}
-	if err == nil && encContent {
-		titleEnc, _ := unb64(*payload.TitleEnc, 0)
-		descriptionEnc, _ := unb64(*payload.DescriptionEnc, 0)
-		var changed int64
-		changed, err = q.SetEpicContent(ctx, sqlc.SetEpicContentParams{
-			ID: epic.ID, TitleEnc: titleEnc, DescriptionEnc: descriptionEnc, ContentRevision: int32(*payload.ContentRevision),
-			ContentAuthorID: session.AccountID, ContentSignerDeviceID: writer.signer.ID,
-		})
-		if err == nil && changed == 0 {
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if err == nil {
-			updated, err = q.GetEpic(ctx, epic.ID)
-		}
+	if changed == 0 {
+		return sqlc.Epic{}, statusError(http.StatusConflict)
 	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	writeJSON(w, http.StatusOK, toEpic(updated))
+	return q.GetEpic(ctx, epicID)
 }
