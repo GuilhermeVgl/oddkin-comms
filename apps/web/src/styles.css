@@ -13,6 +13,13 @@
 @import "./styles/photo.css";
 @import "./styles/login.css";
 @import "./styles/palette.css";
+@import "./styles/ui-drawer.css";
+@import "./styles/ui-thread.css";
+@import "./styles/ui-call.css";
+@import "./styles/ui-auth.css";
+@import "./styles/ui-settings.css";
+@import "./styles/ui-team.css";
+@import "./styles/ui-work.css";
 @import "./styles/responsive.css";
 
 .setup-screen {
