@@ -1,1 +1,38 @@
 /* Classes for auth, replacing inline styles. */
+.login-art .brand {
+  padding: 0;
+  color: var(--papel);
+}
+.login-art .pdlg {
+  margin-bottom: 18px;
+  max-width: 320px;
+}
+.login-art .stage-px.start {
+  justify-content: flex-start;
+}
+.login-art .stage-px.rise {
+  animation: rise 600ms var(--ease);
+}
+
+.login-form .login-lead {
+  margin-top: 6px;
+}
+.login-form .login-lead.loose {
+  margin-top: 8px;
+}
+.login-form .row.between {
+  justify-content: space-between;
+}
+
+/* A fingerprint card: the grid on the left, the text on the right. */
+.fpcard {
+  gap: 18px;
+  align-items: flex-start;
+}
+.fpcard .fpgrid {
+  width: 88px;
+  flex: none;
+}
+.fpgrid i.dim {
+  opacity: 0.12;
+}

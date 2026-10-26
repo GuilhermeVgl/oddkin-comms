@@ -1,1 +1,86 @@
 /* Classes for call, replacing inline styles. */
+.stage .brand {
+  padding: 0;
+  color: var(--papel);
+}
+.stage .iconbtn,
+.stage .btn.ghost {
+  color: var(--papel);
+}
+.stage .call-dim {
+  color: #b5bcaf;
+}
+.stage .call-subtitle {
+  margin-top: 6px;
+}
+.stage .call-heading {
+  font-size: 28px;
+  font-weight: 760;
+}
+.stage .call-heading.tight {
+  letter-spacing: -0.02em;
+}
+.stage .call-error {
+  align-items: center;
+  text-align: center;
+}
+.stage .prejoin.single {
+  grid-template-columns: 1fr;
+}
+
+/* Videos that fill their box: the participant tiles and the camera preview. */
+.stage .fill-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.stage .fill-video.contain {
+  object-fit: contain;
+}
+.stage .fill-video.is-off {
+  display: none;
+}
+.stage .tile-avatar,
+.stage .cam-sprite {
+  position: relative;
+}
+.stage .cam-off-label {
+  position: absolute;
+  bottom: 14px;
+  font-size: 18px;
+}
+.stage .prejoin-controls {
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.stage .tag.count {
+  background: #1d221e;
+  color: #d3d8cf;
+}
+.stage .cbtn.end.everyone {
+  background: #3a1f19;
+  border-color: #5a2f25;
+  color: #ffb8a6;
+}
+
+/* Attachments list (Attachments.tsx). */
+.attach-head {
+  margin-bottom: 8px;
+}
+.file.attach-row {
+  margin: 0 0 6px;
+  max-width: none;
+}
+.file.attach-progress {
+  margin: 6px 0 0;
+}
+.attach-row .attach-body {
+  min-width: 0;
+}
+.attach-progress .attach-body {
+  gap: 4px;
+}
