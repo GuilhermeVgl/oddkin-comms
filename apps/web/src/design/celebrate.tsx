@@ -3,6 +3,7 @@ import { Duo, type DuoRef } from "./Sprite";
 import { blip } from "./sound";
 import { burst } from "./sprites";
 import { toast } from "./toast";
+import { getDuoVisible, useDuoVisible } from "./duoVisibility";
 
 const LINES = [
   "Bom trabalho, dupla.",
@@ -27,8 +28,9 @@ export function celebrate(anchor: Element | null, big = false) {
   blip("win");
   if (!big) {
     toast(LINES[Math.floor(Math.random() * LINES.length)] ?? LINES[0] ?? "", {
-      mascot: "capuz",
-      pose: "cheer",
+      ...(getDuoVisible()
+        ? { mascot: "capuz" as const, pose: "cheer" as const }
+        : { icon: "check" as const }),
       ms: 2600,
     });
   }
@@ -50,6 +52,7 @@ export function showFinale(value: Finale) {
 }
 
 export function FinaleHost() {
+  const showDuo = useDuoVisible();
   const current = useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
@@ -94,16 +97,18 @@ export function FinaleHost() {
           {name}
         </div>
         <h2>Sprint encerrada</h2>
-        <div
-          className="stage-px"
-          style={{ display: "flex", gap: 20, alignItems: "flex-end" }}
-        >
-          <Duo gap={10} pose="cheer" ref={duo} scale={6} />
-        </div>
+        {showDuo ? (
+          <div
+            className="stage-px"
+            style={{ display: "flex", gap: 20, alignItems: "flex-end" }}
+          >
+            <Duo gap={10} pose="cheer" ref={duo} scale={6} />
+          </div>
+        ) : null}
         <div className="pdlg" style={{ fontSize: 20 }}>
           {delivered} {delivered === 1 ? "entrega" : "entregas"}. {carried}{" "}
           {carried === 1 ? "pendência seguiu" : "pendências seguiram"} com
-          destino. <b>Bom trabalho, dupla.</b>
+          destino. <b>Bom trabalho.</b>
         </div>
         <button
           className="btn accent lg"

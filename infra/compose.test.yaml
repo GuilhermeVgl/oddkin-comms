@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
     environment:
-      POSTGRES_USER: oddkin_test
+      POSTGRES_USER: crewstead_test
       POSTGRES_PASSWORD: synthetic_test_password
-      POSTGRES_DB: oddkin_test
+      POSTGRES_DB: crewstead_test
     ports:
       - "127.0.0.1::5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oddkin_test -d oddkin_test"]
+      test: ["CMD-SHELL", "pg_isready -U crewstead_test -d crewstead_test"]
       interval: 1s
       timeout: 2s
       retries: 20

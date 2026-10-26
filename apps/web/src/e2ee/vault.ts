@@ -5,7 +5,7 @@ import {
   type DeviceKeys,
   type WrappedSecret,
   createKeystore,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import type { KeyValueStore } from "./storage";
 
 type Keystore = ReturnType<typeof createKeystore>;
@@ -168,7 +168,7 @@ export class Vault {
     // Wrapped material only: useless without the passphrase.
     return JSON.stringify(
       {
-        format: "oddkin-recovery-backup",
+        format: "crewstead-recovery-backup",
         version: 1,
         root: record.root,
         recovery: record.recovery,

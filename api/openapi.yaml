@@ -1,9 +1,68 @@
 openapi: 3.0.3
 info:
-  title: ODDKIN API
+  title: CREWSTEAD API
   version: 0.1.0
   description: Operational and account session endpoints.
 paths:
+  /api/v1/organization/branding:
+    get:
+      operationId: getOrganizationBranding
+      summary: Team identity for signed-in members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Team identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationBranding"
+        "401":
+          description: No active session
+    patch:
+      operationId: updateOrganizationBranding
+      summary: Configure the team identity (administrator)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationBrandingRequest"
+      responses:
+        "200":
+          description: Updated team identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationBranding"
+        "400":
+          description: Invalid name or image
+        "401":
+          description: No active session
+        "403":
+          description: Not an administrator or invalid CSRF token
+  /api/v1/organization/logo:
+    get:
+      operationId: getOrganizationLogo
+      summary: Team logo for signed-in members
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        "401":
+          description: No active session
+        "404":
+          description: No logo configured
   /api/v1/invitations:
     post:
       operationId: createInvitation
@@ -2716,8 +2775,27 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: oddkin_session
+      name: crewstead_session
   schemas:
+    OrganizationBranding:
+      type: object
+      required: [name, hasLogo, showDuo]
+      additionalProperties: false
+      properties:
+        name: { type: string, description: Empty until initial team setup }
+        hasLogo: { type: boolean }
+        showDuo: { type: boolean }
+    UpdateOrganizationBrandingRequest:
+      type: object
+      required: [name, showDuo]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        showDuo: { type: boolean }
+        logoBase64:
+          { type: string, description: Optional base64 image, at most 1 MiB }
+        logoMime: { type: string, enum: [image/png, image/jpeg, image/webp] }
+        removeLogo: { type: boolean }
     AcceptInvitationRequest:
       type: object
       required: [token, email]

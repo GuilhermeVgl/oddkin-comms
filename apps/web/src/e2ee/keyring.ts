@@ -5,7 +5,7 @@ import {
   toBase64Url,
   type Crypto,
   type DirectoryRecord,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import {
   createKeyDomain,
   getDeviceRecord,
@@ -23,7 +23,7 @@ import {
   type EnvelopeInput,
   type KeyDomain,
   type RecoveryGap,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import type { Vault } from "./vault";
 
 type Client = ReturnType<typeof createApiClient>;

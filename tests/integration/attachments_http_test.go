@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/jobs"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -75,8 +75,8 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 	}
 	login := func(h http.Handler, email string) *workClient {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct attachment password"}`))
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		req.Header.Set("Content-Type", "application/json")
 		result := httptest.NewRecorder()
 		h.ServeHTTP(result, req)
@@ -85,10 +85,10 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 		}
 		c := &workClient{t: t, handler: h}
 		for _, cookie := range result.Result().Cookies() {
-			if cookie.Name == "oddkin_session" {
+			if cookie.Name == "crewstead_session" {
 				c.session = cookie
 			}
-			if cookie.Name == "oddkin_csrf" {
+			if cookie.Name == "crewstead_csrf" {
 				c.csrf = cookie
 			}
 		}

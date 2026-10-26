@@ -4,7 +4,7 @@ import {
   updateBoardColumn,
   updateEpic,
   type BoardColumn,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useState } from "react";
 import { Icon } from "../design/icons";
 import { Menu } from "../design/Menu";

@@ -1,4 +1,4 @@
-.PHONY: doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web  build-migrate  build-email-smoke 
+.PHONY: doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web build-migrate build-email-smoke setup start
 
 COMMIT_BASE ?=
 COMMIT_HEAD ?=
@@ -110,3 +110,9 @@ gate: doctor check-generated fmt-check lint test-unit test-integration test-e2e 
 	@if [ -n "$(COMMIT_BASE)" ] || [ -n "$(COMMIT_HEAD)" ] || [ -n "$(COMMIT_MSG_FILE)" ]; then \
 		$(MAKE) commit-check COMMIT_BASE="$(COMMIT_BASE)" COMMIT_HEAD="$(COMMIT_HEAD)" COMMIT_MSG_FILE="$(COMMIT_MSG_FILE)"; \
 	fi
+
+setup:
+	node scripts/setup.mjs
+
+start: setup
+	docker compose up -d

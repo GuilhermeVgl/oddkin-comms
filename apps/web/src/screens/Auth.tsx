@@ -6,7 +6,7 @@ import {
   login,
   requestPasswordReset,
   type CurrentAccount,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, Logo } from "../design/icons";
 import { Modal } from "../design/Modal";
@@ -15,6 +15,8 @@ import { Banner } from "../design/primitives";
 import { Duo, Sprite, type DuoRef } from "../design/Sprite";
 import { blip } from "../design/sound";
 import { toast } from "../design/toast";
+import { APP_NAME } from "../brand";
+import { useDuoVisible } from "../design/duoVisibility";
 import { useE2EE } from "../e2ee/E2EE";
 
 const MIN_PASSWORD = 12;
@@ -44,12 +46,14 @@ function Typewriter({ text, speed = 28 }: { text: string; speed?: number }) {
 const LINES = [
   "Pequenos passos. Grandes entregas.",
   "Criar. Testar. Repetir.",
-  "Bem-vinda(o) de volta, dupla.",
+  "Bem-vinda(o) de volta.",
 ];
 
 function LoginArt({ duo }: { duo: React.RefObject<DuoRef | null> }) {
+  const showDuo = useDuoVisible();
   const [line, setLine] = useState(0);
   useEffect(() => {
+    if (!showDuo) return;
     const timer = window.setInterval(() => {
       setLine((value) => {
         const next = (value + 1) % LINES.length;
@@ -58,27 +62,31 @@ function LoginArt({ duo }: { duo: React.RefObject<DuoRef | null> }) {
       });
     }, 3800);
     return () => window.clearInterval(timer);
-  }, [duo]);
+  }, [duo, showDuo]);
   return (
     <section aria-hidden="false" className="login-art">
       <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
         <Logo />
-        <span>Oddkin</span>
+        <span>{APP_NAME}</span>
       </div>
-      <div>
-        <div className="pdlg" style={{ marginBottom: 18, maxWidth: 320 }}>
-          <span id="lt">
-            <Typewriter text={LINES[line] ?? ""} />
-          </span>
+      {showDuo ? (
+        <div>
+          <div className="pdlg" style={{ marginBottom: 18, maxWidth: 320 }}>
+            <span id="lt">
+              <Typewriter text={LINES[line] ?? ""} />
+            </span>
+          </div>
+          <div
+            className="stage-px"
+            style={{
+              animation: isReduced() ? "none" : "rise 600ms var(--ease)",
+            }}
+          >
+            <div className="floor" />
+            <Duo gap={24} pose="idle" ref={duo} scale={6} />
+          </div>
         </div>
-        <div
-          className="stage-px"
-          style={{ animation: isReduced() ? "none" : "rise 600ms var(--ease)" }}
-        >
-          <div className="floor" />
-          <Duo gap={24} pose="idle" ref={duo} scale={6} />
-        </div>
-      </div>
+      ) : null}
       <h2>
         Pequenos passos.
         <br />
@@ -289,7 +297,10 @@ export function LoginScreen({
       onLogin(account);
     } catch {
       duo.current?.set("oops", 1200);
-      setError({ kind: "err", text: "Não foi possível conectar ao ODDKIN." });
+      setError({
+        kind: "err",
+        text: `Não foi possível conectar ao ${APP_NAME}.`,
+      });
     } finally {
       setBusy(false);
       duo.current?.set("idle");
@@ -460,7 +471,7 @@ export function InvitationScreen({
         <section className="login-art">
           <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
             <Logo />
-            <span>Oddkin</span>
+            <span>{APP_NAME}</span>
           </div>
           <div>
             <div className="pdlg" style={{ marginBottom: 18, maxWidth: 320 }}>
@@ -584,7 +595,7 @@ export function ResetPasswordScreen({
         <section className="login-art">
           <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
             <Logo />
-            <span>Oddkin</span>
+            <span>{APP_NAME}</span>
           </div>
           <div className="stage-px" style={{ justifyContent: "flex-start" }}>
             <div className="floor" />
@@ -666,7 +677,7 @@ export function StatusScreen({
         <section className="login-art">
           <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
             <Logo />
-            <span>Oddkin</span>
+            <span>{APP_NAME}</span>
           </div>
           <div className="stage-px" style={{ justifyContent: "flex-start" }}>
             <div className="floor" />
@@ -822,7 +833,7 @@ export function DeviceGate({
         <section className="login-art">
           <div className="brand" style={{ padding: 0, color: "var(--papel)" }}>
             <Logo />
-            <span>Oddkin</span>
+            <span>{APP_NAME}</span>
           </div>
           <div className="stage-px" style={{ justifyContent: "flex-start" }}>
             <div className="floor" />

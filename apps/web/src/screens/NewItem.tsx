@@ -1,4 +1,4 @@
-import type { WorkItem } from "@oddkin/api-client";
+import type { WorkItem } from "@crewstead/api-client";
 import { useMemo, useState } from "react";
 import { addDays, todayIso } from "../design/format";
 import { Icon } from "../design/icons";

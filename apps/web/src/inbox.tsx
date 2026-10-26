@@ -8,7 +8,7 @@ import {
   type DirectContact,
   type DirectConversation,
   type Notification,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, {
   createContext,
   useCallback,

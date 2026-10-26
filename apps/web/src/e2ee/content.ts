@@ -22,7 +22,7 @@ import {
   type Message,
   type WorkItem,
   type WorkItemComment,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import type { DomainKind } from "./keyring";
 import { resources, type ProjectCrypto } from "./projectCrypto";
 

@@ -1,18 +1,18 @@
 #!/bin/sh
 set -eu
 
-project="oddkin-local-check-$$"
-export ODDKIN_ADMIN_EMAIL="admin@compose.test"
-export ODDKIN_ADMIN_PASSWORD="synthetic-compose-password"
-export ODDKIN_TIMEZONE="UTC"
+project="crewstead-local-check-$$"
+export CREWSTEAD_ADMIN_EMAIL="admin@compose.test"
+export CREWSTEAD_ADMIN_PASSWORD="synthetic-compose-password"
+export CREWSTEAD_TIMEZONE="UTC"
 cleanup() {
-  ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" down --volumes
+  CREWSTEAD_WEB_BIND='127.0.0.1:' docker compose -p "$project" down --volumes
 }
 trap cleanup EXIT HUP INT TERM
 
-ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" config -q
-ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" up -d --wait --build
-address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port web 5173)
+CREWSTEAD_WEB_BIND='127.0.0.1:' docker compose -p "$project" config -q
+CREWSTEAD_WEB_BIND='127.0.0.1:' docker compose -p "$project" up -d --wait --build
+address=$(CREWSTEAD_WEB_BIND='127.0.0.1:' docker compose -p "$project" port web 5173)
 port=${address##*:}
 if [ -z "$port" ]; then
   echo "Web port was not published" >&2
@@ -20,7 +20,7 @@ if [ -z "$port" ]; then
 fi
 page=$(curl --fail --silent --show-error "http://127.0.0.1:$port/")
 case "$page" in
-  *'<title>ODDKIN · Pequenos passos. Grandes entregas.</title>'*) ;;
+  *'<title>Crewstead · Pequenos passos. Grandes entregas.</title>'*) ;;
   *) echo "Compose did not serve the web app" >&2; exit 1 ;;
 esac
 code=$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$port/api/v1/health/ready")
@@ -48,7 +48,7 @@ if [ "$account_code" != 200 ]; then
   echo "Compose authenticated account returned $account_code" >&2
   exit 1
 fi
-csrf_token=$(awk '$6 == "oddkin_csrf" { print $7 }' "$cookie_jar")
+csrf_token=$(awk '$6 == "crewstead_csrf" { print $7 }' "$cookie_jar")
 invite_code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --cookie "$cookie_jar" \
   --header "Content-Type: application/json" \
@@ -61,7 +61,7 @@ if [ "$invite_code" != 201 ]; then
   echo "Compose invitation returned $invite_code" >&2
   exit 1
 fi
-storage_address=$(ODDKIN_WEB_BIND='127.0.0.1:' docker compose -p "$project" port storage 9000)
+storage_address=$(CREWSTEAD_WEB_BIND='127.0.0.1:' docker compose -p "$project" port storage 9000)
 storage_port=${storage_address##*:}
 storage_ready=false
 for _ in 1 2 3 4 5 6 7 8 9 10; do

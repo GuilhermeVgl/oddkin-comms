@@ -16,7 +16,7 @@ import {
   type ProjectMember,
   type Sprint,
   type WorkItem,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, {
   createContext,
   useCallback,
@@ -86,7 +86,7 @@ export function useWorkspace(): WorkspaceValue {
   return value;
 }
 
-const CURRENT_KEY = "oddkin.project";
+const CURRENT_KEY = "crewstead.project";
 
 function storedProject(): string | null {
   try {

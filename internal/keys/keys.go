@@ -34,7 +34,7 @@ type DeviceCertificate struct {
 // DeviceCertificateBytes is the exact byte string signed by the trust root or
 // by an already authorized device of the same account.
 func DeviceCertificateBytes(c DeviceCertificate) []byte {
-	return lengthPrefixed([]byte("oddkin/v1/device-cert"), []byte(c.AccountID), []byte(c.DeviceID), c.SignPublicKey, c.BoxPublicKey)
+	return lengthPrefixed([]byte("crewstead/v1/device-cert"), []byte(c.AccountID), []byte(c.DeviceID), c.SignPublicKey, c.BoxPublicKey)
 }
 
 // VerifyDeviceCertificate reports whether signature is signerPublicKey's
@@ -59,7 +59,7 @@ type KeyEnvelope struct {
 func KeyEnvelopeBytes(e KeyEnvelope) []byte {
 	var generation [4]byte
 	binary.BigEndian.PutUint32(generation[:], e.Generation)
-	return lengthPrefixed([]byte("oddkin/v1/key-sig"), []byte(e.RecipientDeviceID), []byte(e.DomainID), generation[:], e.Sealed)
+	return lengthPrefixed([]byte("crewstead/v1/key-sig"), []byte(e.RecipientDeviceID), []byte(e.DomainID), generation[:], e.Sealed)
 }
 
 // VerifyKeyEnvelope checks the sender's signature over the envelope metadata
@@ -86,8 +86,8 @@ const contentHeaderLength = 2 + 4 + 24
 // ContentSignedBytes is the exact byte string the author's device signs for a
 // content envelope: label, header, authenticated context and ciphertext.
 func ContentSignedBytes(m ContentMetadata, header, ciphertext []byte) []byte {
-	aad := lengthPrefixed([]byte("oddkin/v1/content"), []byte(m.OrganizationID), []byte(m.DomainID), []byte(m.ResourceID), []byte(m.AuthorID), []byte(uitoa(m.Revision)))
-	return lengthPrefixed([]byte("oddkin/v1/content-sig"), header, aad, ciphertext)
+	aad := lengthPrefixed([]byte("crewstead/v1/content"), []byte(m.OrganizationID), []byte(m.DomainID), []byte(m.ResourceID), []byte(m.AuthorID), []byte(uitoa(m.Revision)))
+	return lengthPrefixed([]byte("crewstead/v1/content-sig"), header, aad, ciphertext)
 }
 
 // VerifyContentEnvelope checks the author's signature of a content envelope

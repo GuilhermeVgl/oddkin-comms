@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { Icon, type IconName } from "./icons";
 import { Sprite } from "./Sprite";
+import { useDuoVisible } from "./duoVisibility";
 import type { PoseName, Who } from "./sprites";
 
 export type ToastOptions = {
@@ -45,6 +46,7 @@ export function toast(message: string, options: ToastOptions = {}) {
 }
 
 export function ToastHost() {
+  const showDuo = useDuoVisible();
   const current = useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
@@ -56,10 +58,10 @@ export function ToastHost() {
     <div aria-live="polite" className="toasts" role="status">
       {current.map(({ id, message, options, out }) => (
         <div
-          className={`toast ${options.kind ?? ""}${options.mascot === undefined ? "" : " mascot"}${out ? " out" : ""}`}
+          className={`toast ${options.kind ?? ""}${options.mascot === undefined || !showDuo ? "" : " mascot"}${out ? " out" : ""}`}
           key={id}
         >
-          {options.mascot === undefined ? (
+          {options.mascot === undefined || !showDuo ? (
             <Icon
               name={
                 options.kind === "err" ? "alert" : (options.icon ?? "check")
@@ -74,7 +76,9 @@ export function ToastHost() {
               />
             </span>
           )}
-          <span className={options.mascot === undefined ? "" : "px"}>
+          <span
+            className={options.mascot === undefined || !showDuo ? "" : "px"}
+          >
             {message}
           </span>
           {options.act === undefined ? null : (

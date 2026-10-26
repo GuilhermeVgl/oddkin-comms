@@ -12,3 +12,30 @@
 @import "./styles/login.css";
 @import "./styles/palette.css";
 @import "./styles/responsive.css";
+
+.setup-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.setup-card {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.setup-card h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
+}
+
+.team-logo {
+  flex: none;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--bg);
+}

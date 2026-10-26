@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -66,8 +66,8 @@ func TestHTTPLoginSessionAndLogout(t *testing.T) {
 	}
 	request := func(method, path, body string) *http.Request {
 		r := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
-		r.Host = "oddkin.test"
-		r.Header.Set("Origin", "http://oddkin.test")
+		r.Host = "crewstead.test"
+		r.Header.Set("Origin", "http://crewstead.test")
 		if body != "" {
 			r.Header.Set("Content-Type", "application/json")
 		}
@@ -98,9 +98,9 @@ func TestHTTPLoginSessionAndLogout(t *testing.T) {
 	var sessionCookie, csrfCookie *http.Cookie
 	for _, cookie := range login.Result().Cookies() {
 		switch cookie.Name {
-		case "oddkin_session":
+		case "crewstead_session":
 			sessionCookie = cookie
-		case "oddkin_csrf":
+		case "crewstead_csrf":
 			csrfCookie = cookie
 		}
 	}
@@ -154,7 +154,7 @@ func TestHTTPLoginSessionAndLogout(t *testing.T) {
 		logoutAll.AddCookie(cookie)
 	}
 	for _, cookie := range otherSessions[:2] {
-		if cookie.Name == "oddkin_csrf" {
+		if cookie.Name == "crewstead_csrf" {
 			logoutAll.Header.Set("X-CSRF-Token", cookie.Value)
 		}
 	}
@@ -165,7 +165,7 @@ func TestHTTPLoginSessionAndLogout(t *testing.T) {
 	}
 	otherMe := request(http.MethodGet, "/api/v1/auth/me", "")
 	for _, cookie := range otherSessions[2:] {
-		if cookie.Name == "oddkin_session" {
+		if cookie.Name == "crewstead_session" {
 			otherMe.AddCookie(cookie)
 		}
 	}

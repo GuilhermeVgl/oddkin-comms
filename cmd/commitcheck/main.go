@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/commitcheck"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/commitcheck"
 )
 
 func main() {

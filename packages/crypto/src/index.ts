@@ -81,7 +81,7 @@ export type CryptoOptions = {
 
 function contentAad(context: ContentContext): Uint8Array {
   return lengthPrefixed(
-    utf8("oddkin/v1/content"),
+    utf8("crewstead/v1/content"),
     utf8(context.organizationId),
     utf8(context.domainId),
     utf8(context.resourceId),
@@ -94,7 +94,7 @@ export function deviceCertificateBytes(
   fields: DeviceCertificateFields,
 ): Uint8Array {
   return lengthPrefixed(
-    utf8("oddkin/v1/device-cert"),
+    utf8("crewstead/v1/device-cert"),
     utf8(fields.accountId),
     utf8(fields.deviceId),
     fields.signPublicKey,
@@ -109,7 +109,7 @@ export function keyEnvelopeSignatureBytes(input: {
   sealed: Uint8Array;
 }): Uint8Array {
   return lengthPrefixed(
-    utf8("oddkin/v1/key-sig"),
+    utf8("crewstead/v1/key-sig"),
     utf8(input.recipientDeviceId),
     utf8(input.domainId),
     u32(input.generation),
@@ -265,7 +265,7 @@ export async function createCrypto(
       input.key,
     );
     const signature = sodium.crypto_sign_detached(
-      lengthPrefixed(utf8("oddkin/v1/content-sig"), header, aad, ciphertext),
+      lengthPrefixed(utf8("crewstead/v1/content-sig"), header, aad, ciphertext),
       input.signerSecretKey,
     );
     return concat(header, ciphertext, signature);
@@ -304,7 +304,12 @@ export async function createCrypto(
     try {
       signed = sodium.crypto_sign_verify_detached(
         signature,
-        lengthPrefixed(utf8("oddkin/v1/content-sig"), header, aad, ciphertext),
+        lengthPrefixed(
+          utf8("crewstead/v1/content-sig"),
+          header,
+          aad,
+          ciphertext,
+        ),
         input.signerPublicKey,
       );
     } catch {
@@ -336,7 +341,7 @@ export async function createCrypto(
     signerSecretKey: Uint8Array;
   }): SealedDomainKey {
     const payload = lengthPrefixed(
-      utf8("oddkin/v1/key"),
+      utf8("crewstead/v1/key"),
       utf8(input.domainId),
       u32(input.generation),
       input.key,
@@ -390,7 +395,7 @@ export async function createCrypto(
       throw new CryptoError("decryption_failed");
     }
     const expected = lengthPrefixed(
-      utf8("oddkin/v1/key"),
+      utf8("crewstead/v1/key"),
       utf8(input.domainId),
       u32(input.generation),
       payload.subarray(payload.length - KEY_LENGTH),

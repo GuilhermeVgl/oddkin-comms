@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/db/migrations"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/installation"
+	"github.com/GuilhermeVgl/crewstead-comms/db/migrations"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/installation"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -24,18 +24,17 @@ type Admin struct {
 	Email, Password, Timezone string
 }
 
-// AdminFromEnv reads ODDKIN_ADMIN_EMAIL, ODDKIN_ADMIN_PASSWORD and
-// ODDKIN_TIMEZONE. It returns nil when no administrator is configured and an
-// error when only one of e-mail and password is.
+// AdminFromEnv reads the first administrator's configuration. It returns nil
+// when no administrator is configured and an error for an incomplete pair.
 func AdminFromEnv() (*Admin, error) {
-	email, password := os.Getenv("ODDKIN_ADMIN_EMAIL"), os.Getenv("ODDKIN_ADMIN_PASSWORD")
+	email, password := os.Getenv("CREWSTEAD_ADMIN_EMAIL"), os.Getenv("CREWSTEAD_ADMIN_PASSWORD")
 	if email == "" && password == "" {
 		return nil, nil
 	}
 	if email == "" || password == "" {
-		return nil, errors.New("ODDKIN_ADMIN_EMAIL and ODDKIN_ADMIN_PASSWORD are required together")
+		return nil, errors.New("CREWSTEAD_ADMIN_EMAIL and CREWSTEAD_ADMIN_PASSWORD are required together")
 	}
-	timezone := os.Getenv("ODDKIN_TIMEZONE")
+	timezone := os.Getenv("CREWSTEAD_TIMEZONE")
 	if timezone == "" {
 		timezone = "UTC"
 	}

@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/jobs"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -73,7 +73,7 @@ func TestPasswordResetFlow(t *testing.T) {
 	mailer := &recordingInvitationMailer{messages: make(chan resendmail.Message, 4)}
 	jobClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 1}, "email": {MaxWorkers: 1}},
-		Workers: jobs.NewWorkersWithInvitationEmail(pool, mailer, key, "https://oddkin.example"),
+		Workers: jobs.NewWorkersWithInvitationEmail(pool, mailer, key, "https://crewstead.example"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,8 +91,8 @@ func TestPasswordResetFlow(t *testing.T) {
 
 	call := func(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, bytes.NewBufferString(body)).WithContext(ctx)
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		if body != "" {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -106,7 +106,7 @@ func TestPasswordResetFlow(t *testing.T) {
 	login := func(password string) (int, *http.Cookie) {
 		result := call(http.MethodPost, "/api/v1/auth/login", fmt.Sprintf(`{"email":"reset-user@example.test","password":%q}`, password))
 		for _, cookie := range result.Result().Cookies() {
-			if cookie.Name == "oddkin_session" {
+			if cookie.Name == "crewstead_session" {
 				return result.Code, cookie
 			}
 		}
@@ -126,7 +126,7 @@ func TestPasswordResetFlow(t *testing.T) {
 		t.Fatalf("a stranger must not create a reset: %d %v", rows, err)
 	}
 	crossOrigin := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password-reset", bytes.NewBufferString(`{"email":"reset-user@example.test"}`))
-	crossOrigin.Host = "oddkin.test"
+	crossOrigin.Host = "crewstead.test"
 	crossOrigin.Header.Set("Origin", "http://other.test")
 	crossOrigin.Header.Set("Content-Type", "application/json")
 	blocked := httptest.NewRecorder()

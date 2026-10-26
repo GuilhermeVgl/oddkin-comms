@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 

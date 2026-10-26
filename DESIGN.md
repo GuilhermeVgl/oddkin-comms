@@ -1,8 +1,8 @@
-# ODDKIN interface
+# Crewstead interface
 
 ## Direção
 
-Interface operacional baseada no protótipo interativo aprovado (`oddkin-prototipo.html`): uma bancada clara de trabalho apoiada por navegação em carvão. Papel quente é a superfície principal, musgo dá estrutura e limão marca foco, êxito e progresso. A densidade serve ao trabalho; os exploradores pixelados (Capuz e Tela) aparecem em estados vazios, marcos, toasts e celebrações.
+Interface operacional baseada no protótipo interativo aprovado (`crewstead-prototipo.html`): uma bancada clara de trabalho apoiada por navegação em carvão. Papel quente é a superfície principal, musgo dá estrutura e limão marca foco, êxito e progresso. A densidade serve ao trabalho; os exploradores pixelados (Capuz e Tela) aparecem em estados vazios, marcos, toasts e celebrações.
 
 ## Onde fica cada coisa
 

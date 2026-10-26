@@ -693,6 +693,27 @@ func (e UpdateBoardColumnRequestCategory) Valid() bool {
 	}
 }
 
+// Defines values for UpdateOrganizationBrandingRequestLogoMime.
+const (
+	Imagejpeg UpdateOrganizationBrandingRequestLogoMime = "image/jpeg"
+	Imagepng  UpdateOrganizationBrandingRequestLogoMime = "image/png"
+	Imagewebp UpdateOrganizationBrandingRequestLogoMime = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the UpdateOrganizationBrandingRequestLogoMime enum.
+func (e UpdateOrganizationBrandingRequestLogoMime) Valid() bool {
+	switch e {
+	case Imagejpeg:
+		return true
+	case Imagepng:
+		return true
+	case Imagewebp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateWorkItemRequestPriority.
 const (
 	UpdateWorkItemRequestPriorityHigh   UpdateWorkItemRequestPriority = "high"
@@ -1318,6 +1339,15 @@ type OpenDirectConversationRequest struct {
 	AccountId openapi_types.UUID `json:"accountId"`
 }
 
+// OrganizationBranding defines model for OrganizationBranding.
+type OrganizationBranding struct {
+	HasLogo bool `json:"hasLogo"`
+
+	// Name Empty until initial team setup
+	Name    string `json:"name"`
+	ShowDuo bool   `json:"showDuo"`
+}
+
 // OrganizationPerson defines model for OrganizationPerson.
 type OrganizationPerson struct {
 	Active         bool                             `json:"active"`
@@ -1592,6 +1622,19 @@ type UpdateExternalPolicyRequest struct {
 	Version     int                  `json:"version"`
 }
 
+// UpdateOrganizationBrandingRequest defines model for UpdateOrganizationBrandingRequest.
+type UpdateOrganizationBrandingRequest struct {
+	// LogoBase64 Optional base64 image
+	LogoBase64 *string                                    `json:"logoBase64,omitempty"`
+	LogoMime   *UpdateOrganizationBrandingRequestLogoMime `json:"logoMime,omitempty"`
+	Name       string                                     `json:"name"`
+	RemoveLogo *bool                                      `json:"removeLogo,omitempty"`
+	ShowDuo    bool                                       `json:"showDuo"`
+}
+
+// UpdateOrganizationBrandingRequestLogoMime defines model for UpdateOrganizationBrandingRequest.LogoMime.
+type UpdateOrganizationBrandingRequestLogoMime string
+
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
 	ContentRevision int `json:"contentRevision"`
@@ -1818,6 +1861,9 @@ type EditMessageJSONRequestBody = EditMessageRequest
 
 // ToggleReactionJSONRequestBody defines body for ToggleReaction for application/json ContentType.
 type ToggleReactionJSONRequestBody = ToggleReactionRequest
+
+// UpdateOrganizationBrandingJSONRequestBody defines body for UpdateOrganizationBranding for application/json ContentType.
+type UpdateOrganizationBrandingJSONRequestBody = UpdateOrganizationBrandingRequest
 
 // SetPersonActiveJSONRequestBody defines body for SetPersonActive for application/json ContentType.
 type SetPersonActiveJSONRequestBody = SetActiveRequest
@@ -2076,6 +2122,15 @@ type ServerInterface interface {
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/v1/notifications/{notificationId}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID)
+	// GetOrganizationBranding Team identity for signed-in members
+	// (GET /api/v1/organization/branding)
+	GetOrganizationBranding(w http.ResponseWriter, r *http.Request)
+	// UpdateOrganizationBranding Configure the team identity (administrator)
+	// (PATCH /api/v1/organization/branding)
+	UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request)
+	// GetOrganizationLogo Team logo for signed-in members
+	// (GET /api/v1/organization/logo)
+	GetOrganizationLogo(w http.ResponseWriter, r *http.Request)
 	// ListOrganizationPeople Everyone in the organization (administrators)
 	// (GET /api/v1/organization/people)
 	ListOrganizationPeople(w http.ResponseWriter, r *http.Request)
@@ -3626,6 +3681,48 @@ func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetOrganizationBranding operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationBranding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganizationBranding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganizationBranding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationLogo operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationLogo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListOrganizationPeople operation middleware
 func (siw *ServerInterfaceWrapper) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
 
@@ -5037,6 +5134,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.GetOrganizationBranding)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/organization/branding", wrapper.UpdateOrganizationBranding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/logo", wrapper.GetOrganizationLogo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations", wrapper.CreateInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invitations/accept", wrapper.AcceptInvitation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.Login)

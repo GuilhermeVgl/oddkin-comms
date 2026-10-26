@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/work"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"

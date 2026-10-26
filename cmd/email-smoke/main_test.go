@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/resendmail"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
 )
 
 type recordingSender struct {
@@ -29,7 +29,7 @@ func TestDiagnosticMessageUsesFixedContentAndUniqueKey(t *testing.T) {
 		t.Fatalf("diagnostic send: id=%q calls=%d err=%v", id, sender.calls, err)
 	}
 	first := sender.message
-	if first.To != "person@example.test" || first.Subject != "ODDKIN: teste de e-mail" ||
+	if first.To != "person@example.test" || first.Subject != "Crewstead: teste de e-mail" ||
 		!strings.Contains(first.Text, "teste") || !strings.HasPrefix(first.IdempotencyKey, "email-smoke/") {
 		t.Fatalf("unexpected diagnostic message: %+v", first)
 	}

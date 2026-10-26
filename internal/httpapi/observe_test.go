@@ -17,7 +17,7 @@ func TestRequestsGetACorrelationIDAndLogNoSensitiveData(t *testing.T) {
 	handler := withObservability(mux, logger)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/projects/6f9619ff-8b86-d011-b42d-00c04fc964ff?token=secret-token", strings.NewReader(`{"password":"hunter2hunter2"}`))
-	request.Header.Set("Cookie", "oddkin_session=session-secret")
+	request.Header.Set("Cookie", "crewstead_session=session-secret")
 	result := httptest.NewRecorder()
 	handler.ServeHTTP(result, request)
 
@@ -26,7 +26,7 @@ func TestRequestsGetACorrelationIDAndLogNoSensitiveData(t *testing.T) {
 		t.Fatalf("response must carry a correlation id, got %q", id)
 	}
 	line := logs.String()
-	for _, secret := range []string{"secret-token", "hunter2", "session-secret", "6f9619ff", "oddkin_session"} {
+	for _, secret := range []string{"secret-token", "hunter2", "session-secret", "6f9619ff", "crewstead_session"} {
 		if strings.Contains(line, secret) {
 			t.Fatalf("the log must not contain %q: %s", secret, line)
 		}

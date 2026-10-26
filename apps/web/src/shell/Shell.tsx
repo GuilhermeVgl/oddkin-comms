@@ -2,7 +2,7 @@ import {
   createApiClient,
   logout,
   type CurrentAccount,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import React, { useEffect, useMemo, useState } from "react";
 import { go, useRoute } from "../design/router";
 import { useOptionalE2EE } from "../e2ee/E2EE";
@@ -22,6 +22,7 @@ import { CallsProvider } from "./calls";
 import { ShellContext, type ShellApi } from "./context";
 import { Palette } from "./Palette";
 import { MobileNav, Sidebar } from "./Sidebar";
+import { APP_NAME } from "../brand";
 
 const TITLES = {
   home: "Visão geral",
@@ -70,7 +71,7 @@ function Frame({
   const [gate, setGate] = useState(false);
 
   useEffect(() => {
-    document.title = `ODDKIN · ${TITLES[route.name]}`;
+    document.title = `${APP_NAME} · ${TITLES[route.name]}`;
   }, [route.name]);
 
   useEffect(() => {

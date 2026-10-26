@@ -5,19 +5,19 @@
 #   storage   MinIO, a local stand-in for the Cloudflare R2 bucket
 #   web       Vite with hot reload
 # E-mail goes straight to the real Resend API: put your keys in .env (see .env.example).
-name: oddkin
+name: crewstead
 
 services:
   postgres:
     image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
     environment:
-      POSTGRES_USER: oddkin
-      POSTGRES_PASSWORD: oddkin_local_compose_only
-      POSTGRES_DB: oddkin
+      POSTGRES_USER: crewstead
+      POSTGRES_PASSWORD: crewstead_local_compose_only
+      POSTGRES_DB: crewstead
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oddkin -d oddkin"]
+      test: ["CMD-SHELL", "pg_isready -U crewstead -d crewstead"]
       interval: 2s
       timeout: 2s
       retries: 20
@@ -30,28 +30,29 @@ services:
       args:
         TARGET: api
     environment:
-      DATABASE_URL: postgres://oddkin:oddkin_local_compose_only@postgres:5432/oddkin
+      DATABASE_URL: postgres://crewstead:crewstead_local_compose_only@postgres:5432/crewstead
       HTTP_ADDR: :8080
-      ODDKIN_ADMIN_EMAIL: ${ODDKIN_ADMIN_EMAIL:-admin@oddkin.local}
-      ODDKIN_ADMIN_PASSWORD: ${ODDKIN_ADMIN_PASSWORD:-oddkin-local-password}
-      ODDKIN_TIMEZONE: ${ODDKIN_TIMEZONE:-America/Campo_Grande}
+      CREWSTEAD_ADMIN_EMAIL: ${CREWSTEAD_ADMIN_EMAIL:-}
+      CREWSTEAD_ADMIN_PASSWORD: ${CREWSTEAD_ADMIN_PASSWORD:-}
+      CREWSTEAD_TIMEZONE: ${CREWSTEAD_TIMEZONE:-America/Campo_Grande}
       INVITATION_DELIVERY_KEY: ${INVITATION_DELIVERY_KEY:-synthetic-local-invite-key-00001}
-      APP_PUBLIC_URL: ${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}
+      APP_DISPLAY_NAME: ${CREWSTEAD_APP_NAME:-Crewstead}
+      APP_PUBLIC_URL: ${CREWSTEAD_PUBLIC_URL:-http://127.0.0.1:3000}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
-      LIVEKIT_URL: ws://${ODDKIN_LIVEKIT_HOST:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}
+      LIVEKIT_URL: ws://${CREWSTEAD_LIVEKIT_HOST:-127.0.0.1}:${CREWSTEAD_LIVEKIT_PORT:-7880}
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: oddkin-local-livekit-secret-00001
+      LIVEKIT_API_SECRET: crewstead-local-livekit-secret-00001
       # Defaults point at the local MinIO. To use a real R2 bucket, set the R2_*
       # variables in .env (and R2_PATH_STYLE=false, R2_CREATE_BUCKET=false).
       # The API reaches the bucket on the internal address; URLs it signs for the
       # browser use the published port (the signature covers the host).
       R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
-      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-${R2_ENDPOINT:-http://127.0.0.1:${ODDKIN_STORAGE_PORT:-9000}}}
-      R2_BUCKET: ${R2_BUCKET:-oddkin-files}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-oddkin-local-storage}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-oddkin-local-storage-secret}
+      R2_PUBLIC_ENDPOINT: ${R2_PUBLIC_ENDPOINT:-${R2_ENDPOINT:-http://127.0.0.1:${CREWSTEAD_STORAGE_PORT:-9000}}}
+      R2_BUCKET: ${R2_BUCKET:-crewstead-files}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-crewstead-local-storage}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-crewstead-local-storage-secret}
       R2_PATH_STYLE: ${R2_PATH_STYLE:-true}
       R2_CREATE_BUCKET: ${R2_CREATE_BUCKET:-true}
     depends_on:
@@ -69,9 +70,9 @@ services:
     volumes:
       - ./infra/livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:${ODDKIN_LIVEKIT_PORT:-7880}:7880"
-      - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:7881:7881"
-      - "${ODDKIN_LIVEKIT_BIND:-127.0.0.1}:50000-50100:50000-50100/udp"
+      - "${CREWSTEAD_LIVEKIT_BIND:-127.0.0.1}:${CREWSTEAD_LIVEKIT_PORT:-7880}:7880"
+      - "${CREWSTEAD_LIVEKIT_BIND:-127.0.0.1}:7881:7881"
+      - "${CREWSTEAD_LIVEKIT_BIND:-127.0.0.1}:50000-50100:50000-50100/udp"
     restart: unless-stopped
 
   storage:
@@ -80,15 +81,15 @@ services:
     image: cgr.dev/chainguard/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: oddkin-local-storage
-      MINIO_ROOT_PASSWORD: oddkin-local-storage-secret
+      MINIO_ROOT_USER: crewstead-local-storage
+      MINIO_ROOT_PASSWORD: crewstead-local-storage-secret
       # Browsers send file parts straight to the bucket, so it must accept the app's origin.
-      MINIO_API_CORS_ALLOW_ORIGIN: ${ODDKIN_PUBLIC_URL:-http://127.0.0.1:3000}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${CREWSTEAD_PUBLIC_URL:-http://127.0.0.1:3000}
     volumes:
       - storage_data:/data
     ports:
-      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:${ODDKIN_STORAGE_PORT:-9000}:9000"
-      - "${ODDKIN_STORAGE_BIND:-127.0.0.1}:9001:9001"
+      - "${CREWSTEAD_STORAGE_BIND:-127.0.0.1}:${CREWSTEAD_STORAGE_PORT:-9000}:9000"
+      - "${CREWSTEAD_STORAGE_BIND:-127.0.0.1}:9001:9001"
     restart: unless-stopped
 
   web:
@@ -97,16 +98,17 @@ services:
     command:
       - sh
       - -lc
-      - corepack pnpm install --store-dir /pnpm/store --frozen-lockfile && corepack pnpm --filter @oddkin/web dev --host 0.0.0.0 --port 5173
+      - corepack pnpm install --store-dir /pnpm/store --frozen-lockfile && corepack pnpm --filter @crewstead/web dev --host 0.0.0.0 --port 5173
     environment:
       VITE_API_PROXY_TARGET: http://api:8080
+      VITE_APP_NAME: ${CREWSTEAD_APP_NAME:-Crewstead}
       VITE_USE_POLLING: "true"
     volumes:
       - .:/workspace
       - web_node_modules:/workspace/node_modules
       - web_pnpm_store:/pnpm/store
     ports:
-      - "${ODDKIN_WEB_BIND:-127.0.0.1:3000}:5173"
+      - "${CREWSTEAD_WEB_BIND:-127.0.0.1:3000}:5173"
     depends_on:
       api:
         condition: service_started

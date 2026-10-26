@@ -1,7 +1,7 @@
 import {
   openDirectConversation,
   type CurrentAccount,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../design/icons";
 import { nameOf } from "../design/people";

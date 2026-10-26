@@ -1,5 +1,5 @@
 /*
- * ODDKIN Pixel Explorers: procedural sprite engine (Capuz and Tela) and pixel
+ * Crewstead Pixel Explorers: procedural sprite engine (Capuz and Tela) and pixel
  * particles. 32x40 logical pixels per character, scaled by whole numbers with
  * no smoothing. Ported from the approved interactive prototype.
  */

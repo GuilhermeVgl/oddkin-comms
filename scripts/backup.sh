@@ -22,14 +22,14 @@ mkdir -p "$dir/daily" "$dir/weekly"
 umask 077
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-target="$dir/daily/oddkin-$stamp.dump.enc"
+target="$dir/daily/crewstead-$stamp.dump.enc"
 partial="$target.partial"
 trap 'rm -f "$partial"' EXIT HUP INT TERM
 
 if [ -n "${DATABASE_URL:-}" ]; then
   dump() { pg_dump --format=custom --no-owner --no-privileges "$DATABASE_URL"; }
 else
-  dump() { docker compose exec -T postgres pg_dump --format=custom --no-owner --no-privileges -U oddkin oddkin; }
+  dump() { docker compose exec -T postgres pg_dump --format=custom --no-owner --no-privileges -U crewstead crewstead; }
 fi
 dump | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass "file:$BACKUP_PASSPHRASE_FILE" -out "$partial"
 if [ ! -s "$partial" ]; then

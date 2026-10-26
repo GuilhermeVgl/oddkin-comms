@@ -13,11 +13,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/calls"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/platform/objectstore"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/calls"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -27,8 +27,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-const sessionCookieName = "oddkin_session"
-const csrfCookieName = "oddkin_csrf"
+const sessionCookieName = "crewstead_session"
+const csrfCookieName = "crewstead_csrf"
 
 type authService struct {
 	pool                  *pgxpool.Pool

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
 )
 
 type DatabaseProbe interface {

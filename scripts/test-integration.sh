@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-project="oddkin-it-$$"
+project="crewstead-it-$$"
 compose_file="infra/compose.test.yaml"
 
 cleanup() {
@@ -16,7 +16,7 @@ if [ -z "$database_port" ]; then
   echo "Could not determine test PostgreSQL port" >&2
   exit 1
 fi
-TEST_DATABASE_URL="postgres://oddkin_test:synthetic_test_password@127.0.0.1:$database_port/oddkin_test"
+TEST_DATABASE_URL="postgres://crewstead_test:synthetic_test_password@127.0.0.1:$database_port/crewstead_test"
 DATABASE_URL="$TEST_DATABASE_URL" go run ./cmd/migrate
 if [ -n "${GO_COVER_PROFILE:-}" ]; then
   TEST_DATABASE_URL="$TEST_DATABASE_URL" go test -race -count=1 -tags=integration \

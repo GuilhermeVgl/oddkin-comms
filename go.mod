@@ -1,4 +1,4 @@
-module github.com/GuilhermeVgl/oddkin-comms
+module github.com/GuilhermeVgl/crewstead-comms
 
 go 1.27.3
 

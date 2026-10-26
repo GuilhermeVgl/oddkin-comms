@@ -1,4 +1,4 @@
-# ODDKIN — Especificação funcional e técnica
+# Crewstead — Especificação funcional e técnica
 
 Versão: 0.3 — backend Go e e-mail via Resend • Data: 23 de outubro de 2026 • Idioma: português do Brasil
 
@@ -6,7 +6,7 @@ Status: especificação inicial para desenvolvimento. As decisões do usuário e
 
 ## 1. Objetivo e limites do produto
 
-Construir uma aplicação web interna para uma startup que desenvolve vários microSaaS simultaneamente. Centralizar planejamento, execução e comunicação em uma interface simples, inspirada no mockup ODDKIN fornecido. O aplicativo será desenvolvido com auxílio de IA; familiaridade prévia com uma linguagem não determina a stack.
+Construir uma aplicação web interna para uma startup que desenvolve vários microSaaS simultaneamente. Centralizar planejamento, execução e comunicação em uma interface simples, inspirada no mockup Crewstead fornecido. O aplicativo será desenvolvido com auxílio de IA; familiaridade prévia com uma linguagem não determina a stack.
 
 O resultado deve permitir organizar projetos, épicos, atividades, subtarefas e sprints compartilhadas pela equipe; conversar em canais e mensagens diretas; compartilhar arquivos; e iniciar reuniões de até cinco pessoas com áudio, câmera e tela. A experiência deve transmitir personalidade com personagens pixelados e animações discretas, sem sistema de pontos.
 
@@ -47,7 +47,7 @@ O público inicial é uma única organização, com equipe interna e convidados 
 Estes padrões podem ser alterados sem reinterpretar as respostas da entrevista:
 
 - Uma organização por instalação; sem cadastro público, planos, cobrança ou onboarding de empresas clientes.
-- Nome de trabalho ODDKIN, baseado na referência visual. A marca pode ser trocada sem alterar o domínio.
+- Nome padrão Crewstead, configurável por instalação. No primeiro acesso do administrador, solicitar nome da equipe, logo opcional e visibilidade da dupla; permitir edição posterior.
 - Interface PT-BR. Datas civis com fuso da organização; padrão inicial America/Campo_Grande. Eventos técnicos armazenados em UTC.
 - Administração global, gestão de projeto e colaboração interna como papéis fixos. Matriz configurável apenas para externos, por projeto.
 - Sprints com início e fim configuráveis, uma ativa por organização, abertura e encerramento manuais.
@@ -536,7 +536,7 @@ Indicadores na navegação, central de notificações e toast discreto para cham
 
 ### 13.1 Referência
 
-Base: imagem fornecida `image(20261023-173007).png`, com logotipo ODDKIN, sidebar escura, cartões claros, detalhes verde-limão e dupla Pixel Explorers. A referência foi visualmente inspecionada; ela não é um layout funcional completo nem um pacote de assets prontos.
+Base: imagem fornecida `image(20261023-173007).png`, com logotipo Crewstead, sidebar escura, cartões claros, detalhes verde-limão e dupla Pixel Explorers. A referência foi visualmente inspecionada; ela não é um layout funcional completo nem um pacote de assets prontos.
 
 | Token  | Cor       |
 | ------ | --------- |

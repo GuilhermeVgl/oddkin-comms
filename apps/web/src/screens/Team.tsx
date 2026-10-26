@@ -10,7 +10,7 @@ import {
   type CurrentAccount,
   type ExternalPolicy,
   type MembershipKind,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { confirmDialog } from "../design/confirm";
 import { Icon, type IconName } from "../design/icons";

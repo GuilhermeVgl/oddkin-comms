@@ -16,7 +16,7 @@ import {
   type OrganizationPerson,
   type RecoveryAuditEntry,
   type RecoveryGap,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import { useCallback, useEffect, useState } from "react";
 import { confirmDialog } from "../design/confirm";
 import { bytes, rel } from "../design/format";
@@ -36,9 +36,11 @@ import { roleOf } from "../shell/Sidebar";
 import { projectColor } from "../shell/Sidebar";
 import { useShell } from "../shell/context";
 import { useWorkspace } from "../workspace";
+import { OrganizationForm, TeamLogo, useOrganization } from "../organization";
 
 const TABS = [
   ["perfil", "Perfil e aparência"],
+  ["equipe", "Equipe"],
   ["dispositivos", "Dispositivos"],
   ["colunas", "Colunas"],
   ["pessoas", "Pessoas"],
@@ -47,6 +49,22 @@ const TABS = [
 ] as const;
 
 type Tab = (typeof TABS)[number][0];
+
+function TeamBranding() {
+  const { branding } = useOrganization();
+  return (
+    <section className="card pad col gap16">
+      <div className="row gap16">
+        <TeamLogo size={52} />
+        <div className="col">
+          <h2 className="h2">Identidade da equipe</h2>
+          <span className="muted">{branding.name}</span>
+        </div>
+      </div>
+      <OrganizationForm />
+    </section>
+  );
+}
 
 function Switch({
   on,
@@ -71,6 +89,7 @@ function Switch({
 
 function Profile({ account }: { account: CurrentAccount }) {
   const prefs = usePrefs();
+  const { branding } = useOrganization();
   return (
     <div className="stack">
       <section className="card pad col gap16">
@@ -155,13 +174,16 @@ function Profile({ account }: { account: CurrentAccount }) {
           <div className="grow col">
             <b>Prévia dos personagens</b>
             <span className="xs muted">
-              Capuz e Tela aparecem em estados vazios e marcos. Sem pontos,
-              níveis ou rankings.
+              {branding.showDuo
+                ? "Capuz e Tela aparecem em estados vazios e marcos, sem pontos ou rankings."
+                : "A equipe desativou Capuz e Tela. O administrador pode reativá-los na aba Equipe."}
             </span>
           </div>
-          <div style={{ display: "flex" }}>
-            <Duo pose="wave" scale={3} />
-          </div>
+          {branding.showDuo ? (
+            <div style={{ display: "flex" }}>
+              <Duo pose="wave" scale={3} />
+            </div>
+          ) : null}
         </div>
       </section>
       <section className="card pad col gap8">
@@ -1031,7 +1053,7 @@ function Recovery() {
                 );
                 const link = document.createElement("a");
                 link.href = url;
-                link.download = "oddkin-recuperacao.json";
+                link.download = "crewstead-recuperacao.json";
                 link.click();
                 URL.revokeObjectURL(url);
               }}
@@ -1208,6 +1230,7 @@ export function Settings({
     ([id]) =>
       (id !== "colunas" || manager) &&
       (id !== "pessoas" || account.isAdmin) &&
+      (id !== "equipe" || account.isAdmin) &&
       (id !== "recuperacao" || account.isAdmin),
   );
   const active: Tab = tabs.some(([id]) => id === tab) ? (tab as Tab) : "perfil";
@@ -1231,6 +1254,7 @@ export function Settings({
       </div>
       <div style={{ maxWidth: 760 }}>
         {active === "perfil" ? <Profile account={account} /> : null}
+        {active === "equipe" ? <TeamBranding /> : null}
         {active === "dispositivos" ? (
           <Devices account={account} onLogout={onLogout} />
         ) : null}

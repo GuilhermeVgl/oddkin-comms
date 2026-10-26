@@ -79,7 +79,7 @@ async function build() {
     c,
     vectors: {
       protocolVersion: 1,
-      note: "Synthetic test vectors for the ODDKIN envelope protocol v1. Regenerate with UPDATE_VECTORS=1.",
+      note: "Synthetic test vectors for the Crewstead envelope protocol v1. Regenerate with UPDATE_VECTORS=1.",
       rootSignPublicKey: b64(root.publicKey),
       senderSignPublicKey: b64(sender.publicKey),
       deviceCertificate: {

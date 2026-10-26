@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/identity"
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -72,8 +72,8 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 	}
 	login := func(email string) *workClient {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct column password"}`))
-		req.Host = "oddkin.test"
-		req.Header.Set("Origin", "http://oddkin.test")
+		req.Host = "crewstead.test"
+		req.Header.Set("Origin", "http://crewstead.test")
 		req.Header.Set("Content-Type", "application/json")
 		result := httptest.NewRecorder()
 		handler.ServeHTTP(result, req)
@@ -83,9 +83,9 @@ func TestBoardColumnManagementAndPermissions(t *testing.T) {
 		client := &workClient{t: t, handler: handler}
 		for _, cookie := range result.Result().Cookies() {
 			switch cookie.Name {
-			case "oddkin_session":
+			case "crewstead_session":
 				client.session = cookie
-			case "oddkin_csrf":
+			case "crewstead_csrf":
 				client.csrf = cookie
 			}
 		}

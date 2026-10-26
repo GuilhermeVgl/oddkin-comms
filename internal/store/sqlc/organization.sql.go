@@ -53,3 +53,75 @@ func (q *Queries) GetOrganization(ctx context.Context) (GetOrganizationRow, erro
 	err := row.Scan(&i.ID, &i.Timezone, &i.CreatedAt)
 	return i, err
 }
+
+const getOrganizationBranding = `-- name: GetOrganizationBranding :one
+SELECT id, name, logo_data, show_duo
+FROM organization
+LIMIT 1
+`
+
+type GetOrganizationBrandingRow struct {
+	ID       pgtype.UUID
+	Name     pgtype.Text
+	LogoData []byte
+	ShowDuo  bool
+}
+
+func (q *Queries) GetOrganizationBranding(ctx context.Context) (GetOrganizationBrandingRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationBranding)
+	var i GetOrganizationBrandingRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.LogoData,
+		&i.ShowDuo,
+	)
+	return i, err
+}
+
+const getOrganizationLogo = `-- name: GetOrganizationLogo :one
+SELECT logo_data, logo_mime
+FROM organization
+LIMIT 1
+`
+
+type GetOrganizationLogoRow struct {
+	LogoData []byte
+	LogoMime pgtype.Text
+}
+
+func (q *Queries) GetOrganizationLogo(ctx context.Context) (GetOrganizationLogoRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationLogo)
+	var i GetOrganizationLogoRow
+	err := row.Scan(&i.LogoData, &i.LogoMime)
+	return i, err
+}
+
+const updateOrganizationBranding = `-- name: UpdateOrganizationBranding :exec
+UPDATE organization
+SET name = $1, show_duo = $2,
+    logo_data = CASE WHEN $4::boolean THEN $5::bytea ELSE logo_data END,
+    logo_mime = CASE WHEN $4::boolean THEN $6::text ELSE logo_mime END
+WHERE id = $3
+`
+
+type UpdateOrganizationBrandingParams struct {
+	Name        pgtype.Text
+	ShowDuo     bool
+	ID          pgtype.UUID
+	LogoChanged bool
+	LogoData    []byte
+	LogoMime    pgtype.Text
+}
+
+func (q *Queries) UpdateOrganizationBranding(ctx context.Context, arg UpdateOrganizationBrandingParams) error {
+	_, err := q.db.Exec(ctx, updateOrganizationBranding,
+		arg.Name,
+		arg.ShowDuo,
+		arg.ID,
+		arg.LogoChanged,
+		arg.LogoData,
+		arg.LogoMime,
+	)
+	return err
+}

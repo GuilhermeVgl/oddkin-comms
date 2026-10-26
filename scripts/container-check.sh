@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-project="oddkin-smoke-$$"
+project="crewstead-smoke-$$"
 compose_file="infra/compose.smoke.yaml"
 
 cleanup() {
@@ -36,7 +36,7 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 tables=$(docker compose -p "$project" -f "$compose_file" exec -T postgres \
-  psql -U oddkin_smoke -d oddkin_smoke -Atqc \
+  psql -U crewstead_smoke -d crewstead_smoke -Atqc \
   "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('organization', 'organization_invitation', 'goose_db_version', 'river_job')")
 if [ "$tables" != 4 ]; then
   echo "Expected organization, invitation, Goose and River tables; found $tables" >&2

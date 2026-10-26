@@ -8,7 +8,7 @@ import (
 
 func TestInvitationLinkKeepsTokenOutOfHTTPQuery(t *testing.T) {
 	t.Parallel()
-	link, err := invitationLink("https://oddkin.example/app", "person@example.test", "secret-token")
+	link, err := invitationLink("https://crewstead.example/app", "person@example.test", "secret-token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestInvitationLinkKeepsTokenOutOfHTTPQuery(t *testing.T) {
 
 func TestInvitationLinkRejectsInvalidPublicURL(t *testing.T) {
 	t.Parallel()
-	for _, publicURL := range []string{"", "oddkin.example", "ftp://oddkin.example", "https://user@oddkin.example", "https://oddkin.example?x=1"} {
+	for _, publicURL := range []string{"", "crewstead.example", "ftp://crewstead.example", "https://user@crewstead.example", "https://crewstead.example?x=1"} {
 		if link, err := invitationLink(publicURL, "person@example.test", "token"); err == nil || link != "" {
 			t.Errorf("invalid public URL accepted: %q", publicURL)
 		}

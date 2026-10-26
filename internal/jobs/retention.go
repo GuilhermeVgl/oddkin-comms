@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/GuilhermeVgl/oddkin-comms/internal/store/sqlc"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 )

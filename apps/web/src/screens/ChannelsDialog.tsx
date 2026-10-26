@@ -1,4 +1,4 @@
-import { reorderChannels, setChannelArchived } from "@oddkin/api-client";
+import { reorderChannels, setChannelArchived } from "@crewstead/api-client";
 import { useState } from "react";
 import { createChannelNamed } from "../e2ee/content";
 import { Icon } from "../design/icons";

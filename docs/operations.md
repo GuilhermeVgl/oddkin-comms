@@ -1,21 +1,22 @@
 # Operação
 
-Guia curto para quem mantém uma instalação do ODDKIN. A arquitetura está na [ADR 0018](./adr/0018-lean-architecture.md).
+Guia curto para quem mantém uma instalação do Crewstead. A arquitetura está na [ADR 0018](./adr/0018-lean-architecture.md).
 
 ## Configuração
 
 Tudo vem de variáveis de ambiente; o `.env.example` lista as principais. A API falha ao iniciar, sem imprimir o valor, quando um grupo obrigatório está incompleto (e-mail, R2).
 
-| Variável                                                                | Para quê                                              |
-| ----------------------------------------------------------------------- | ----------------------------------------------------- |
-| `DATABASE_URL`                                                          | PostgreSQL                                            |
-| `AUTO_MIGRATE`                                                          | `false` desliga a migração no início da API           |
-| `ODDKIN_ADMIN_EMAIL`, `ODDKIN_ADMIN_PASSWORD`, `ODDKIN_TIMEZONE`        | Primeiro administrador, criado só em instalação vazia |
-| `INVITATION_DELIVERY_KEY`                                               | 32 bytes que selam os links enviados por e-mail       |
-| `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_PUBLIC_URL`                 | E-mail de convite e redefinição                       |
-| `R2_*`, `STORAGE_QUOTA_BYTES`                                           | Bucket de arquivos e cota da organização              |
-| `LIVEKIT_*`                                                             | Chamadas                                              |
-| `RETENTION_SESSION_DAYS`, `RETENTION_CALL_DAYS`, `RETENTION_AUDIT_DAYS` | Retenção (padrão 14, 30 e 180 dias)                   |
+| Variável                                                                  | Para quê                                              |
+| ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `DATABASE_URL`                                                            | PostgreSQL                                            |
+| `AUTO_MIGRATE`                                                            | `false` desliga a migração no início da API           |
+| `CREWSTEAD_ADMIN_EMAIL`, `CREWSTEAD_ADMIN_PASSWORD`, `CREWSTEAD_TIMEZONE` | Primeiro administrador, criado só em instalação vazia |
+| `CREWSTEAD_APP_NAME` (`APP_DISPLAY_NAME` na API, `VITE_APP_NAME` no Vite) | Nome exibido no produto e nos e-mails                 |
+| `INVITATION_DELIVERY_KEY`                                                 | 32 bytes que selam os links enviados por e-mail       |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_PUBLIC_URL`                   | E-mail de convite e redefinição                       |
+| `R2_*`, `STORAGE_QUOTA_BYTES`                                             | Bucket de arquivos e cota da organização              |
+| `LIVEKIT_*`                                                               | Chamadas                                              |
+| `RETENTION_SESSION_DAYS`, `RETENTION_CALL_DAYS`, `RETENTION_AUDIT_DAYS`   | Retenção (padrão 14, 30 e 180 dias)                   |
 
 ## Retenção
 
@@ -27,7 +28,7 @@ Um job diário (`retention`) remove sessões e links de redefinição vencidos (
 BACKUP_PASSPHRASE_FILE=/caminho/fora-do-servidor/frase scripts/backup.sh
 ```
 
-- Gera `backups/daily/oddkin-<data>.dump.enc`, cifrado com AES-256 antes de sair do host. A frase fica **fora** do servidor.
+- Gera `backups/daily/crewstead-<data>.dump.enc`, cifrado com AES-256 antes de sair do host. A frase fica **fora** do servidor.
 - Mantém 14 diários e 4 semanais (os de domingo); `KEEP_DAILY` e `KEEP_WEEKLY` ajustam.
 - Sem `DATABASE_URL`, usa o serviço `postgres` do Compose. Agende com cron e copie a pasta para outro bucket ou provedor, com credenciais próprias e de menor privilégio.
 

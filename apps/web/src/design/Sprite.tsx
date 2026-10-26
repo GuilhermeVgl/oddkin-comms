@@ -13,6 +13,7 @@ import {
   type SpriteHandle,
   type Who,
 } from "./sprites";
+import { useDuoVisible } from "./duoVisibility";
 
 const LABELS: Record<Who, string> = {
   capuz: "Capuz, personagem pixel de capuz verde",
@@ -26,25 +27,26 @@ export const Sprite = forwardRef<
   SpriteRef,
   { who: Who; scale?: number; pose?: PoseName; label?: string }
 >(function Sprite({ who, scale = 4, pose = "idle", label }, ref) {
+  const visible = useDuoVisible();
   const canvas = useRef<HTMLCanvasElement>(null);
   const handle = useRef<SpriteHandle | null>(null);
 
   useEffect(() => {
-    if (canvas.current === null) return;
+    if (!visible || canvas.current === null) return;
     const mounted = mountSprite(canvas.current, { who, scale, pose });
     handle.current = mounted;
     return () => {
       mounted.dispose();
       handle.current = null;
     };
-  }, [who, scale, pose]);
+  }, [who, scale, pose, visible]);
 
   useImperativeHandle(ref, () => ({
     set: (next, hold) => handle.current?.set(next, hold),
   }));
 
   const style: CSSProperties = { width: W * scale, height: H * scale };
-  return (
+  return visible ? (
     <canvas
       aria-label={label ?? LABELS[who]}
       className={`sprite sprite-${who}`}
@@ -52,7 +54,7 @@ export const Sprite = forwardRef<
       role="img"
       style={style}
     />
-  );
+  ) : null;
 });
 
 export type DuoRef = { set(pose: PoseName, hold?: number): void };
@@ -62,6 +64,7 @@ export const Duo = forwardRef<
   DuoRef,
   { scale?: number; gap?: number; pose?: PoseName }
 >(function Duo({ scale = 4, gap = 0, pose = "idle" }, ref) {
+  const visible = useDuoVisible();
   const tela = useRef<SpriteRef>(null);
   const capuz = useRef<SpriteRef>(null);
   useImperativeHandle(ref, () => ({
@@ -70,7 +73,7 @@ export const Duo = forwardRef<
       capuz.current?.set(next, hold);
     },
   }));
-  return (
+  return visible ? (
     <div
       className="duo"
       style={{
@@ -83,5 +86,5 @@ export const Duo = forwardRef<
       <Sprite pose={pose} ref={tela} scale={scale} who="tela" />
       <Sprite pose={pose} ref={capuz} scale={scale} who="capuz" />
     </div>
-  );
+  ) : null;
 });

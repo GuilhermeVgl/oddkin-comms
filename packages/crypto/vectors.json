@@ -1,6 +1,6 @@
 {
   "protocolVersion": 1,
-  "note": "Synthetic test vectors for the ODDKIN envelope protocol v1. Regenerate with UPDATE_VECTORS=1.",
+  "note": "Synthetic test vectors for the Crewstead envelope protocol v1. Regenerate with UPDATE_VECTORS=1.",
   "rootSignPublicKey": "YN27vklGmnZZv64LB7njGKfIxLFHvthU8anluOO0cQc",
   "senderSignPublicKey": "XciEvma34Q7liCKclEyz0h-xOhWkwRwpP0MH7jBEFbw",
   "deviceCertificate": {
@@ -8,7 +8,7 @@
     "deviceId": "00000000-0000-4000-8000-0000000000d1",
     "signPublicKey": "FBvZ5gWOrxno41-kSS9mqxD77Ts6mYI51m1bkqOkZpc",
     "boxPublicKey": "hSdSQ9R91we2Mv9_tUfZPQQFlfWpKbJTaHOWdbiIj2g",
-    "certificate": "Lfwgu1nA-4iwrzP06Mhv7o_SZPArJQDUZh0ubCry8luaHHlmLoAwi3f7WiP6CxH-h33rYU7mfJAWXTgwlcnjCw"
+    "certificate": "7gAFgV_mvk1peO4JCCsSnVvCvjNIG3gis-5KqBR5lDNWh9aKFvuAK89qrizx9hI0zSmSSHZXTFtvbAd4ZMnqBg"
   },
   "contentEnvelope": {
     "context": {
@@ -21,7 +21,7 @@
     "generation": 4,
     "domainKey": "Ah336EeZ1Yu3Bd9MhzmEOjsttiZjZZNttKc6fRkAiUg",
     "plaintext": "Título da atividade — ação",
-    "envelope": "AQEAAAAEVfOnjZMWGA3e5n65iy2tS580BpM-dmq91TuEz3lvvpZzx0Jg0yIVem-VKkAJWEvjM1ZaARkhseBi_dCjlqVmJSPthuYzW7sbW8QiPSa1EqLYLxLiLB--Y780Nnts91FZIzVQFbqUQ2FyCtN16A_6Cw7TKp9fnVF8vGZqsMx1TyuzChdW14QG"
+    "envelope": "AQEAAAAEVfOnjZMWGA3e5n65iy2tS580BpM-dmq91TuEz3lvvpZzx0Jg0yIVem-VKkAJWEvjM1ZaARkhscW2dJjp1AurPnPq5MApGcySV876ZKKqWtXgCR7C2EFHCA8z8dFo7BHEsOfYzvBHJB8TwghGBk08pzqYucSEDJDf9miOcLKypd5UDKyssAIL"
   },
   "keyEnvelope": {
     "domainId": "00000000-0000-4000-8000-0000000000e1",
@@ -30,7 +30,7 @@
     "recipientBoxPublicKey": "vwG-eo55P6Fol-nFFcI1IahFzWIqwYYLkkMbANIlcWE",
     "recipientBoxSecretKey": "iB4AszOwH12JwcDBxpd7QBX_Zv3yCaADewPkF1MTErc",
     "domainKey": "Ah336EeZ1Yu3Bd9MhzmEOjsttiZjZZNttKc6fRkAiUg",
-    "sealed": "zC7uf7DEHL9NqFGTTQK80KeLGe_DMa1HMUDQpWwKInvjJQ4nyHt0SFNN1v7dJXwK9MhsiSk5uOeua7kEPMZ8Yp9H2Ix-KjQtn-a9096ElMoEknfx-4ND2WccP1gQnlFAMxbLnrCo806laPWrugwpLD5BmkLVl-zGIJYrQIBW1zLsEKfxPuCb9OTQpGkcHUaAixj8dfg",
-    "signature": "IHLw-MkyEmjBnRiARfMSid5_py2HcLPxtRwq99qFsRcBDFhgRrx9W6Li4K5nVjx7Grc5VV5nI_n-BpY_6OdQCQ"
+    "sealed": "Fe_hyL2KeCaEGYccgDgajg0KueFUtPchrMfgsgOYJxfRvrYZeSgXOxcsK5Hm3ir7SsXJ3rgPy4YJgoC6KRKxcPWPvBVFlXv0pSWiM286SKVqFjaRqqkxLdvciX9donFy__P9rkuwxteiCRalzRxnl-Ubh8RT3G20r1FZj7gPedI_P7HD1Oc5Uz3krb2u1g3iN6lyQySG9-Y",
+    "signature": "vjQH3hSCu6ymMDGTkalcdn8cXnHgmQLX_BWJzy1oAP-NFv9hIwkRtnOmfIHPJzP1N6DN5_Jdj4L_Xk-S-2cdCA"
   }
 }

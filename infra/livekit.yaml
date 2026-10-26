@@ -7,7 +7,7 @@ rtc:
   port_range_end: 50100
 
 keys:
-  devkey: oddkin-local-livekit-secret-00001
+  devkey: crewstead-local-livekit-secret-00001
 
 webhook:
   api_key: devkey

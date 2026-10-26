@@ -258,6 +258,10 @@ type Organization struct {
 	Singleton bool
 	Timezone  string
 	CreatedAt pgtype.Timestamptz
+	Name      pgtype.Text
+	LogoData  []byte
+	LogoMime  pgtype.Text
+	ShowDuo   bool
 }
 
 type OrganizationInvitation struct {

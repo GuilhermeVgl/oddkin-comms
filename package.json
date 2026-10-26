@@ -1,5 +1,5 @@
 {
-  "name": "oddkin-workspace",
+  "name": "crewstead-workspace",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.6",
@@ -7,12 +7,14 @@
     "node": "24.10.0"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "start": "node scripts/setup.mjs && docker compose up -d",
     "generate:api": "openapi-typescript api/openapi.yaml -o packages/api-client/src/openapi.gen.ts && prettier --write packages/api-client/src/openapi.gen.ts",
-    "typecheck": "corepack pnpm --filter @oddkin/api-client typecheck && corepack pnpm --filter @oddkin/crypto typecheck && corepack pnpm --filter @oddkin/web typecheck",
+    "typecheck": "corepack pnpm --filter @crewstead/api-client typecheck && corepack pnpm --filter @crewstead/crypto typecheck && corepack pnpm --filter @crewstead/web typecheck",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "coverage:check": "vitest run --coverage",
-    "build": "corepack pnpm --filter @oddkin/web build",
+    "build": "corepack pnpm --filter @crewstead/web build",
     "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs vitest.config.ts playwright.config.ts .github/workflows apps/web packages/api-client packages/crypto tests/e2e scripts/*.mjs api/openapi.yaml compose.yaml infra/*.yaml README.md PRODUCT.md docs",
     "lint": "eslint apps/web packages/api-client packages/crypto"
   },

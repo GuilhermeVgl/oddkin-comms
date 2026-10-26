@@ -2,6 +2,34 @@ import createClient from "openapi-fetch";
 import type { components, paths } from "./openapi.gen";
 
 export type CurrentAccount = components["schemas"]["CurrentAccount"];
+export type OrganizationBranding =
+  components["schemas"]["OrganizationBranding"];
+export type UpdateOrganizationBrandingRequest =
+  components["schemas"]["UpdateOrganizationBrandingRequest"];
+
+export async function getOrganizationBranding(
+  client: ReturnType<typeof createApiClient>,
+): Promise<OrganizationBranding> {
+  const { data, response } = await client.GET("/api/v1/organization/branding");
+  if (response.status === 200 && data !== undefined) return data;
+  throw new Error(`Unexpected branding status: ${response.status}`);
+}
+
+export async function updateOrganizationBranding(
+  client: ReturnType<typeof createApiClient>,
+  csrfToken: string,
+  body: UpdateOrganizationBrandingRequest,
+): Promise<OrganizationBranding> {
+  const { data, response } = await client.PATCH(
+    "/api/v1/organization/branding",
+    {
+      body,
+      headers: { "X-CSRF-Token": csrfToken },
+    },
+  );
+  if (response.status === 200 && data !== undefined) return data;
+  throw new Error(`Unexpected branding update status: ${response.status}`);
+}
 export type Invitation = components["schemas"]["Invitation"];
 export type MembershipKind =
   components["schemas"]["CreateInvitationRequest"]["membershipKind"];

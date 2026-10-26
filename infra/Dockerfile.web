@@ -2,7 +2,8 @@ FROM node:24.10.0-alpine3.22@sha256:775ba24d35a13e74dedce1d2af4ad510337b68d8e22b
 WORKDIR /src
 COPY . .
 RUN corepack pnpm install --frozen-lockfile
-RUN corepack pnpm --filter @oddkin/web build
+ARG VITE_APP_NAME=Crewstead
+RUN corepack pnpm --filter @crewstead/web build
 
 FROM caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
 COPY infra/Caddyfile /etc/caddy/Caddyfile

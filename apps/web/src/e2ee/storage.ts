@@ -21,7 +21,7 @@ export function memoryStore(): KeyValueStore {
   };
 }
 
-const DATABASE = "oddkin-vault";
+const DATABASE = "crewstead-vault";
 const STORE = "kv";
 
 function open(): Promise<IDBDatabase> {

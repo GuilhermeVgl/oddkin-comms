@@ -1,4 +1,4 @@
-import { updateWorkItem, type WorkItem } from "@oddkin/api-client";
+import { updateWorkItem, type WorkItem } from "@crewstead/api-client";
 import { useCallback } from "react";
 import { blip } from "../design/sound";
 import { toast } from "../design/toast";

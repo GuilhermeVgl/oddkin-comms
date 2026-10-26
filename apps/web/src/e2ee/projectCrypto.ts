@@ -3,7 +3,7 @@ import {
   fromBase64Url,
   toBase64Url,
   type Crypto,
-} from "@oddkin/crypto";
+} from "@crewstead/crypto";
 import {
   createConversationKeyDomain,
   createSprintKeyDomain,
@@ -12,7 +12,7 @@ import {
   listKeyDomains,
   type KeyDomain,
   type createApiClient,
-} from "@oddkin/api-client";
+} from "@crewstead/api-client";
 import type { DomainKind, Keyring } from "./keyring";
 import type { Vault } from "./vault";
 
