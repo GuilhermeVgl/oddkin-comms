@@ -120,13 +120,13 @@ func respondError(w http.ResponseWriter, r *http.Request, err error) bool {
 // inTx runs fn in one transaction: commit when it returns nil, rollback
 // otherwise. Return statusError(code) to answer with a status, or errResponded
 // after writing the response yourself; anything else becomes a logged 503.
-func (h *apiServer) inTx(ctx context.Context, fn func(q *sqlc.Queries) error) error {
+func (h *server) inTx(ctx context.Context, fn func(q *sqlc.Queries) error) error {
 	return h.inTxPgx(ctx, func(_ pgx.Tx, q *sqlc.Queries) error { return fn(q) })
 }
 
 // inTxPgx is inTx for callbacks that also need the raw transaction, for example
 // to enqueue a River job atomically with the change (InsertTx).
-func (h *apiServer) inTxPgx(ctx context.Context, fn func(tx pgx.Tx, q *sqlc.Queries) error) error {
+func (h *server) inTxPgx(ctx context.Context, fn func(tx pgx.Tx, q *sqlc.Queries) error) error {
 	tx, err := h.auth.pool.Begin(ctx)
 	if err != nil {
 		return err

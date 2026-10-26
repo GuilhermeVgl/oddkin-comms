@@ -151,7 +151,7 @@ func randomObjectKey() (string, error) {
 
 var errStorageNotConfigured = errors.New("object storage is not configured")
 
-func (h *apiServer) storage(w http.ResponseWriter, r *http.Request) (objectstore.Store, bool) {
+func (h *filesAPI) storage(w http.ResponseWriter, r *http.Request) (objectstore.Store, bool) {
 	if h.auth == nil || h.auth.store == nil {
 		serverError(w, r, errStorageNotConfigured)
 		return nil, false
@@ -193,7 +193,7 @@ func uploadPartCount(size int64) int32 {
 	return int32((size + uploadPartSize - 1) / uploadPartSize)
 }
 
-func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
+func (h *filesAPI) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -238,7 +238,7 @@ func (h *apiServer) CreateUpload(w http.ResponseWriter, r *http.Request) {
 // reserveUpload checks the caller's rights and the content rules, then books
 // the quota and the person's single upload slot, inside the caller's
 // transaction. Refusals it answers itself return errResponded.
-func (h *apiServer) reserveUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, payload gen.CreateUploadRequest, key string) (sqlc.Attachment, error) {
+func (h *filesAPI) reserveUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID, payload gen.CreateUploadRequest, key string) (sqlc.Attachment, error) {
 	attachmentID := pgUUID(uuid.New())
 	if payload.Id != nil {
 		attachmentID = toPG(*payload.Id)
@@ -338,7 +338,7 @@ func uploadEncryptionFailure(ctx context.Context, q *sqlc.Queries, target fileCo
 
 // startMultipart opens the bucket upload for a reserved attachment. When the
 // bucket refuses, the reservation is released so the person can retry.
-func (h *apiServer) startMultipart(ctx context.Context, store objectstore.Store, attachment sqlc.Attachment) error {
+func (h *filesAPI) startMultipart(ctx context.Context, store objectstore.Store, attachment sqlc.Attachment) error {
 	uploadID, err := store.CreateMultipart(ctx, attachment.ObjectKey)
 	pool := sqlc.New(h.auth.pool)
 	if err == nil {
@@ -352,7 +352,7 @@ func (h *apiServer) startMultipart(ctx context.Context, store objectstore.Store,
 }
 
 // ownUpload returns the caller's active upload or answers 404/409.
-func (h *apiServer) ownUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, requireActive bool) (sqlc.Attachment, bool) {
+func (h *filesAPI) ownUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, requireActive bool) (sqlc.Attachment, bool) {
 	attachment, err := q.GetAttachment(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && attachment.UploaderID != account) {
 		w.WriteHeader(http.StatusNotFound)
@@ -369,7 +369,7 @@ func (h *apiServer) ownUpload(ctx context.Context, w http.ResponseWriter, q *sql
 	return attachment, true
 }
 
-func (h *apiServer) PresignUploadPart(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId, partNumber int) {
+func (h *filesAPI) PresignUploadPart(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId, partNumber int) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -429,7 +429,7 @@ func toAttachment(row sqlc.Attachment, uploaderEmail string) gen.Attachment {
 	return attachment
 }
 
-func (h *apiServer) CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
+func (h *filesAPI) CompleteUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -532,7 +532,7 @@ func discardUpload(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	w.WriteHeader(status)
 }
 
-func (h *apiServer) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
+func (h *filesAPI) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId gen.UploadId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -557,7 +557,7 @@ func (h *apiServer) AbortUpload(w http.ResponseWriter, r *http.Request, uploadId
 
 // releaseObject best-effort frees the bucket resources of an aborted or deleted
 // attachment; the scheduled cleanup retries anything left behind.
-func (h *apiServer) releaseObject(ctx context.Context, q *sqlc.Queries, attachment sqlc.Attachment) {
+func (h *filesAPI) releaseObject(ctx context.Context, q *sqlc.Queries, attachment sqlc.Attachment) {
 	if h.auth.store == nil {
 		return
 	}
@@ -566,7 +566,7 @@ func (h *apiServer) releaseObject(ctx context.Context, q *sqlc.Queries, attachme
 	}
 }
 
-func (h *apiServer) GetAttachmentDownload(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
+func (h *filesAPI) GetAttachmentDownload(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -603,7 +603,7 @@ func (h *apiServer) GetAttachmentDownload(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, gen.PresignedUrl{Url: url, ExpiresInSeconds: int(downloadURLTTL.Seconds())})
 }
 
-func (h *apiServer) DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
+func (h *filesAPI) DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -636,7 +636,7 @@ func (h *apiServer) DeleteAttachment(w http.ResponseWriter, r *http.Request, att
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) listAttachments(w http.ResponseWriter, r *http.Request, workItemID, conversationID pgtype.UUID) {
+func (h *filesAPI) listAttachments(w http.ResponseWriter, r *http.Request, workItemID, conversationID pgtype.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -683,15 +683,15 @@ func (h *apiServer) listAttachments(w http.ResponseWriter, r *http.Request, work
 	writeJSON(w, http.StatusOK, attachments)
 }
 
-func (h *apiServer) ListWorkItemAttachments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *filesAPI) ListWorkItemAttachments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	h.listAttachments(w, r, toPG(workItemId), pgtype.UUID{})
 }
 
-func (h *apiServer) ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *filesAPI) ListConversationAttachments(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	h.listAttachments(w, r, pgtype.UUID{}, toPG(conversationId))
 }
 
-func (h *apiServer) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
+func (h *filesAPI) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return

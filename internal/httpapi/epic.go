@@ -34,7 +34,7 @@ func toEpic(epic sqlc.Epic) gen.Epic {
 	return response
 }
 
-func (h *apiServer) ListEpics(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) ListEpics(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -62,7 +62,7 @@ func (h *apiServer) ListEpics(w http.ResponseWriter, r *http.Request, projectId 
 	writeJSON(w, http.StatusOK, epics)
 }
 
-func (h *apiServer) CreateEpic(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) CreateEpic(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -157,7 +157,7 @@ func insertPlainEpic(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries
 	return q.CreateEpic(ctx, sqlc.CreateEpicParams{ProjectID: projectID, Title: *payload.Title, Description: description, CreatedBy: account})
 }
 
-func (h *apiServer) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID) {
+func (h *workAPI) UpdateEpic(w http.ResponseWriter, r *http.Request, epicId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

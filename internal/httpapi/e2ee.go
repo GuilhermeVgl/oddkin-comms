@@ -322,7 +322,7 @@ func toKeyDomain(domain sqlc.KeyDomain) gen.KeyDomain {
 	return response
 }
 
-func (h *apiServer) organizationOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID) (pgtype.UUID, bool) {
+func (h *keysAPI) organizationOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, account pgtype.UUID) (pgtype.UUID, bool) {
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, account)
 	if err != nil {
 		serverError(w, nil, err)

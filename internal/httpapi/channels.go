@@ -14,7 +14,7 @@ import (
 // CreateChannel adds a channel. A project that already encrypts chat gets an
 // encrypted name under an id the client chose, so the id is part of what was
 // signed; otherwise the name is stored in the clear until the project migrates.
-func (h *apiServer) CreateChannel(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *chatAPI) CreateChannel(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.CreateChannelRequest
 	if !decodeJSONBodyLimit(w, r, &payload, contentBodyLimit) {
 		return
@@ -79,7 +79,7 @@ func (h *apiServer) CreateChannel(w http.ResponseWriter, r *http.Request, projec
 }
 
 // ReorderChannels takes the complete list so a stale client cannot drop a channel.
-func (h *apiServer) ReorderChannels(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *chatAPI) ReorderChannels(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ReorderRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -113,7 +113,7 @@ func (h *apiServer) ReorderChannels(w http.ResponseWriter, r *http.Request, proj
 }
 
 // SetChannelArchived makes a channel read-only, or writable again.
-func (h *apiServer) SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *chatAPI) SetChannelArchived(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	var payload gen.ArchiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -150,7 +150,7 @@ func (h *apiServer) SetChannelArchived(w http.ResponseWriter, r *http.Request, c
 }
 
 // SetProjectArchived hides a project from the default lists and makes it read-only.
-func (h *apiServer) SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *chatAPI) SetProjectArchived(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ArchiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -188,7 +188,7 @@ func (h *apiServer) SetProjectArchived(w http.ResponseWriter, r *http.Request, p
 }
 
 // SetInvitePolicy lets the managers decide who else may invite or add people.
-func (h *apiServer) SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *chatAPI) SetInvitePolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.SetInvitePolicyRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -207,7 +207,7 @@ func (h *apiServer) SetInvitePolicy(w http.ResponseWriter, r *http.Request, proj
 
 // SetMemberRole promotes an internal member to manager or steps one down. The
 // project always keeps a manager, and externals never become managers.
-func (h *apiServer) SetMemberRole(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+func (h *chatAPI) SetMemberRole(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
 	var payload gen.SetMemberRoleRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

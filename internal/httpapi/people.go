@@ -11,7 +11,7 @@ import (
 )
 
 // ListSessions shows the caller's own sessions, so a forgotten browser can be ended.
-func (h *apiServer) ListSessions(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) ListSessions(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -33,7 +33,7 @@ func (h *apiServer) ListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessions)
 }
 
-func (h *apiServer) RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID) {
+func (h *identityAPI) RevokeSession(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -55,7 +55,7 @@ func (h *apiServer) RevokeSession(w http.ResponseWriter, r *http.Request, sessio
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) ListOrganizationPeople(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -89,7 +89,7 @@ func (h *apiServer) ListOrganizationPeople(w http.ResponseWriter, r *http.Reques
 
 // SetPersonActive ends all access of a deactivated account at once: its
 // sessions are revoked in the same transaction.
-func (h *apiServer) SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
+func (h *identityAPI) SetPersonActive(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
 	var payload gen.SetActiveRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -139,7 +139,7 @@ func (h *apiServer) SetPersonActive(w http.ResponseWriter, r *http.Request, acco
 
 // SetHistoryMode lets a person choose whether they are asked to set up access
 // to encrypted history. "auto" is only ever set by an invitation.
-func (h *apiServer) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
 	var payload gen.SetHistoryModeRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

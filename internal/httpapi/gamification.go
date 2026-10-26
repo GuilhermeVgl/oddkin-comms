@@ -17,7 +17,7 @@ const maxFocusMinutes = 180
 
 // GetMyStats is the caller's own scoreboard. It is computed from operational
 // metadata only (when work was finished, thanks, focus time, calls joined).
-func (h *apiServer) GetMyStats(w http.ResponseWriter, r *http.Request) {
+func (h *workAPI) GetMyStats(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -62,7 +62,7 @@ func (h *apiServer) GetMyStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *apiServer) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, false)
 	if !ok {
 		return
@@ -79,7 +79,7 @@ func (h *apiServer) GetWorkItemEngagement(w http.ResponseWriter, r *http.Request
 
 // GiveKudos thanks whoever finished an activity. The assignee hears about it
 // once, however many times the same person presses the button.
-func (h *apiServer) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -114,7 +114,7 @@ func (h *apiServer) GiveKudos(w http.ResponseWriter, r *http.Request, workItemId
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) RemoveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) RemoveKudos(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -128,7 +128,7 @@ func (h *apiServer) RemoveKudos(w http.ResponseWriter, r *http.Request, workItem
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) RecordFocusSession(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) RecordFocusSession(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	var payload gen.FocusSessionRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

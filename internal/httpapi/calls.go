@@ -74,7 +74,7 @@ func resolveCallRights(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 	return rights, true
 }
 
-func (h *apiServer) mediaConfigured(w http.ResponseWriter, r *http.Request) bool {
+func (h *callsAPI) mediaConfigured(w http.ResponseWriter, r *http.Request) bool {
 	if h.auth == nil || h.auth.rooms == nil {
 		serverError(w, r, errMediaNotConfigured)
 		return false
@@ -157,7 +157,7 @@ func buildCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, rights call
 	return response, nil
 }
 
-func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
+func (h *callsAPI) StartCall(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -221,7 +221,7 @@ func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
 }
 
 // closeCall ends a call in its own transaction (used after external failures).
-func (h *apiServer) closeCall(ctx context.Context, call sqlc.Call, reason string) {
+func (h *callsAPI) closeCall(ctx context.Context, call sqlc.Call, reason string) {
 	_ = h.inTx(ctx, func(q *sqlc.Queries) error {
 		_, err := calls.End(ctx, q, call, reason)
 		return err
@@ -251,7 +251,7 @@ func loadCall(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id op
 	return call, rights, ok
 }
 
-func (h *apiServer) ticket(call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, screenShare bool) (gen.CallTicket, error) {
+func (h *callsAPI) ticket(call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, screenShare bool) (gen.CallTicket, error) {
 	identity := uuid.UUID(session.AccountID.Bytes).String()
 	token, err := h.auth.livekit.JoinToken(call.RoomName, identity, session.EmailNormalized, screenShare, callTokenTTL)
 	if err != nil {
@@ -263,7 +263,7 @@ func (h *apiServer) ticket(call sqlc.Call, session sqlc.FindActiveSessionByToken
 	}, nil
 }
 
-func (h *apiServer) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -329,7 +329,7 @@ func (h *apiServer) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.
 	writeJSON(w, http.StatusOK, ticket)
 }
 
-func (h *apiServer) DeclineCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) DeclineCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -349,7 +349,7 @@ func (h *apiServer) DeclineCall(w http.ResponseWriter, r *http.Request, callId g
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) CancelCallInvitation(w http.ResponseWriter, r *http.Request, callId gen.CallId, accountId openapi_types.UUID) {
+func (h *callsAPI) CancelCallInvitation(w http.ResponseWriter, r *http.Request, callId gen.CallId, accountId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -372,7 +372,7 @@ func (h *apiServer) CancelCallInvitation(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -407,7 +407,7 @@ func (h *apiServer) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) EndCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) EndCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -444,7 +444,7 @@ func (h *apiServer) EndCall(w http.ResponseWriter, r *http.Request, callId gen.C
 }
 
 // LivekitWebhook verifies the signature, ignores replays and reconciles presence.
-func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
+func (h *callsAPI) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil || h.auth.rooms == nil {
 		serverError(w, r, errMediaNotConfigured)
 		return

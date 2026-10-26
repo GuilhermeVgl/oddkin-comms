@@ -14,7 +14,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-func (h *apiServer) GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *keysAPI) GetProjectDirectory(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -55,7 +55,7 @@ func (h *apiServer) GetProjectDirectory(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, directory)
 }
 
-func (h *apiServer) CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *keysAPI) CreateKeyDomain(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -94,7 +94,7 @@ func (h *apiServer) CreateKeyDomain(w http.ResponseWriter, r *http.Request, proj
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
 }
 
-func (h *apiServer) ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *keysAPI) ListKeyDomains(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -123,7 +123,7 @@ func (h *apiServer) ListKeyDomains(w http.ResponseWriter, r *http.Request, proje
 // PublishKeyGeneration stores the next generation of a domain's key, sealed
 // for exactly the devices that must hold it. The server checks who may receive
 // it and who sealed it; it never sees the key.
-func (h *apiServer) PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -177,7 +177,7 @@ func (h *apiServer) PublishKeyGeneration(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *apiServer) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) ListMyKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -236,7 +236,7 @@ func directoryEntry(id, account pgtype.UUID, email, kind, state string, sign, bo
 }
 
 // domainForReader loads a domain and answers 404/403 for non-readers.
-func (h *apiServer) domainForReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id gen.KeyDomainId, account pgtype.UUID) (sqlc.KeyDomain, bool) {
+func (h *keysAPI) domainForReader(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id gen.KeyDomainId, account pgtype.UUID) (sqlc.KeyDomain, bool) {
 	domain, err := q.GetKeyDomain(ctx, toPG(id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
@@ -249,7 +249,7 @@ func (h *apiServer) domainForReader(ctx context.Context, w http.ResponseWriter, 
 	return domain, requireReader(ctx, w, q, domain, account)
 }
 
-func (h *apiServer) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) ListKeyRecipients(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -273,7 +273,7 @@ func (h *apiServer) ListKeyRecipients(w http.ResponseWriter, r *http.Request, ke
 	writeJSON(w, http.StatusOK, recipients)
 }
 
-func (h *apiServer) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -312,7 +312,7 @@ func (h *apiServer) ListAuthorizedDevices(w http.ResponseWriter, r *http.Request
 
 // GrantKeyEnvelopes gives authorized devices that lack one an envelope for an
 // existing generation, which is how a new member receives the history.
-func (h *apiServer) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -354,7 +354,7 @@ func (h *apiServer) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, ke
 }
 
 // GetConversationKeyDomain returns the DM's key domain to either participant.
-func (h *apiServer) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *keysAPI) GetConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -383,7 +383,7 @@ func (h *apiServer) GetConversationKeyDomain(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *apiServer) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *keysAPI) CreateConversationKeyDomain(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -421,7 +421,7 @@ func (h *apiServer) CreateConversationKeyDomain(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
 }
 
-func (h *apiServer) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -449,7 +449,7 @@ func (h *apiServer) GetSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *apiServer) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

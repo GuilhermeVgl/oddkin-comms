@@ -22,7 +22,7 @@ type chatAccess struct {
 	read, send, manager, archived bool
 }
 
-func (h *apiServer) ListConversations(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *chatAPI) ListConversations(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -183,7 +183,7 @@ func channelDomainFailure(ctx context.Context, q *sqlc.Queries, conversation sql
 	return nil, fail, err
 }
 
-func (h *apiServer) ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params gen.ListMessagesParams) {
+func (h *chatAPI) ListMessages(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, params gen.ListMessagesParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -232,7 +232,7 @@ func (h *apiServer) ListMessages(w http.ResponseWriter, r *http.Request, convers
 	writeJSON(w, http.StatusOK, messages)
 }
 
-func (h *apiServer) SendMessage(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *chatAPI) SendMessage(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -362,7 +362,7 @@ func messageAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	return message, access, ok
 }
 
-func (h *apiServer) EditMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *chatAPI) EditMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -455,7 +455,7 @@ func writeMessageEdit(ctx context.Context, w http.ResponseWriter, q *sqlc.Querie
 	return edited, err
 }
 
-func (h *apiServer) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *chatAPI) DeleteMessage(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -488,7 +488,7 @@ func (h *apiServer) DeleteMessage(w http.ResponseWriter, r *http.Request, messag
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) ToggleReaction(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
+func (h *chatAPI) ToggleReaction(w http.ResponseWriter, r *http.Request, messageId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -532,7 +532,7 @@ func (h *apiServer) ToggleReaction(w http.ResponseWriter, r *http.Request, messa
 	writeJSON(w, http.StatusOK, toReactions(reactions, toPG(messageId)))
 }
 
-func (h *apiServer) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -551,7 +551,7 @@ func (h *apiServer) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contacts)
 }
 
-func (h *apiServer) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) ListDirectConversations(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -570,7 +570,7 @@ func (h *apiServer) ListDirectConversations(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, conversations)
 }
 
-func (h *apiServer) OpenDirectConversation(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) OpenDirectConversation(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -661,7 +661,7 @@ func announceMessage(ctx context.Context, q *sqlc.Queries, conversation sqlc.Con
 }
 
 // UpdateConversation renames a channel or sets its encrypted name (project managers only).
-func (h *apiServer) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *chatAPI) UpdateConversation(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

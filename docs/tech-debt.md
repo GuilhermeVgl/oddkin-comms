@@ -23,6 +23,5 @@ Medido em outubro de 2026, depois do trabalho de pagamento descrito abaixo. A co
 ## O que continua aberto
 
 - **Cobertura (item 5).** `pnpm coverage:check` mede hoje cerca de 20% de statements e 18% de branches no TypeScript, contra o piso de 80% do CLAUDE.md, então o gate de cobertura **falha**. A lógica pura, o `crypto` (94%) e o `api-client` (cerca de 57%) estão bem cobertos; o que falta é o código de interface (telas, hooks, componentes), que não tem como ser exercitado sem um ambiente de DOM. O caminho: adicionar `happy-dom` e `@testing-library/react` (dependência justificada por esse piso), testar primeiro os hooks extraídos (`useMessages`, `useComments`, `useSteward`, `useBoardDrag`) e os fluxos críticos de autorização, e acompanhar o número por diretório. Os limiares não devem ser rebaixados.
-- **Composição por domínio (item 7).** Separar `apiServer` em tipos por domínio (`workAPI`, `callsAPI`...) ainda não foi feito.
 - **Imagem base no Docker Hub.** O build da API consulta o Docker Hub a cada vez e travou duas vezes; vale um fallback offline para ambiente local.
 - **Tela de chamada.** A refatoração de `Call.tsx` foi verificada por tipos, lint e testes da lógica pura, mas não numa chamada real com LiveKit.

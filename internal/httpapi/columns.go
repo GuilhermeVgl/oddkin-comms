@@ -46,7 +46,7 @@ func validColumnName(name string) (string, bool) {
 // columnTx runs a managers-only change of a project's columns in one
 // transaction, under a project lock so two managers cannot break the board's
 // rules together, and announces it so open boards reload.
-func (h *apiServer) columnTx(w http.ResponseWriter, r *http.Request, projectID gen.ProjectId, change func(ctx context.Context, q *sqlc.Queries) (status int, body any, err error)) {
+func (h *server) columnTx(w http.ResponseWriter, r *http.Request, projectID gen.ProjectId, change func(ctx context.Context, q *sqlc.Queries) (status int, body any, err error)) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -94,7 +94,7 @@ func (h *apiServer) columnTx(w http.ResponseWriter, r *http.Request, projectID g
 	writeJSON(w, status, body)
 }
 
-func (h *apiServer) CreateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) CreateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.CreateBoardColumnRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -119,7 +119,7 @@ func (h *apiServer) CreateBoardColumn(w http.ResponseWriter, r *http.Request, pr
 	})
 }
 
-func (h *apiServer) UpdateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID) {
+func (h *workAPI) UpdateBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID) {
 	var payload gen.UpdateBoardColumnRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -156,7 +156,7 @@ func (h *apiServer) UpdateBoardColumn(w http.ResponseWriter, r *http.Request, pr
 	})
 }
 
-func (h *apiServer) DeleteBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID, params gen.DeleteBoardColumnParams) {
+func (h *workAPI) DeleteBoardColumn(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, columnId openapi_types.UUID, params gen.DeleteBoardColumnParams) {
 	id := toPG(columnId)
 	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
 		if _, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: id, ProjectID: pgUUID(projectId)}); errors.Is(err, pgx.ErrNoRows) {
@@ -196,7 +196,7 @@ func (h *apiServer) DeleteBoardColumn(w http.ResponseWriter, r *http.Request, pr
 	})
 }
 
-func (h *apiServer) ReorderBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) ReorderBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ReorderBoardColumnsRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -240,7 +240,7 @@ func (h *apiServer) ReorderBoardColumns(w http.ResponseWriter, r *http.Request, 
 // RemoveProjectMember ends a person's access at once. The same transaction
 // marks every key domain of the project for rotation, so what is written after
 // this cannot be read by the person who left, and tells open clients to reload.
-func (h *apiServer) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
+func (h *workAPI) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId, accountId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -297,7 +297,7 @@ func (h *apiServer) RemoveProjectMember(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) followAccess(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId, write bool) (sqlc.WorkItem, pgtype.UUID, bool) {
+func (h *workAPI) followAccess(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId, write bool) (sqlc.WorkItem, pgtype.UUID, bool) {
 	var (
 		session sqlc.FindActiveSessionByTokenHashRow
 		ok      bool
@@ -323,7 +323,7 @@ func (h *apiServer) followAccess(w http.ResponseWriter, r *http.Request, workIte
 	return item, session.AccountID, true
 }
 
-func (h *apiServer) GetFollowing(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) GetFollowing(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, false)
 	if !ok {
 		return
@@ -338,7 +338,7 @@ func (h *apiServer) GetFollowing(w http.ResponseWriter, r *http.Request, workIte
 	writeJSON(w, http.StatusOK, gen.Following{Following: following})
 }
 
-func (h *apiServer) FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) FollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -352,7 +352,7 @@ func (h *apiServer) FollowWorkItem(w http.ResponseWriter, r *http.Request, workI
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	item, account, ok := h.followAccess(w, r, workItemId, true)
 	if !ok {
 		return
@@ -368,7 +368,7 @@ func (h *apiServer) UnfollowWorkItem(w http.ResponseWriter, r *http.Request, wor
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
-func (h *apiServer) SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) SetProjectAppearance(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	var payload gen.ProjectAppearanceRequest
 	if !decodeJSONBody(w, r, &payload) {
 		return

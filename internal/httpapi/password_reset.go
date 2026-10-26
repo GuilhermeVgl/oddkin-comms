@@ -20,7 +20,7 @@ var errResetDeliveryNotConfigured = errors.New("password reset delivery is not c
 // RequestPasswordReset always answers 202, so nobody learns which e-mails have
 // an account. When one does, the link is sent by a job created in the same
 // transaction that stores the token's hash.
-func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		serverError(w, r, errAuthNotConfigured)
 		return
@@ -96,7 +96,7 @@ func (h *apiServer) RequestPasswordReset(w http.ResponseWriter, r *http.Request)
 // ConfirmPasswordReset spends the token, sets the password and ends every
 // earlier session. It touches no encryption key: the history stays unreadable
 // until this device is authorised again.
-func (h *apiServer) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		serverError(w, r, errAuthNotConfigured)
 		return

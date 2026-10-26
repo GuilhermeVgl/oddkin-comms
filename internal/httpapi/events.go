@@ -90,7 +90,7 @@ func canReceive(ctx context.Context, q *sqlc.Queries, accountID, projectID, conv
 	return permission == "" || access.access.Can(permission), nil
 }
 
-func (h *apiServer) ListNotifications(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -131,7 +131,7 @@ func (h *apiServer) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, notifications)
 }
 
-func (h *apiServer) MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID) {
+func (h *chatAPI) MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -150,7 +150,7 @@ func (h *apiServer) MarkNotificationRead(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -164,7 +164,7 @@ func (h *apiServer) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
+func (h *chatAPI) SetReadCursor(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -236,7 +236,7 @@ var errAuthNotConfigured = errors.New("auth service is not configured")
 // frameWriter sends one frame to the client, bounded by a write deadline.
 type frameWriter func(serverFrame) error
 
-func (h *apiServer) EventsSocket(w http.ResponseWriter, r *http.Request) {
+func (h *chatAPI) EventsSocket(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		serverError(w, r, errAuthNotConfigured)
 		return
@@ -302,7 +302,7 @@ func readClientFrames(ctx context.Context, cancel context.CancelFunc, conn *webs
 // awaitResume waits for the client's resume frame and returns the sequence
 // to replay from. It closes the connection and reports false when the client
 // misbehaves, times out or needs a fresh snapshot.
-func (h *apiServer) awaitResume(ctx context.Context, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, write frameWriter) (int64, bool) {
+func (h *chatAPI) awaitResume(ctx context.Context, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, write frameWriter) (int64, bool) {
 	select {
 	case frame := <-frames:
 		if frame.Type != "resume" {
@@ -326,7 +326,7 @@ func (h *apiServer) awaitResume(ctx context.Context, conn *websocket.Conn, frame
 
 // pumpFeed delivers the account's events from last on, pings the client, and
 // re-checks the session, until the connection ends or the session does.
-func (h *apiServer) pumpFeed(ctx context.Context, r *http.Request, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) {
+func (h *chatAPI) pumpFeed(ctx context.Context, r *http.Request, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) {
 	poll := time.NewTicker(feedPollInterval)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(heartbeatInterval)
@@ -364,7 +364,7 @@ func (h *apiServer) pumpFeed(ctx context.Context, r *http.Request, conn *websock
 
 // deliverEvents sends the next batch of events the account may still see and
 // returns the sequence of the last event it looked at.
-func (h *apiServer) deliverEvents(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) (int64, error) {
+func (h *chatAPI) deliverEvents(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, last int64, write frameWriter) (int64, error) {
 	events, err := q.ListUserEvents(ctx, sqlc.ListUserEventsParams{AccountID: account, Seq: last, Limit: eventBatch})
 	if err != nil {
 		return last, err
@@ -385,7 +385,7 @@ func (h *apiServer) deliverEvents(ctx context.Context, q *sqlc.Queries, account 
 	return last, nil
 }
 
-func (h *apiServer) eventFrame(account pgtype.UUID, event sqlc.UserEvent) serverFrame {
+func (h *chatAPI) eventFrame(account pgtype.UUID, event sqlc.UserEvent) serverFrame {
 	frame := serverFrame{
 		Type: "event", Cursor: h.auth.signCursor(account, event.Seq), EventID: uuid.UUID(event.EventID.Bytes).String(),
 		EventType: event.Type, ResourceID: uuid.UUID(event.ResourceID.Bytes).String(), ResourceVersion: event.ResourceVersion,
@@ -402,7 +402,7 @@ func (h *apiServer) eventFrame(account pgtype.UUID, event sqlc.UserEvent) server
 // resumePoint returns the sequence after which the feed is replayed. An empty
 // cursor starts at the current head; a foreign, forged or expired cursor
 // requires a fresh snapshot.
-func (h *apiServer) resumePoint(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, cursor string) (int64, bool) {
+func (h *chatAPI) resumePoint(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, cursor string) (int64, bool) {
 	head, err := q.UserEventHead(ctx, account)
 	if err != nil {
 		return 0, false

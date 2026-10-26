@@ -57,7 +57,7 @@ func toWorkItem(item sqlc.WorkItem) gen.WorkItem {
 	return response
 }
 
-func (h *apiServer) ListWorkItems(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) ListWorkItems(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -85,7 +85,7 @@ func (h *apiServer) ListWorkItems(w http.ResponseWriter, r *http.Request, projec
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (h *apiServer) CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) CreateWorkItem(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -242,7 +242,7 @@ func insertWorkItem(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, p
 	})
 }
 
-func (h *apiServer) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) UpdateWorkItem(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -371,7 +371,7 @@ func checkWorkItemContentWrite(ctx context.Context, w http.ResponseWriter, q *sq
 // workItemUpdateParams turns the request into the optimistic update. Planning
 // references are checked here, and a move to another column applies the
 // completion rules of SPEC 6.5 inside the caller's transaction.
-func (h *apiServer) workItemUpdateParams(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest) (sqlc.UpdateWorkItemParams, error) {
+func (h *workAPI) workItemUpdateParams(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, payload gen.UpdateWorkItemRequest) (sqlc.UpdateWorkItemParams, error) {
 	params := sqlc.UpdateWorkItemParams{ID: item.ID, Version: item.Version}
 	if payload.Title != nil {
 		params.Title = pgtype.Text{String: *payload.Title, Valid: true}
@@ -479,7 +479,7 @@ func announceWorkItemUpdate(ctx context.Context, q *sqlc.Queries, actor pgtype.U
 
 // applyMoveRules enforces the completion rules of SPEC 6.5 inside the caller's
 // transaction. It returns statusError when the move must be rejected.
-func (h *apiServer) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) error {
+func (h *workAPI) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem, target sqlc.BoardColumn, completeSubtasks bool) error {
 	current, err := q.GetBoardColumn(ctx, sqlc.GetBoardColumnParams{ID: item.ColumnID, ProjectID: item.ProjectID})
 	if err != nil {
 		return err
@@ -510,7 +510,7 @@ func (h *apiServer) applyMoveRules(ctx context.Context, q *sqlc.Queries, item sq
 
 // reopenParentOfSubtask moves a finished parent task back to the board's
 // reopen column, and reopens its epic, when one of its subtasks is reopened.
-func (h *apiServer) reopenParentOfSubtask(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem) error {
+func (h *workAPI) reopenParentOfSubtask(ctx context.Context, q *sqlc.Queries, item sqlc.WorkItem) error {
 	parent, err := q.GetWorkItemForUpdate(ctx, item.ParentID)
 	if err != nil {
 		return err
@@ -536,7 +536,7 @@ func (h *apiServer) reopenParentOfSubtask(ctx context.Context, q *sqlc.Queries, 
 
 // workItemAccess resolves an item and the caller's access without leaking the
 // existence of items in projects the caller cannot see.
-func (h *apiServer) workItemAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, itemID gen.WorkItemId, accountID pgtype.UUID) (sqlc.WorkItem, projectAccess, bool) {
+func (h *workAPI) workItemAccess(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, itemID gen.WorkItemId, accountID pgtype.UUID) (sqlc.WorkItem, projectAccess, bool) {
 	item, err := q.GetWorkItem(ctx, pgUUID(itemID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)

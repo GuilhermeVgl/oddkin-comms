@@ -15,7 +15,7 @@ import (
 
 // recoveryAdmin answers 403 unless the caller is an administrator whose
 // account owns an active recovery identity.
-func (h *apiServer) recoveryAdmin(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (pgtype.UUID, []pgtype.UUID, bool) {
+func (h *keysAPI) recoveryAdmin(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (pgtype.UUID, []pgtype.UUID, bool) {
 	if !session.IsAdmin {
 		w.WriteHeader(http.StatusForbidden)
 		return pgtype.UUID{}, nil, false
@@ -45,7 +45,7 @@ func (h *apiServer) recoveryAdmin(ctx context.Context, w http.ResponseWriter, q 
 // ListRecoveryGaps lists every (domain, generation, device) where an authorized
 // device cannot read yet. Only the recovery administrator sees it, by design:
 // the recovery identity can restore access anywhere in the organization.
-func (h *apiServer) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -110,7 +110,7 @@ func (h *apiServer) ListRecoveryGaps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gaps)
 }
 
-func (h *apiServer) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -150,7 +150,7 @@ func (h *apiServer) ListRecoveryEnvelopes(w http.ResponseWriter, r *http.Request
 // administrator, with the recovery identity unlocked locally, re-seals a
 // generation for devices that lost theirs. The server only transports it,
 // records who did what for whom, and tells the person.
-func (h *apiServer) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
+func (h *keysAPI) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -199,7 +199,7 @@ func (h *apiServer) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
 }
 
-func (h *apiServer) ListRecoveryAudit(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) ListRecoveryAudit(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return

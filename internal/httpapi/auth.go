@@ -89,13 +89,13 @@ func NewAppHandlerWithConfig(pool *pgxpool.Pool, config AppConfig) (http.Handler
 	if err != nil {
 		return nil, err
 	}
-	return withObservability(gen.Handler(&apiServer{database: pool, auth: &authService{
+	return withObservability(gen.Handler(newAPIServer(&server{database: pool, auth: &authService{
 		pool: pool, dummyHash: dummyHash, limiter: newLoginLimiter(),
 		invitationDeliveryKey: append([]byte(nil), config.InvitationDeliveryKey...), jobs: jobClient, cursorKey: cursorKey, store: config.ObjectStore, quota: quota, livekit: config.LiveKit, rooms: rooms,
-	}}), config.AccessLog), nil
+	}})), config.AccessLog), nil
 }
 
-func (h *apiServer) Login(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) Login(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		serverError(w, r, errAuthNotConfigured)
 		return
@@ -164,7 +164,7 @@ func (h *apiServer) Login(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) GetCurrentAccount(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) GetCurrentAccount(w http.ResponseWriter, r *http.Request) {
 	session, status := h.activeSession(r)
 	if status != http.StatusOK {
 		w.WriteHeader(status)
@@ -196,15 +196,15 @@ func (h *apiServer) GetCurrentAccount(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *apiServer) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	h.revoke(w, r, false)
 }
 
-func (h *apiServer) LogoutAll(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	h.revoke(w, r, true)
 }
 
-func (h *apiServer) revoke(w http.ResponseWriter, r *http.Request, all bool) {
+func (h *identityAPI) revoke(w http.ResponseWriter, r *http.Request, all bool) {
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -235,7 +235,7 @@ func (h *apiServer) revoke(w http.ResponseWriter, r *http.Request, all bool) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) activeSession(r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, int) {
+func (h *server) activeSession(r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, int) {
 	if h.auth == nil {
 		return sqlc.FindActiveSessionByTokenHashRow{}, sessionUnavailable(r, errAuthNotConfigured)
 	}

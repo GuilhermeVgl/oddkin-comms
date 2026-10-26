@@ -14,7 +14,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-func (h *apiServer) ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) ListWorkItemComments(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -54,7 +54,7 @@ func (h *apiServer) ListWorkItemComments(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, comments)
 }
 
-func (h *apiServer) CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
+func (h *workAPI) CreateWorkItemComment(w http.ResponseWriter, r *http.Request, workItemId gen.WorkItemId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -155,7 +155,7 @@ func insertPlainComment(ctx context.Context, w http.ResponseWriter, q *sqlc.Quer
 
 // EncryptComment migrates the author's own legacy plaintext comment: the
 // plaintext is erased in the same statement that stores the envelope.
-func (h *apiServer) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
+func (h *workAPI) EncryptComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

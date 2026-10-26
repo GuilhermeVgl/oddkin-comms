@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
+func (h *callsAPI) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -43,7 +43,7 @@ func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, para
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *apiServer) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
+func (h *callsAPI) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -72,7 +72,7 @@ func (h *apiServer) ListCallInvitations(w http.ResponseWriter, r *http.Request) 
 
 // ListCallHistory is the record of calls a conversation shows between its
 // messages. Anyone who can read the conversation may see who took part.
-func (h *apiServer) ListCallHistory(w http.ResponseWriter, r *http.Request, params gen.ListCallHistoryParams) {
+func (h *callsAPI) ListCallHistory(w http.ResponseWriter, r *http.Request, params gen.ListCallHistoryParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -115,7 +115,7 @@ func (h *apiServer) ListCallHistory(w http.ResponseWriter, r *http.Request, para
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *apiServer) GetCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) GetCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return

@@ -36,7 +36,7 @@ func avatarKind(contentType string, data []byte) bool {
 }
 
 // PutAvatar stores the caller's photo and tells the people who can see it.
-func (h *apiServer) PutAvatar(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) PutAvatar(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -65,7 +65,7 @@ func (h *apiServer) PutAvatar(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -94,7 +94,7 @@ func announceAvatar(ctx context.Context, q *sqlc.Queries, account pgtype.UUID) e
 
 // visibleAvatars is what the caller may see: themselves, people who share a
 // project with them, and everyone for an administrator.
-func (h *apiServer) visibleAvatars(ctx context.Context, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (map[pgtype.UUID]int64, error) {
+func (h *identityAPI) visibleAvatars(ctx context.Context, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow) (map[pgtype.UUID]int64, error) {
 	membership, err := q.GetOrganizationMembershipForAccount(ctx, session.AccountID)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (h *apiServer) visibleAvatars(ctx context.Context, q *sqlc.Queries, session
 	return visible, nil
 }
 
-func (h *apiServer) ListAvatars(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) ListAvatars(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -129,7 +129,7 @@ func (h *apiServer) ListAvatars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
-func (h *apiServer) GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
+func (h *identityAPI) GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return

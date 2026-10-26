@@ -16,7 +16,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-func (h *apiServer) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -40,7 +40,7 @@ func (h *apiServer) GetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TrustRoot{SignPublicKey: b64(root.RootSignPublicKey), SetAt: root.SetAt.Time})
 }
 
-func (h *apiServer) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -83,7 +83,7 @@ func (h *apiServer) SetTrustRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TrustRoot{SignPublicKey: b64(root.RootSignPublicKey), SetAt: root.SetAt.Time})
 }
 
-func (h *apiServer) RegisterDevice(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -141,7 +141,7 @@ func (h *apiServer) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toDevice(device))
 }
 
-func (h *apiServer) ListDevices(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) ListDevices(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -160,7 +160,7 @@ func (h *apiServer) ListDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, devices)
 }
 
-func (h *apiServer) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
+func (h *keysAPI) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -200,7 +200,7 @@ func (h *apiServer) ListPendingDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pending)
 }
 
-func (h *apiServer) AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *keysAPI) AuthorizeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -250,7 +250,7 @@ func (h *apiServer) AuthorizeDevice(w http.ResponseWriter, r *http.Request, devi
 	writeJSON(w, http.StatusOK, toDevice(activated))
 }
 
-func (h *apiServer) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *keysAPI) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -282,7 +282,7 @@ func (h *apiServer) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceI
 // GetDevice returns the public record of any activated device of the
 // organization, including revoked ones: clients need the key of a former
 // device to verify what it signed, and to walk certificate chains.
-func (h *apiServer) GetDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
+func (h *keysAPI) GetDevice(w http.ResponseWriter, r *http.Request, deviceId gen.DeviceId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -341,7 +341,7 @@ func announceDeviceRequest(ctx context.Context, q *sqlc.Queries, device sqlc.Dev
 // public key plus the vouching device (invalid when the trust root signs). The
 // trust root signs for an administrator; otherwise an existing active device of
 // the same person does.
-func (h *apiServer) certifyingKey(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow, target sqlc.Device, authorizerID *openapi_types.UUID) (ed25519.PublicKey, pgtype.UUID, error) {
+func (h *keysAPI) certifyingKey(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow, target sqlc.Device, authorizerID *openapi_types.UUID) (ed25519.PublicKey, pgtype.UUID, error) {
 	if authorizerID != nil {
 		// An existing device of the same person vouches for the new one.
 		if target.AccountID != session.AccountID || target.Kind != "device" {

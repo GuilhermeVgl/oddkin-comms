@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) StartScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -63,7 +63,7 @@ func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, cal
 	writeJSON(w, http.StatusOK, ticket)
 }
 
-func (h *apiServer) StopScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) StopScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

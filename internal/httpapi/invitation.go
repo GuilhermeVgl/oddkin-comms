@@ -23,7 +23,7 @@ var linkExtraPattern = regexp.MustCompile(`^[A-Za-z0-9_=&.-]{1,300}$`)
 
 var errInvitationDeliveryNotConfigured = errors.New("invitation delivery key is not configured")
 
-func (h *apiServer) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.invitationInviter(w, r)
 	if !ok {
 		return
@@ -106,7 +106,7 @@ func (h *apiServer) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 
 // invitationInviter authenticates the person creating an invitation: same
 // origin, an active session, a valid CSRF token and a configured delivery key.
-func (h *apiServer) invitationInviter(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
+func (h *identityAPI) invitationInviter(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
 	if !sameOrigin(r) {
 		w.WriteHeader(http.StatusForbidden)
 		return sqlc.FindActiveSessionByTokenHashRow{}, false
@@ -129,7 +129,7 @@ func (h *apiServer) invitationInviter(w http.ResponseWriter, r *http.Request) (s
 
 // invitationProject resolves the project an invitation belongs to, if any, and
 // checks that the inviter may bring people into it.
-func (h *apiServer) invitationProject(ctx context.Context, inviter, organizationID pgtype.UUID, orgAdmin bool, requested *openapi_types.UUID) (pgtype.UUID, error) {
+func (h *identityAPI) invitationProject(ctx context.Context, inviter, organizationID pgtype.UUID, orgAdmin bool, requested *openapi_types.UUID) (pgtype.UUID, error) {
 	if requested == nil {
 		return pgtype.UUID{}, nil
 	}
@@ -198,7 +198,7 @@ type invitationDraft struct {
 
 // storeInvitation replaces the person's pending invitations with a new one and
 // queues its e-mail, all in the caller's transaction.
-func (h *apiServer) storeInvitation(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, draft invitationDraft) (uuid.UUID, error) {
+func (h *identityAPI) storeInvitation(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, draft invitationDraft) (uuid.UUID, error) {
 	if _, err := q.RevokePendingOrganizationInvitations(ctx, sqlc.RevokePendingOrganizationInvitationsParams{
 		OrganizationID: draft.organizationID, EmailNormalized: draft.email,
 	}); err != nil {
@@ -225,7 +225,7 @@ func (h *apiServer) storeInvitation(ctx context.Context, tx pgx.Tx, q *sqlc.Quer
 	return invitationID, nil
 }
 
-func (h *apiServer) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil {
 		serverError(w, r, errAuthNotConfigured)
 		return
@@ -289,7 +289,7 @@ func (h *apiServer) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 // invitedAccount returns the account the invitation is for: the signed-in
 // owner of an existing account, or a new account created with the given
 // password. Anything else is a bad request.
-func (h *apiServer) invitedAccount(ctx context.Context, r *http.Request, q *sqlc.Queries, email string, password *string) (sqlc.Account, error) {
+func (h *identityAPI) invitedAccount(ctx context.Context, r *http.Request, q *sqlc.Queries, email string, password *string) (sqlc.Account, error) {
 	account, err := q.GetAccountByEmail(ctx, email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if password == nil {
@@ -344,7 +344,7 @@ func decodeInvitationRequest(w http.ResponseWriter, r *http.Request, payload *ge
 
 // ListInvitations tells administrators which invitations are still waiting and
 // which were accepted.
-func (h *apiServer) ListInvitations(w http.ResponseWriter, r *http.Request, params gen.ListInvitationsParams) {
+func (h *identityAPI) ListInvitations(w http.ResponseWriter, r *http.Request, params gen.ListInvitationsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return

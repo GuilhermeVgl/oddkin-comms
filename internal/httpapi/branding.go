@@ -19,7 +19,7 @@ func brandingResponse(row sqlc.GetOrganizationBrandingRow) gen.OrganizationBrand
 	return gen.OrganizationBranding{Name: row.Name.String, HasLogo: len(row.LogoData) > 0, ShowDuo: row.ShowDuo}
 }
 
-func (h *apiServer) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) GetOrganizationBranding(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.reader(w, r); !ok {
 		return
 	}
@@ -33,7 +33,7 @@ func (h *apiServer) GetOrganizationBranding(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, brandingResponse(row))
 }
 
-func (h *apiServer) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) UpdateOrganizationBranding(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -105,7 +105,7 @@ func decodeBrandLogo(payload gen.UpdateOrganizationBrandingRequest) ([]byte, str
 	return data, mimeType, true, true
 }
 
-func (h *apiServer) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+func (h *identityAPI) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.reader(w, r); !ok {
 		return
 	}

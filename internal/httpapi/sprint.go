@@ -43,7 +43,7 @@ func sprintDomain(ctx context.Context, q *sqlc.Queries, organizationID pgtype.UU
 	return domain, err == nil, err
 }
 
-func (h *apiServer) ListSprints(w http.ResponseWriter, r *http.Request) {
+func (h *workAPI) ListSprints(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -62,7 +62,7 @@ func (h *apiServer) ListSprints(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sprints)
 }
 
-func (h *apiServer) CreateSprint(w http.ResponseWriter, r *http.Request) {
+func (h *workAPI) CreateSprint(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -161,7 +161,7 @@ func sprintDate(date openapi_types.Date) pgtype.Date {
 }
 
 // UpdateSprint encrypts the name and goal of a sprint (administrators).
-func (h *apiServer) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *workAPI) UpdateSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -247,7 +247,7 @@ func visibleSprint(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, 
 	return sqlc.Sprint{}, false
 }
 
-func (h *apiServer) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *workAPI) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -271,7 +271,7 @@ func (h *apiServer) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (h *apiServer) StartSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *workAPI) StartSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -299,7 +299,7 @@ func (h *apiServer) StartSprint(w http.ResponseWriter, r *http.Request, sprintId
 	writeJSON(w, http.StatusOK, toSprint(started))
 }
 
-func (h *apiServer) GetSprintClosePreview(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *workAPI) GetSprintClosePreview(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -344,7 +344,7 @@ func (h *apiServer) GetSprintClosePreview(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, preview)
 }
 
-func (h *apiServer) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+func (h *workAPI) CloseSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

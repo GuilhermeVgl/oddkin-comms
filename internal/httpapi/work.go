@@ -25,33 +25,6 @@ var defaultColumns = []struct{ name, category string }{
 	{"A fazer", "todo"}, {"Em andamento", "in_progress"}, {"Em revisão", "in_progress"}, {"Concluído", "done"},
 }
 
-// reader authenticates a read request.
-func (h *apiServer) reader(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
-	session, status := h.activeSession(r)
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-		return session, false
-	}
-	return session, true
-}
-
-// mutator authenticates a state-changing request: origin, session and CSRF.
-func (h *apiServer) mutator(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
-	if !sameOrigin(r) {
-		w.WriteHeader(http.StatusForbidden)
-		return sqlc.FindActiveSessionByTokenHashRow{}, false
-	}
-	session, ok := h.reader(w, r)
-	if !ok {
-		return session, false
-	}
-	if !identity.VerifyCSRFToken(r.Header.Get("X-CSRF-Token"), session.CsrfHash) {
-		w.WriteHeader(http.StatusForbidden)
-		return session, false
-	}
-	return session, true
-}
-
 type projectAccess struct {
 	access   work.Access
 	archived bool
@@ -130,7 +103,7 @@ func fieldsOf(p sqlc.Project, access work.Access) projectFields {
 	}
 }
 
-func (h *apiServer) ListProjects(w http.ResponseWriter, r *http.Request, params gen.ListProjectsParams) {
+func (h *workAPI) ListProjects(w http.ResponseWriter, r *http.Request, params gen.ListProjectsParams) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -154,7 +127,7 @@ func (h *apiServer) ListProjects(w http.ResponseWriter, r *http.Request, params 
 	writeJSON(w, http.StatusOK, projects)
 }
 
-func (h *apiServer) CreateProject(w http.ResponseWriter, r *http.Request) {
+func (h *workAPI) CreateProject(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -222,7 +195,7 @@ func seedNewProject(ctx context.Context, q *sqlc.Queries, projectID, creator pgt
 	return nil
 }
 
-func (h *apiServer) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) GetProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -242,7 +215,7 @@ func (h *apiServer) GetProject(w http.ResponseWriter, r *http.Request, projectId
 	writeJSON(w, http.StatusOK, toProject(fieldsOf(project, access.access)))
 }
 
-func (h *apiServer) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -268,7 +241,7 @@ func (h *apiServer) ListProjectMembers(w http.ResponseWriter, r *http.Request, p
 	writeJSON(w, http.StatusOK, members)
 }
 
-func (h *apiServer) AddProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) AddProjectMember(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -337,7 +310,7 @@ func toPolicy(permissions []string, version int32) gen.ExternalPolicy {
 	return gen.ExternalPolicy{Permissions: converted, Version: int(version)}
 }
 
-func (h *apiServer) GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) GetExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -356,7 +329,7 @@ func (h *apiServer) GetExternalPolicy(w http.ResponseWriter, r *http.Request, pr
 	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
 }
 
-func (h *apiServer) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
@@ -410,7 +383,7 @@ func (h *apiServer) UpdateExternalPolicy(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, toPolicy(policy.Permissions, policy.Version))
 }
 
-func (h *apiServer) ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) ListBoardColumns(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -441,7 +414,7 @@ func (h *apiServer) ListBoardColumns(w http.ResponseWriter, r *http.Request, pro
 // UpdateProject replaces a project's plaintext name and description with their
 // encrypted form (managers only). There is no plaintext rename: once the
 // project has a key, it never has one again.
-func (h *apiServer) UpdateProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+func (h *workAPI) UpdateProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return

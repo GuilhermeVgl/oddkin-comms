@@ -10,7 +10,7 @@ Os handlers repetiam o mesmo bloco (abrir transação, rollback, commit, respond
 
 ## Decisão
 
-- O tipo dos handlers é `apiServer`. Helpers comuns ficam em `internal/httpapi/httpx.go`.
+- Os handlers são organizados em grupos por área (`identityAPI`, `workAPI`, `chatAPI`, `filesAPI`, `keysAPI`, `callsAPI`), cada um com os arquivos da sua área, e todos embutem o `server` compartilhado (banco e serviço de autenticação). `apiServer` apenas embute os grupos e satisfaz a interface gerada pelas promoções de métodos. Só o que é transversal fica no `*server`: `reader`, `mutator`, `activeSession`, `columnTx`, `inTx`. Um handler só alcança os helpers do próprio grupo, então uma dependência entre áreas aparece como erro de compilação. Helpers comuns ficam em `internal/httpapi/httpx.go`.
 - **Erros de servidor** passam por `serverError(w, r, err)`: registra a rota, o `request_id` e a causa, responde 503 e nunca envia a causa ao cliente. Erros do PostgreSQL são registrados só por SQLSTATE, constraint e tabela, porque o detalhe pode citar valores de linhas. `cmd/api` define o logger como padrão do `slog`.
 - **Transações** usam `h.inTx(ctx, func(q *sqlc.Queries) error)` com `respondError`: `statusError(código)` responde um status sem corpo, `errResponded` indica que um helper já respondeu, qualquer outro erro vira 503 registrado. A resposta de sucesso é escrita depois do commit. Chamadas a serviços externos (LiveKit, R2, e-mail) continuam fora da transação.
 - **UUIDs**: `toPG` (API para banco), `fromPG`, `optionalUUID` e `uuidPtr`; sem conversões ad hoc.

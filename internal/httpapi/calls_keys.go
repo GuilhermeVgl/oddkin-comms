@@ -38,7 +38,7 @@ func callKeyState(ctx context.Context, q *sqlc.Queries, call sqlc.Call) (string,
 	return "ok", nil
 }
 
-func (h *apiServer) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -74,7 +74,7 @@ func (h *apiServer) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, c
 	writeJSON(w, http.StatusOK, devices)
 }
 
-func (h *apiServer) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.reader(w, r)
 	if !ok {
 		return
@@ -109,7 +109,7 @@ func (h *apiServer) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request,
 // devices that hold a seat right now. The server only checks who may receive
 // it and who sealed it; it never sees the key. The recovery identity is not a
 // recipient: calls are not recorded and not recoverable.
-func (h *apiServer) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
+func (h *callsAPI) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
 		return
