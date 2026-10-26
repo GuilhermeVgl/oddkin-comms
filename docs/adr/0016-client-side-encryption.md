@@ -31,3 +31,9 @@ Títulos e descrições de atividades e subtarefas, títulos e descrições de �
 - O libsodium roda na thread principal, não em um worker.
 - Apagar o texto em claro de uma linha migrada não apaga cópias já feitas em backups do banco anteriores à migração.
 - Fica sem cobertura E2E automatizada em navegador (apenas testes unitários do cliente, integração do servidor e uma verificação manual).
+
+## Recarregar a página (atualização)
+
+- **Desbloqueio por aba.** Ao desbloquear, as chaves também ficam em `sessionStorage` da aba (marcado por padrão, com opção de desligar), para que F5 não peça a senha de novo. `sessionStorage` some ao fechar a aba, e bloquear, sair ou esquecer o navegador apagam. Um script na página já alcançaria as chaves em memória, então isto não amplia o alcance de um ataque de XSS; amplia o de quem tem acesso físico a uma aba aberta e desbloqueada, como já acontecia sem recarregar.
+- **Ativação retomável.** A raiz de confiança só pode ser fixada uma vez no servidor, então perder a chave privada dela a meio da ativação trancaria a organização. Agora as chaves são gravadas (cifradas) **antes** de qualquer chamada ao servidor, com a marca `incomplete`; repetir a ativação com a mesma senha reaproveita a raiz, os dispositivos já registrados e conclui o que faltou.
+- **Links de e-mail.** O token de convite ou de redefinição sai da barra de endereço ao ser lido, mas fica na aba até ser usado, para que F5 na tela do convite não o perca.

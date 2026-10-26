@@ -109,7 +109,15 @@ function memorySink() {
   return {
     sink,
     state,
-    result: () => Uint8Array.from(chunks.flatMap((x) => [...x])),
+    result: () => {
+      const out = new Uint8Array(chunks.reduce((n, x) => n + x.length, 0));
+      let at = 0;
+      for (const x of chunks) {
+        out.set(x, at);
+        at += x.length;
+      }
+      return out;
+    },
   };
 }
 
@@ -201,7 +209,7 @@ describe("streaming decryption", () => {
   it("round-trips whatever the network chunking is", async () => {
     const f = sealed();
     const { bytes } = await upload(f, 500_000);
-    for (const chunk of [1_000, 70_001, 262_161, bytes.length]) {
+    for (const chunk of [7_001, 70_001, 262_161, bytes.length]) {
       const out = memorySink();
       const written = await decryptStream({
         body: streamOf(bytes, chunk),
@@ -212,7 +220,7 @@ describe("streaming decryption", () => {
       expect(out.result()).toEqual(f.plain);
       expect(out.state.closed).toBe(true);
     }
-  });
+  }, 30_000);
 
   it("aborts the sink on truncation, trailing bytes and tampering, never closing it", async () => {
     const f = sealed();

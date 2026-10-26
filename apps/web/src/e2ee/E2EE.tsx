@@ -72,9 +72,11 @@ export type E2EEApi = {
   devices: Device[];
   approvals: PendingApproval[];
   canApproveWithRoot: boolean;
+  /** An earlier activation stopped half way; the same passphrase finishes it. */
+  setupInterrupted: boolean;
   setupOrganization(passphrase: string): Promise<void>;
   setupDevice(passphrase: string, confirmedFingerprint: string): Promise<void>;
-  unlock(passphrase: string): Promise<boolean>;
+  unlock(passphrase: string, remember?: boolean): Promise<boolean>;
   lock(): void;
   approve(approval: PendingApproval): Promise<void>;
   revoke(deviceId: string): Promise<void>;
@@ -159,6 +161,7 @@ export function E2EEProvider({
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [canApproveWithRoot, setCanApproveWithRoot] = useState(false);
   const [hasRecovery, setHasRecovery] = useState(false);
+  const [setupInterrupted, setSetupInterrupted] = useState(false);
 
   const runtimeOf = useCallback(async (): Promise<Runtime> => {
     runtime.current ??= await createRuntime();
@@ -200,22 +203,49 @@ export function E2EEProvider({
     setApprovals(entries);
   }, [client, account, runtimeOf]);
 
+  const buildKeyring = useCallback(async () => {
+    const { vault, crypto } = await runtimeOf();
+    const current = record.current;
+    if (current === null) throw new Error("no device");
+    keyring.current = new Keyring({
+      client,
+      crypto,
+      vault,
+      pinnedRoot: fromBase64Url(current.pinnedRoot),
+      accountId: account.id,
+      deviceId: current.deviceId,
+      csrf,
+    });
+    projects.current.clear();
+  }, [account.id, client, runtimeOf]);
+
   const refresh = useCallback(async () => {
     try {
       const { vault, crypto } = await runtimeOf();
       setPersistent(vault.persistent);
       const stored = await vault.load(account.id);
       record.current = stored;
+      setSetupInterrupted(stored?.incomplete === true);
       const root = await getTrustRoot(client);
       setRootFingerprint(
         root === null
           ? null
           : crypto.fingerprint(fromBase64Url(root.signPublicKey)),
       );
+      if (stored?.incomplete === true) {
+        // Keys exist here but the server steps never finished: resume the setup.
+        setDeviceFingerprint(null);
+        setPhase("not_configured");
+        return;
+      }
       if (stored === null) {
         setDeviceFingerprint(null);
         setPhase(root === null ? "not_configured" : "needs_device");
         return;
+      }
+      if (!vault.unlocked && vault.restoreFromTab(stored)) {
+        // A reload in the same tab: the keys come back without asking again.
+        await buildKeyring();
       }
       if (root !== null && root.signPublicKey !== stored.pinnedRoot) {
         setError(
@@ -245,7 +275,7 @@ export function E2EEProvider({
       setError("Não foi possível verificar a segurança deste dispositivo.");
       setPhase("error");
     }
-  }, [account.id, client, loadApprovals, runtimeOf]);
+  }, [account.id, buildKeyring, client, loadApprovals, runtimeOf]);
 
   useEffect(() => {
     void refresh();
@@ -255,22 +285,6 @@ export function E2EEProvider({
     if (event === "resync" || event.eventType === "device.changed")
       void refresh();
   });
-
-  const buildKeyring = useCallback(async () => {
-    const { vault, crypto } = await runtimeOf();
-    const current = record.current;
-    if (current === null) throw new Error("no device");
-    keyring.current = new Keyring({
-      client,
-      crypto,
-      vault,
-      pinnedRoot: fromBase64Url(current.pinnedRoot),
-      accountId: account.id,
-      deviceId: current.deviceId,
-      csrf,
-    });
-    projects.current.clear();
-  }, [account.id, client, runtimeOf]);
 
   const api = useMemo<E2EEApi>(
     () => ({
@@ -282,75 +296,123 @@ export function E2EEProvider({
       devices,
       approvals,
       canApproveWithRoot,
+      setupInterrupted,
 
       async setupOrganization(passphrase) {
         setError("");
         const { vault, crypto } = await runtimeOf();
         const token = csrf();
-        const root = crypto.generateDeviceKeys();
-        const device = crypto.generateDeviceKeys();
-        const recovery = crypto.generateDeviceKeys();
-        await setTrustRoot(client, token, toBase64Url(root.signPublicKey));
-        const register = async (
-          keys: typeof device,
+        // The keys are saved, wrapped, BEFORE the server hears about them: the
+        // trust root can be set only once, so losing its private half to a
+        // reload or a failed request would lock the organization out for good.
+        let draft = record.current?.incomplete === true ? record.current : null;
+        if (draft === null) {
+          const root = crypto.generateDeviceKeys();
+          const device = crypto.generateDeviceKeys();
+          const recovery = crypto.generateDeviceKeys();
+          draft = {
+            version: 1,
+            incomplete: true,
+            accountId: account.id,
+            deviceId: "",
+            deviceName: "Este navegador",
+            signPublicKey: toBase64Url(device.signPublicKey),
+            boxPublicKey: toBase64Url(device.boxPublicKey),
+            wrappedDevice: vault.wrapDevice(passphrase, device),
+            pinnedRoot: toBase64Url(root.signPublicKey),
+            root: {
+              publicKey: toBase64Url(root.signPublicKey),
+              wrapped: vault.wrapSecret(passphrase, root.signSecretKey),
+            },
+            recovery: {
+              deviceId: "",
+              signPublicKey: toBase64Url(recovery.signPublicKey),
+              boxPublicKey: toBase64Url(recovery.boxPublicKey),
+              wrapped: vault.wrapSecret(
+                passphrase,
+                new Uint8Array([
+                  ...recovery.signSecretKey,
+                  ...recovery.boxSecretKey,
+                ]),
+              ),
+            },
+          };
+          await vault.save(draft);
+          record.current = draft;
+        }
+        try {
+          await vault.unlock(draft, passphrase);
+        } catch (failure) {
+          if (failure instanceof PassphraseError)
+            throw new Error("use the passphrase of the earlier attempt", {
+              cause: failure,
+            });
+          throw failure;
+        }
+        const rootSecret = vault.rootSecretKey();
+        const draftRecovery = draft.recovery;
+        if (rootSecret === undefined || draftRecovery === undefined)
+          throw new Error("the saved setup is incomplete");
+        const serverRoot = await getTrustRoot(client);
+        if (serverRoot === null) {
+          await setTrustRoot(client, token, draft.pinnedRoot);
+        } else if (serverRoot.signPublicKey !== draft.pinnedRoot) {
+          throw new Error("the organization already has another trust root");
+        }
+        // Registering and approving are repeatable: what an earlier attempt did is reused.
+        const existing = await listDevices(client);
+        const ensureDevice = async (
+          signPublicKey: string,
+          boxPublicKey: string,
           name: string,
           kind: "device" | "recovery",
         ) => {
-          const created = await registerDevice(client, token, {
-            name,
-            kind,
-            signPublicKey: toBase64Url(keys.signPublicKey),
-            boxPublicKey: toBase64Url(keys.boxPublicKey),
-          });
-          const certificate = crypto.signDeviceCertificate(root.signSecretKey, {
-            accountId: account.id,
-            deviceId: created.id,
-            signPublicKey: keys.signPublicKey,
-            boxPublicKey: keys.boxPublicKey,
-          });
-          await authorizeDevice(
-            client,
-            token,
-            created.id,
-            toBase64Url(certificate),
+          const found = existing.find(
+            (entry) => entry.signPublicKey === signPublicKey,
           );
-          return created.id;
+          const id =
+            found?.id ??
+            (
+              await registerDevice(client, token, {
+                name,
+                kind,
+                signPublicKey,
+                boxPublicKey,
+              })
+            ).id;
+          if (found === undefined || found.state === "pending") {
+            const certificate = crypto.signDeviceCertificate(rootSecret, {
+              accountId: account.id,
+              deviceId: id,
+              signPublicKey: fromBase64Url(signPublicKey),
+              boxPublicKey: fromBase64Url(boxPublicKey),
+            });
+            await authorizeDevice(client, token, id, toBase64Url(certificate));
+          }
+          return id;
         };
-        const deviceId = await register(device, "Este navegador", "device");
-        const recoveryId = await register(
-          recovery,
+        const deviceId = await ensureDevice(
+          draft.signPublicKey,
+          draft.boxPublicKey,
+          "Este navegador",
+          "device",
+        );
+        const recoveryId = await ensureDevice(
+          draftRecovery.signPublicKey,
+          draftRecovery.boxPublicKey,
           "Identidade de recuperação",
           "recovery",
         );
         const next: VaultRecord = {
-          version: 1,
-          accountId: account.id,
+          ...draft,
           deviceId,
-          deviceName: "Este navegador",
-          signPublicKey: toBase64Url(device.signPublicKey),
-          boxPublicKey: toBase64Url(device.boxPublicKey),
-          wrappedDevice: vault.wrapDevice(passphrase, device),
-          pinnedRoot: toBase64Url(root.signPublicKey),
-          root: {
-            publicKey: toBase64Url(root.signPublicKey),
-            wrapped: vault.wrapSecret(passphrase, root.signSecretKey),
-          },
-          recovery: {
-            deviceId: recoveryId,
-            signPublicKey: toBase64Url(recovery.signPublicKey),
-            boxPublicKey: toBase64Url(recovery.boxPublicKey),
-            wrapped: vault.wrapSecret(
-              passphrase,
-              new Uint8Array([
-                ...recovery.signSecretKey,
-                ...recovery.boxSecretKey,
-              ]),
-            ),
-          },
+          recovery: { ...draftRecovery, deviceId: recoveryId },
         };
+        delete next.incomplete;
         await vault.save(next);
         record.current = next;
         await vault.unlock(next, passphrase);
+        vault.rememberInTab(account.id);
         await buildKeyring();
         await refresh();
       },
@@ -388,7 +450,7 @@ export function E2EEProvider({
         await refresh();
       },
 
-      async unlock(passphrase) {
+      async unlock(passphrase, remember = true) {
         const { vault } = await runtimeOf();
         const current = record.current;
         if (current === null) return false;
@@ -398,6 +460,7 @@ export function E2EEProvider({
           if (failure instanceof PassphraseError) return false;
           throw failure;
         }
+        if (remember) vault.rememberInTab(account.id);
         await buildKeyring();
         await refresh();
         return true;
@@ -614,6 +677,7 @@ export function E2EEProvider({
       devices,
       approvals,
       canApproveWithRoot,
+      setupInterrupted,
       hasRecovery,
       account,
       client,

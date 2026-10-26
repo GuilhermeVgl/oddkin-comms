@@ -21,6 +21,8 @@ export type VaultRecord = {
   wrappedDevice: WrappedSecret;
   /** The trust-root fingerprint this browser accepted; the server cannot change it. */
   pinnedRoot: string;
+  /** Set while the organization setup is half done (keys saved, server steps pending). */
+  incomplete?: true;
   /** Present only on the administrator's browser. */
   root?: { publicKey: string; wrapped: WrappedSecret };
   recovery?: {
@@ -44,6 +46,15 @@ export type UnlockedSecrets = {
 };
 
 const keyFor = (accountId: string) => `vault:${accountId}`;
+const tabKeyFor = (accountId: string) => `crewstead.tab-unlock:${accountId}`;
+
+type TabSecrets = {
+  sign: string;
+  box: string;
+  root?: string;
+  recoveryDeviceId?: string;
+  recoveryBox?: string;
+};
 
 function isRecord(value: unknown): value is VaultRecord {
   return (
@@ -61,6 +72,7 @@ function isRecord(value: unknown): value is VaultRecord {
  */
 export class Vault {
   private secrets: UnlockedSecrets | null = null;
+  private tabAccount: string | null = null;
 
   constructor(
     private readonly crypto: Crypto,
@@ -83,6 +95,11 @@ export class Vault {
 
   async erase(accountId: string): Promise<void> {
     this.lock();
+    try {
+      window.sessionStorage.removeItem(tabKeyFor(accountId));
+    } catch {
+      // Nothing to clear.
+    }
     await this.store.remove(keyFor(accountId));
   }
 
@@ -144,6 +161,94 @@ export class Vault {
 
   lock(): void {
     this.secrets = null;
+    this.forgetTab();
+  }
+
+  /**
+   * Keeps the unlocked secrets for this tab only, so a reload does not ask for
+   * the passphrase again. sessionStorage dies with the tab; lock(), logout and
+   * erase() clear it. Script running in the page could read the secrets from
+   * memory anyway, so this adds no reach beyond that.
+   */
+  rememberInTab(accountId: string): void {
+    const secrets = this.secrets;
+    if (secrets === null) return;
+    const value: TabSecrets = {
+      sign: toBase64Url(secrets.device.signSecretKey),
+      box: toBase64Url(secrets.device.boxSecretKey),
+    };
+    if (secrets.rootSecretKey !== undefined)
+      value.root = toBase64Url(secrets.rootSecretKey);
+    if (secrets.recovery !== undefined) {
+      value.recoveryDeviceId = secrets.recovery.deviceId;
+      value.recoveryBox = toBase64Url(secrets.recovery.boxSecretKey);
+    }
+    try {
+      window.sessionStorage.setItem(
+        tabKeyFor(accountId),
+        JSON.stringify(value),
+      );
+      this.tabAccount = accountId;
+    } catch {
+      // Without sessionStorage the passphrase is asked again after a reload.
+    }
+  }
+
+  /** Restores secrets remembered by this tab, if they still belong to this device. */
+  restoreFromTab(record: VaultRecord): boolean {
+    try {
+      const raw = window.sessionStorage.getItem(tabKeyFor(record.accountId));
+      if (raw === null) return false;
+      const value = JSON.parse(raw) as TabSecrets;
+      const sign = fromBase64Url(value.sign);
+      const box = fromBase64Url(value.box);
+      const signPublicKey = fromBase64Url(record.signPublicKey);
+      // The secret half of an Ed25519 key ends with its public key.
+      const matches =
+        sign.length === 64 &&
+        box.length === 32 &&
+        sign.slice(32).every((byte, index) => byte === signPublicKey[index]);
+      if (!matches) {
+        window.sessionStorage.removeItem(tabKeyFor(record.accountId));
+        return false;
+      }
+      const next: UnlockedSecrets = {
+        device: {
+          signPublicKey,
+          signSecretKey: sign,
+          boxPublicKey: fromBase64Url(record.boxPublicKey),
+          boxSecretKey: box,
+        },
+      };
+      if (value.root !== undefined)
+        next.rootSecretKey = fromBase64Url(value.root);
+      if (
+        record.recovery !== undefined &&
+        value.recoveryBox !== undefined &&
+        value.recoveryDeviceId === record.recovery.deviceId
+      ) {
+        next.recovery = {
+          deviceId: record.recovery.deviceId,
+          boxPublicKey: fromBase64Url(record.recovery.boxPublicKey),
+          boxSecretKey: fromBase64Url(value.recoveryBox),
+        };
+      }
+      this.secrets = next;
+      this.tabAccount = record.accountId;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private forgetTab(): void {
+    if (this.tabAccount === null) return;
+    try {
+      window.sessionStorage.removeItem(tabKeyFor(this.tabAccount));
+    } catch {
+      // Nothing to clear.
+    }
+    this.tabAccount = null;
   }
 
   deviceKeys(): DeviceKeys {

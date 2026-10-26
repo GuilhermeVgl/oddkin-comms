@@ -408,19 +408,26 @@ export function InvitationScreen({
   invitation,
   account,
   onAccepted,
+  onConsumed,
   onSignIn,
+  onSwitchAccount,
 }: {
   invitation: PendingInvitation;
   account?: CurrentAccount;
   onAccepted: (account: CurrentAccount) => void;
+  /** The invitation was used; forget it so a reload does not offer it again. */
+  onConsumed: () => void;
   onSignIn: () => void;
+  /** Ends the current session so the invited person can sign in. */
+  onSwitchAccount?: () => void;
 }) {
   const client = useMemo(() => createApiClient(""), []);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const accountMatches =
-    account === undefined || account.email === invitation.email;
+    account === undefined ||
+    account.email.toLowerCase() === invitation.email.toLowerCase();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -436,7 +443,7 @@ export function InvitationScreen({
       );
       if (result === "invalid") {
         setError(
-          "O convite não é válido, já foi usado ou pertence a outra conta.",
+          "O convite não é válido, já foi usado ou pertence a outra conta. Se você já tem conta com este e-mail, use “Já tenho uma conta” para entrar e aceitar.",
         );
         blip("err");
         return;
@@ -449,6 +456,7 @@ export function InvitationScreen({
         onAccepted(account);
         return;
       }
+      onConsumed();
       const loggedIn = await login(client, invitation.email, password);
       if (loggedIn !== "authenticated") {
         toast("Convite aceito. Entre com a senha que você acabou de criar.");
@@ -520,6 +528,11 @@ export function InvitationScreen({
                 Você está conectado como {account?.email}. Entre com a conta do
                 convite.
               </Banner>
+            ) : null}
+            {!accountMatches && onSwitchAccount !== undefined ? (
+              <button className="btn" onClick={onSwitchAccount} type="button">
+                Sair e usar a conta do convite
+              </button>
             ) : null}
             {error === "" ? null : (
               <Banner kind="err" role="alert">
@@ -763,6 +776,7 @@ export function DeviceGate({
   const [passphrase, setPassphrase] = useState("");
   const [confirm, setConfirm] = useState("");
   const [fingerprint, setFingerprint] = useState("");
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const mismatch = passphrase !== confirm || passphrase.length < MIN_PASSWORD;
@@ -860,7 +874,9 @@ export function DeviceGate({
                 event.preventDefault();
                 void run(
                   () => e2ee.setupOrganization(passphrase),
-                  "Não foi possível ativar. Se já houver chave configurada, recarregue a página.",
+                  e2ee.setupInterrupted
+                    ? "Não foi possível concluir. Use a mesma senha da tentativa anterior."
+                    : "Não foi possível ativar. Tente de novo; o que já foi feito é aproveitado.",
                 );
               }}
             >
@@ -873,6 +889,13 @@ export function DeviceGate({
                   não pode ser recuperado.
                 </p>
               </div>
+              {e2ee.setupInterrupted ? (
+                <Banner kind="warn">
+                  Uma ativação anterior ficou pela metade. Digite{" "}
+                  <b>a mesma senha</b> para concluí-la: as chaves já criadas são
+                  reaproveitadas.
+                </Banner>
+              ) : null}
               {passphraseFields(true)}
               <button
                 className={`btn primary lg${busy ? " loading" : ""}`}
@@ -962,7 +985,7 @@ export function DeviceGate({
               onSubmit={(event) => {
                 event.preventDefault();
                 void run(async () => {
-                  if (!(await e2ee.unlock(passphrase)))
+                  if (!(await e2ee.unlock(passphrase, remember)))
                     throw new Error("wrong");
                   toast("Dispositivo liberado. Bem-vindo de volta.", {
                     mascot: "tela",
@@ -980,6 +1003,15 @@ export function DeviceGate({
                 </p>
               </div>
               {passphraseFields(false)}
+              <label className="row gap8 xs">
+                <input
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                  type="checkbox"
+                />
+                Manter desbloqueado nesta aba (recarregar não pede a senha de
+                novo; fechar a aba ou sair apaga)
+              </label>
               {error === "" ? null : (
                 <Banner kind="err" role="alert">
                   {error}

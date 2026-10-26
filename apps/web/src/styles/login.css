@@ -1,6 +1,8 @@
 /* ---------- login ---------- */
 .login {
   height: 100%;
+  /* The page never scrolls (body is fixed); a tall step scrolls inside this box. */
+  overflow-y: auto;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(380px, 0.9fr);
   background: var(--bg);
