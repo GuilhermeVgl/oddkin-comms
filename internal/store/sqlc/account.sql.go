@@ -62,14 +62,22 @@ type CreateOrganizationMembershipParams struct {
 	IsAdmin        bool
 }
 
-func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOrganizationMembershipParams) (OrganizationMembership, error) {
+type CreateOrganizationMembershipRow struct {
+	OrganizationID pgtype.UUID
+	AccountID      pgtype.UUID
+	MembershipKind string
+	IsAdmin        bool
+	CreatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOrganizationMembershipParams) (CreateOrganizationMembershipRow, error) {
 	row := q.db.QueryRow(ctx, createOrganizationMembership,
 		arg.OrganizationID,
 		arg.AccountID,
 		arg.MembershipKind,
 		arg.IsAdmin,
 	)
-	var i OrganizationMembership
+	var i CreateOrganizationMembershipRow
 	err := row.Scan(
 		&i.OrganizationID,
 		&i.AccountID,
@@ -81,22 +89,28 @@ func (q *Queries) CreateOrganizationMembership(ctx context.Context, arg CreateOr
 }
 
 const ensureOrganizationMembership = `-- name: EnsureOrganizationMembership :one
-INSERT INTO organization_membership (organization_id, account_id, membership_kind, is_admin)
-VALUES ($1, $2, $3, false)
+INSERT INTO organization_membership (organization_id, account_id, membership_kind, is_admin, history_mode)
+VALUES ($1, $2, $3, false, COALESCE(NULLIF($4::text, ''), 'ask'))
 ON CONFLICT (organization_id, account_id) DO UPDATE
 SET membership_kind = organization_membership.membership_kind
 WHERE organization_membership.membership_kind = EXCLUDED.membership_kind
-RETURNING organization_id, account_id, membership_kind, is_admin, created_at
+RETURNING organization_id, account_id, membership_kind, is_admin, created_at, history_mode
 `
 
 type EnsureOrganizationMembershipParams struct {
 	OrganizationID pgtype.UUID
 	AccountID      pgtype.UUID
 	MembershipKind string
+	HistoryMode    string
 }
 
 func (q *Queries) EnsureOrganizationMembership(ctx context.Context, arg EnsureOrganizationMembershipParams) (OrganizationMembership, error) {
-	row := q.db.QueryRow(ctx, ensureOrganizationMembership, arg.OrganizationID, arg.AccountID, arg.MembershipKind)
+	row := q.db.QueryRow(ctx, ensureOrganizationMembership,
+		arg.OrganizationID,
+		arg.AccountID,
+		arg.MembershipKind,
+		arg.HistoryMode,
+	)
 	var i OrganizationMembership
 	err := row.Scan(
 		&i.OrganizationID,
@@ -104,6 +118,7 @@ func (q *Queries) EnsureOrganizationMembership(ctx context.Context, arg EnsureOr
 		&i.MembershipKind,
 		&i.IsAdmin,
 		&i.CreatedAt,
+		&i.HistoryMode,
 	)
 	return i, err
 }
@@ -177,6 +192,33 @@ func (q *Queries) GetOrganizationPerson(ctx context.Context, arg GetOrganization
 	return i, err
 }
 
+const listOrganizationAdmins = `-- name: ListOrganizationAdmins :many
+SELECT m.account_id
+FROM organization_membership AS m
+JOIN account AS a ON a.id = m.account_id
+WHERE m.organization_id = $1 AND m.is_admin AND a.active
+`
+
+func (q *Queries) ListOrganizationAdmins(ctx context.Context, organizationID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrganizationAdmins, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var account_id pgtype.UUID
+		if err := rows.Scan(&account_id); err != nil {
+			return nil, err
+		}
+		items = append(items, account_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrganizationPeople = `-- name: ListOrganizationPeople :many
 SELECT a.id, a.email_normalized, a.active, m.membership_kind, m.is_admin
 FROM organization_membership AS m
@@ -230,5 +272,19 @@ type SetAccountActiveParams struct {
 
 func (q *Queries) SetAccountActive(ctx context.Context, arg SetAccountActiveParams) error {
 	_, err := q.db.Exec(ctx, setAccountActive, arg.ID, arg.Active)
+	return err
+}
+
+const setHistoryMode = `-- name: SetHistoryMode :exec
+UPDATE organization_membership SET history_mode = $2 WHERE account_id = $1
+`
+
+type SetHistoryModeParams struct {
+	AccountID   pgtype.UUID
+	HistoryMode string
+}
+
+func (q *Queries) SetHistoryMode(ctx context.Context, arg SetHistoryModeParams) error {
+	_, err := q.db.Exec(ctx, setHistoryMode, arg.AccountID, arg.HistoryMode)
 	return err
 }

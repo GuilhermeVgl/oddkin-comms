@@ -9,6 +9,7 @@ import {
   readCookie,
   registerDevice,
   revokeDevice,
+  setHistoryMode,
   setTrustRoot,
   type CurrentAccount,
   type Device,
@@ -38,6 +39,14 @@ import { useEvents } from "../events";
 import { Keyring } from "./keyring";
 import { CallCrypto } from "./callCrypto";
 import { ContentCrypto, type Scope } from "./projectCrypto";
+import {
+  clearProvision,
+  dropInviteSecret,
+  loadInviteSecrets,
+  readProvision,
+  sameFingerprint,
+  saveInviteSecret,
+} from "./invitations";
 import { browserStore, type KeyValueStore } from "./storage";
 import { Vault, type VaultRecord } from "./vault";
 
@@ -50,6 +59,7 @@ export type Phase =
   | "pending_approval"
   | "locked"
   | "unlocked"
+  | "not_enabled" // this person chose (or was invited without) access to history
   | "revoked"
   | "error";
 
@@ -61,6 +71,8 @@ export type PendingApproval = {
   signPublicKey: string;
   boxPublicKey: string;
   fingerprint: string;
+  /** Present when the device registered through an invitation that carries history. */
+  proof?: string;
 };
 
 export type E2EEApi = {
@@ -74,6 +86,20 @@ export type E2EEApi = {
   canApproveWithRoot: boolean;
   /** An earlier activation stopped half way; the same passphrase finishes it. */
   setupInterrupted: boolean;
+  /** This browser was set up by an invitation: no passphrase to type. */
+  autoManaged: boolean;
+  /**
+   * Prepares an invitation that includes history. Null when this browser cannot
+   * vouch for it (not the administrator's, or locked).
+   */
+  beginHistoryInvite(): Promise<{ linkExtra: string; secret: string } | null>;
+  rememberHistoryInvite(
+    invitationId: string,
+    email: string,
+    secret: string,
+  ): Promise<void>;
+  /** Asks to be shown the key step after all (for accounts that chose not to). */
+  requestHistoryAccess(): Promise<void>;
   setupOrganization(passphrase: string): Promise<void>;
   setupDevice(passphrase: string, confirmedFingerprint: string): Promise<void>;
   unlock(passphrase: string, remember?: boolean): Promise<boolean>;
@@ -162,6 +188,8 @@ export function E2EEProvider({
   const [canApproveWithRoot, setCanApproveWithRoot] = useState(false);
   const [hasRecovery, setHasRecovery] = useState(false);
   const [setupInterrupted, setSetupInterrupted] = useState(false);
+  const [autoManaged, setAutoManaged] = useState(false);
+  const provisioning = useRef(false);
 
   const runtimeOf = useCallback(async (): Promise<Runtime> => {
     runtime.current ??= await createRuntime();
@@ -170,7 +198,7 @@ export function E2EEProvider({
 
   const loadApprovals = useCallback(async () => {
     const current = record.current;
-    const { vault } = await runtimeOf();
+    const { vault, crypto, store } = await runtimeOf();
     if (current === null || !vault.unlocked) {
       setApprovals([]);
       return;
@@ -190,6 +218,9 @@ export function E2EEProvider({
         signPublicKey: pending.device.signPublicKey,
         boxPublicKey: pending.device.boxPublicKey,
         fingerprint: vault.fingerprint(pending.device.signPublicKey),
+        ...(pending.device.proof === undefined
+          ? {}
+          : { proof: pending.device.proof }),
       });
     };
     if (account.isAdmin) {
@@ -198,6 +229,50 @@ export function E2EEProvider({
     for (const device of mine) {
       if (device.state === "pending") {
         add({ device, accountId: account.id, email: account.email });
+      }
+    }
+    // A device that proves it knows the secret of an invitation this browser
+    // made (and includes history) is approved on the spot: the proof is what
+    // tells it apart from a device the server might have invented.
+    const root = vault.rootSecretKey();
+    if (
+      root !== undefined &&
+      entries.some((entry) => entry.proof !== undefined)
+    ) {
+      const secrets = await loadInviteSecrets(store, account.id);
+      for (const entry of [...entries]) {
+        if (entry.proof === undefined) continue;
+        const signPublicKey = fromBase64Url(entry.signPublicKey);
+        const boxPublicKey = fromBase64Url(entry.boxPublicKey);
+        const match = secrets.find(
+          (secret) =>
+            secret.email.toLowerCase() === entry.email.toLowerCase() &&
+            crypto.verifyInvitationProof(
+              fromBase64Url(secret.secret),
+              signPublicKey,
+              boxPublicKey,
+              entry.proof ?? "",
+            ),
+        );
+        if (match === undefined) continue;
+        try {
+          const certificate = crypto.signDeviceCertificate(root, {
+            accountId: entry.accountId,
+            deviceId: entry.deviceId,
+            signPublicKey,
+            boxPublicKey,
+          });
+          await authorizeDevice(
+            client,
+            csrf(),
+            entry.deviceId,
+            toBase64Url(certificate),
+          );
+          await dropInviteSecret(store, account.id, match.invitationId);
+          entries.splice(entries.indexOf(entry), 1);
+        } catch {
+          // It stays in the list for a manual approval.
+        }
       }
     }
     setApprovals(entries);
@@ -238,10 +313,73 @@ export function E2EEProvider({
         setPhase("not_configured");
         return;
       }
+      setAutoManaged(stored?.autoPassphrase !== undefined);
+      if (stored === null && account.historyMode === "auto" && root !== null) {
+        // Invited with history: the browser registers itself with the secret from
+        // the link, asking for nothing. Without the link it falls back to the manual step.
+        const provision = readProvision(account.email);
+        if (
+          provision !== null &&
+          sameFingerprint(
+            provision.rootFingerprint,
+            crypto.fingerprint(fromBase64Url(root.signPublicKey)),
+          ) &&
+          !provisioning.current
+        ) {
+          provisioning.current = true;
+          try {
+            const keys = crypto.generateDeviceKeys();
+            const autoPassphrase = toBase64Url(crypto.generateDomainKey());
+            const created = await registerDevice(client, csrf(), {
+              name: "Navegador",
+              signPublicKey: toBase64Url(keys.signPublicKey),
+              boxPublicKey: toBase64Url(keys.boxPublicKey),
+              proof: crypto.invitationProof(
+                fromBase64Url(provision.secret),
+                keys.signPublicKey,
+                keys.boxPublicKey,
+              ),
+            });
+            const next: VaultRecord = {
+              version: 1,
+              accountId: account.id,
+              deviceId: created.id,
+              deviceName: created.name,
+              signPublicKey: toBase64Url(keys.signPublicKey),
+              boxPublicKey: toBase64Url(keys.boxPublicKey),
+              wrappedDevice: vault.wrapDevice(autoPassphrase, keys),
+              pinnedRoot: root.signPublicKey,
+              autoPassphrase,
+            };
+            await vault.save(next);
+            clearProvision();
+            record.current = next;
+            provisioning.current = false;
+            await refresh();
+            return;
+          } catch {
+            provisioning.current = false;
+          }
+        }
+      }
+      if (stored === null && account.historyMode === "none") {
+        setDeviceFingerprint(null);
+        setPhase("not_enabled");
+        return;
+      }
       if (stored === null) {
         setDeviceFingerprint(null);
         setPhase(root === null ? "not_configured" : "needs_device");
         return;
+      }
+      if (!vault.unlocked && stored.autoPassphrase !== undefined) {
+        try {
+          await vault.unlock(stored, stored.autoPassphrase);
+          vault.rememberInTab(account.id);
+          await buildKeyring();
+        } catch {
+          // Falls through to the passphrase step.
+        }
       }
       if (!vault.unlocked && vault.restoreFromTab(stored)) {
         // A reload in the same tab: the keys come back without asking again.
@@ -275,7 +413,7 @@ export function E2EEProvider({
       setError("Não foi possível verificar a segurança deste dispositivo.");
       setPhase("error");
     }
-  }, [account.id, buildKeyring, client, loadApprovals, runtimeOf]);
+  }, [account, buildKeyring, client, loadApprovals, runtimeOf]);
 
   useEffect(() => {
     void refresh();
@@ -297,6 +435,41 @@ export function E2EEProvider({
       approvals,
       canApproveWithRoot,
       setupInterrupted,
+      autoManaged,
+
+      async beginHistoryInvite() {
+        const { vault, crypto } = await runtimeOf();
+        const current = record.current;
+        if (
+          current === null ||
+          current.root === undefined ||
+          !vault.unlocked ||
+          vault.rootSecretKey() === undefined ||
+          rootFingerprint === null
+        ) {
+          return null;
+        }
+        const secret = toBase64Url(crypto.generateDomainKey());
+        return {
+          secret,
+          linkExtra: `k=${secret}&rf=${rootFingerprint.replace(/\s/g, "")}`,
+        };
+      },
+
+      async rememberHistoryInvite(invitationId, email, secret) {
+        const { store } = await runtimeOf();
+        await saveInviteSecret(store, account.id, {
+          invitationId,
+          email,
+          secret,
+          createdAt: Date.now(),
+        });
+      },
+
+      async requestHistoryAccess() {
+        await setHistoryMode(client, csrf(), "ask");
+        window.location.reload();
+      },
 
       async setupOrganization(passphrase) {
         setError("");
@@ -678,6 +851,8 @@ export function E2EEProvider({
       approvals,
       canApproveWithRoot,
       setupInterrupted,
+      autoManaged,
+      rootFingerprint,
       hasRecovery,
       account,
       client,

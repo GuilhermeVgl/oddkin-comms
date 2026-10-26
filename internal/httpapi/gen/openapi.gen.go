@@ -468,6 +468,27 @@ func (e ExternalPermission) Valid() bool {
 	}
 }
 
+// Defines values for HistoryMode.
+const (
+	Ask  HistoryMode = "ask"
+	Auto HistoryMode = "auto"
+	None HistoryMode = "none"
+)
+
+// Valid indicates whether the value is a known member of the HistoryMode enum.
+func (e HistoryMode) Valid() bool {
+	switch e {
+	case Ask:
+		return true
+	case Auto:
+		return true
+	case None:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationDeliveryState.
 const (
 	InvitationDeliveryStatePending InvitationDeliveryState = "pending"
@@ -1021,7 +1042,13 @@ type CreateEpicRequest struct {
 
 // CreateInvitationRequest defines model for CreateInvitationRequest.
 type CreateInvitationRequest struct {
-	Email          openapi_types.Email                   `json:"email"`
+	Email openapi_types.Email `json:"email"`
+
+	// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+	HistoryMode *HistoryMode `json:"historyMode,omitempty"`
+
+	// LinkExtra Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged
+	LinkExtra      *string                               `json:"linkExtra,omitempty"`
 	MembershipKind CreateInvitationRequestMembershipKind `json:"membershipKind"`
 }
 
@@ -1110,7 +1137,10 @@ type CreateWorkItemRequestPriority string
 
 // CurrentAccount defines model for CurrentAccount.
 type CurrentAccount struct {
-	Email          openapi_types.Email          `json:"email"`
+	Email openapi_types.Email `json:"email"`
+
+	// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+	HistoryMode    HistoryMode                  `json:"historyMode"`
 	Id             openapi_types.UUID           `json:"id"`
 	IsAdmin        bool                         `json:"isAdmin"`
 	MembershipKind CurrentAccountMembershipKind `json:"membershipKind"`
@@ -1129,6 +1159,7 @@ type Device struct {
 	Id          openapi_types.UUID `json:"id"`
 	Kind        DeviceKind         `json:"kind"`
 	Name        string             `json:"name"`
+	Proof       *string            `json:"proof,omitempty"`
 
 	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
 	SignPublicKey Base64Url   `json:"signPublicKey"`
@@ -1249,11 +1280,17 @@ type GrantEnvelopesRequest struct {
 	SignerDeviceId openapi_types.UUID `json:"signerDeviceId"`
 }
 
+// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+type HistoryMode string
+
 // Invitation defines model for Invitation.
 type Invitation struct {
-	DeliveryState  InvitationDeliveryState  `json:"deliveryState"`
-	Email          openapi_types.Email      `json:"email"`
-	ExpiresAt      time.Time                `json:"expiresAt"`
+	DeliveryState InvitationDeliveryState `json:"deliveryState"`
+	Email         openapi_types.Email     `json:"email"`
+	ExpiresAt     time.Time               `json:"expiresAt"`
+
+	// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+	HistoryMode    *HistoryMode             `json:"historyMode,omitempty"`
 	Id             openapi_types.UUID       `json:"id"`
 	MembershipKind InvitationMembershipKind `json:"membershipKind"`
 }
@@ -1502,6 +1539,9 @@ type RegisterDeviceRequest struct {
 	Kind         *RegisterDeviceRequestKind `json:"kind,omitempty"`
 	Name         string                     `json:"name"`
 
+	// Proof Proof of the invitation secret, checked by the inviting administrator's browser
+	Proof *string `json:"proof,omitempty"`
+
 	// SignPublicKey Unpadded base64url (RFC 4648 section 5) of binary data
 	SignPublicKey Base64Url `json:"signPublicKey"`
 }
@@ -1534,6 +1574,12 @@ type SendMessageRequest struct {
 // SetActiveRequest defines model for SetActiveRequest.
 type SetActiveRequest struct {
 	Active bool `json:"active"`
+}
+
+// SetHistoryModeRequest defines model for SetHistoryModeRequest.
+type SetHistoryModeRequest struct {
+	// Mode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+	Mode HistoryMode `json:"mode"`
 }
 
 // SetTrustRootRequest defines model for SetTrustRootRequest.
@@ -1812,6 +1858,9 @@ type DeleteBoardColumnParams struct {
 	MoveTo *openapi_types.UUID `form:"moveTo,omitempty" json:"moveTo,omitempty"`
 }
 
+// SetHistoryModeJSONRequestBody defines body for SetHistoryMode for application/json ContentType.
+type SetHistoryModeJSONRequestBody = SetHistoryModeRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -1952,6 +2001,9 @@ type CreateWorkItemCommentJSONRequestBody = CreateCommentRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// SetHistoryMode Choose whether this account is asked to set up access to encrypted history (ask or none)
+	// (PUT /api/v1/account/history-mode)
+	SetHistoryMode(w http.ResponseWriter, r *http.Request)
 	// DeleteAttachment Remove an attachment (uploader or project manager)
 	// (DELETE /api/v1/attachments/{attachmentId})
 	DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID)
@@ -2316,6 +2368,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// SetHistoryMode operation middleware
+func (siw *ServerInterfaceWrapper) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetHistoryMode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // DeleteAttachment operation middleware
 func (siw *ServerInterfaceWrapper) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
@@ -5165,6 +5231,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/sessions/{sessionId}", wrapper.RevokeSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/people", wrapper.ListOrganizationPeople)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/organization/people/{accountId}/active", wrapper.SetPersonActive)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/account/history-mode", wrapper.SetHistoryMode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)

@@ -23,6 +23,14 @@ export type VaultRecord = {
   pinnedRoot: string;
   /** Set while the organization setup is half done (keys saved, server steps pending). */
   incomplete?: true;
+  /**
+   * Browsers set up by an invitation that includes history have no passphrase to
+   * type: the keys are wrapped under this random value, kept beside them. That
+   * protects against a casual look at the stored data, not against someone who
+   * can read this browser's storage; a person who wants more sets a real
+   * passphrase by registering the browser again.
+   */
+  autoPassphrase?: string;
   /** Present only on the administrator's browser. */
   root?: { publicKey: string; wrapped: WrappedSecret };
   recovery?: {

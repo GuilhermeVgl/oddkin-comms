@@ -79,8 +79,19 @@ function readEntry(): Entry {
     const params = new URLSearchParams(invitation[1]);
     const email = params.get("email");
     const token = params.get("token");
+    const historyKey = params.get("k");
+    const rootFingerprint = params.get("rf");
     if (email !== null && token !== null && token.length === 43) {
-      const entry: Entry = { kind: "invitation", invitation: { email, token } };
+      const entry: Entry = {
+        kind: "invitation",
+        invitation: {
+          email,
+          token,
+          ...(historyKey !== null && rootFingerprint !== null
+            ? { historyKey, rootFingerprint }
+            : {}),
+        },
+      };
       rememberEntry(entry);
       return entry;
     }
@@ -131,13 +142,17 @@ function Authenticated({
 
   if (phase === "loading")
     return <StatusScreen title="Preparando seu espaço…" />;
+  // Invited with history, the browser sets itself up; invited without, the
+  // person is never asked. Neither sees the key step.
   const needsGate =
-    phase === "needs_device" ||
-    phase === "pending_approval" ||
-    phase === "locked" ||
-    phase === "revoked" ||
-    phase === "error" ||
-    (phase === "not_configured" && account.isAdmin);
+    !(e2ee?.autoManaged === true && phase !== "error" && phase !== "revoked") &&
+    phase !== "not_enabled" &&
+    (phase === "needs_device" ||
+      phase === "pending_approval" ||
+      phase === "locked" ||
+      phase === "revoked" ||
+      phase === "error" ||
+      (phase === "not_configured" && account.isAdmin));
   if (needsGate && !skipped) {
     return (
       <DeviceGate

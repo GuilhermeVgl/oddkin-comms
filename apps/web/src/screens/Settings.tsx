@@ -398,6 +398,28 @@ function Devices({
   }
 
   const ready = e2ee.phase === "unlocked";
+  if (e2ee.phase === "not_enabled") {
+    return (
+      <div className="stack">
+        <section className="card pad row">
+          <div className="grow col">
+            <b>Você entrou sem acesso ao histórico cifrado</b>
+            <span className="xs muted">
+              Por isso nenhuma chave é pedida. Se mudar de ideia, peça o acesso:
+              este navegador será registrado e a administração o aprova.
+            </span>
+          </div>
+          <button
+            className="btn primary"
+            onClick={() => void e2ee.requestHistoryAccess()}
+            type="button"
+          >
+            Pedir acesso ao histórico
+          </button>
+        </section>
+      </div>
+    );
+  }
   return (
     <div className="stack">
       <Banner icon="shield">

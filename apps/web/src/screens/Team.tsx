@@ -22,6 +22,7 @@ import { toast } from "../design/toast";
 import { csrfToken, describeError } from "../errors";
 import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
+import { useOptionalE2EE } from "../e2ee/E2EE";
 import { encryptProject } from "../e2ee/content";
 import { useWorkspace, type ProjectState } from "../workspace";
 
@@ -272,6 +273,13 @@ function InviteDialog({
   const [kind, setKind] = useState<MembershipKind>("internal");
   const [invalid, setInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
+  const e2ee = useOptionalE2EE();
+  // Asked only where there is encryption to give access to.
+  const askHistory = e2ee !== null && e2ee.phase !== "not_configured";
+  const canGrant =
+    e2ee?.canApproveWithRoot === true && e2ee.phase === "unlocked";
+  const [history, setHistory] = useState<"yes" | "no">("yes");
+  const grants = askHistory && history === "yes" && canGrant;
 
   async function submit() {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
@@ -291,7 +299,25 @@ function InviteDialog({
           (error.status !== 404 && error.status !== 400)
         )
           throw error;
-        await createInvitation(client, email.trim(), kind, csrfToken());
+        const grant = grants ? await e2ee?.beginHistoryInvite() : null;
+        const created = await createInvitation(
+          client,
+          email.trim(),
+          kind,
+          csrfToken(),
+          askHistory
+            ? grant
+              ? { historyMode: "auto", linkExtra: grant.linkExtra }
+              : { historyMode: "none" }
+            : undefined,
+        );
+        if (grant) {
+          await e2ee?.rememberHistoryInvite(
+            created.id,
+            email.trim(),
+            grant.secret,
+          );
+        }
         toast("Convite criado e enfileirado para entrega.", { icon: "mail" });
       }
       onClose();
@@ -362,6 +388,36 @@ function InviteDialog({
                 : "Internos colaboram nos projetos aos quais pertencem."}
             </span>
           </div>
+          {askHistory ? (
+            <div className="field">
+              <span className="lbl" id="hl">
+                Incluir o histórico cifrado da equipe?
+              </span>
+              <div aria-labelledby="hl" className="seg" role="group">
+                <button
+                  aria-pressed={history === "yes"}
+                  onClick={() => setHistory("yes")}
+                  type="button"
+                >
+                  Sim, incluir
+                </button>
+                <button
+                  aria-pressed={history === "no"}
+                  onClick={() => setHistory("no")}
+                  type="button"
+                >
+                  Não incluir
+                </button>
+              </div>
+              <span className="hint">
+                {history === "no"
+                  ? "A pessoa entra sem ver o histórico cifrado e nunca é pedida uma chave. Ela pode pedir acesso depois, em Configurações."
+                  : canGrant
+                    ? "O convite já deixa o acesso pronto: a pessoa não digita chave nenhuma. A liberação acontece quando este navegador (o seu, de administração) estiver aberto."
+                    : "Para incluir o histórico, desbloqueie este navegador (administração) nesta sessão. Sem isso o convite sai sem histórico."}
+              </span>
+            </div>
+          ) : null}
           <Banner icon="mail">
             O convite expira em 7 dias, é de uso único e só funciona para este
             e-mail. Não incluímos títulos nem prazos no e-mail.

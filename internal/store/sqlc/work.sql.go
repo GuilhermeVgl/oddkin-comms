@@ -453,9 +453,9 @@ func (q *Queries) CreateDMKeyDomain(ctx context.Context, arg CreateDMKeyDomainPa
 }
 
 const createDevice = `-- name: CreateDevice :one
-INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at
+INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key, proof)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at, proof
 `
 
 type CreateDeviceParams struct {
@@ -465,6 +465,7 @@ type CreateDeviceParams struct {
 	Name           string
 	SignPublicKey  []byte
 	BoxPublicKey   []byte
+	Proof          pgtype.Text
 }
 
 func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error) {
@@ -475,6 +476,7 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		arg.Name,
 		arg.SignPublicKey,
 		arg.BoxPublicKey,
+		arg.Proof,
 	)
 	var i Device
 	err := row.Scan(
@@ -491,6 +493,7 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		&i.CreatedAt,
 		&i.AuthorizedAt,
 		&i.RevokedAt,
+		&i.Proof,
 	)
 	return i, err
 }
@@ -1654,7 +1657,7 @@ func (q *Queries) GetConversationForUpdate(ctx context.Context, id pgtype.UUID) 
 }
 
 const getDevice = `-- name: GetDevice :one
-SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at FROM device WHERE id = $1
+SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at, proof FROM device WHERE id = $1
 `
 
 func (q *Queries) GetDevice(ctx context.Context, id pgtype.UUID) (Device, error) {
@@ -1674,6 +1677,7 @@ func (q *Queries) GetDevice(ctx context.Context, id pgtype.UUID) (Device, error)
 		&i.CreatedAt,
 		&i.AuthorizedAt,
 		&i.RevokedAt,
+		&i.Proof,
 	)
 	return i, err
 }
@@ -2379,7 +2383,7 @@ func (q *Queries) ListActiveCalls(ctx context.Context) ([]Call, error) {
 }
 
 const listActiveDevicesForAccounts = `-- name: ListActiveDevicesForAccounts :many
-SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, d.proof, a.email_normalized
 FROM device AS d JOIN account AS a ON a.id = d.account_id
 WHERE d.account_id = ANY ($1::uuid[]) AND d.state = 'active' AND d.kind = 'device'
 ORDER BY a.email_normalized, d.created_at, d.id
@@ -2399,6 +2403,7 @@ type ListActiveDevicesForAccountsRow struct {
 	CreatedAt          pgtype.Timestamptz
 	AuthorizedAt       pgtype.Timestamptz
 	RevokedAt          pgtype.Timestamptz
+	Proof              pgtype.Text
 	EmailNormalized    string
 }
 
@@ -2425,6 +2430,7 @@ func (q *Queries) ListActiveDevicesForAccounts(ctx context.Context, accounts []p
 			&i.CreatedAt,
 			&i.AuthorizedAt,
 			&i.RevokedAt,
+			&i.Proof,
 			&i.EmailNormalized,
 		); err != nil {
 			return nil, err
@@ -2438,7 +2444,7 @@ func (q *Queries) ListActiveDevicesForAccounts(ctx context.Context, accounts []p
 }
 
 const listActiveRecoveryDevices = `-- name: ListActiveRecoveryDevices :many
-SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, d.proof, a.email_normalized
 FROM device AS d JOIN account AS a ON a.id = d.account_id
 WHERE d.organization_id = $1 AND d.state = 'active' AND d.kind = 'recovery'
 ORDER BY d.created_at, d.id
@@ -2458,6 +2464,7 @@ type ListActiveRecoveryDevicesRow struct {
 	CreatedAt          pgtype.Timestamptz
 	AuthorizedAt       pgtype.Timestamptz
 	RevokedAt          pgtype.Timestamptz
+	Proof              pgtype.Text
 	EmailNormalized    string
 }
 
@@ -2484,6 +2491,7 @@ func (q *Queries) ListActiveRecoveryDevices(ctx context.Context, organizationID 
 			&i.CreatedAt,
 			&i.AuthorizedAt,
 			&i.RevokedAt,
+			&i.Proof,
 			&i.EmailNormalized,
 		); err != nil {
 			return nil, err
@@ -2916,7 +2924,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const listDevicesForAccount = `-- name: ListDevicesForAccount :many
-SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at FROM device WHERE account_id = $1 AND state <> 'revoked' ORDER BY created_at, id
+SELECT id, organization_id, account_id, kind, name, sign_public_key, box_public_key, state, certificate, authorizer_device_id, created_at, authorized_at, revoked_at, proof FROM device WHERE account_id = $1 AND state <> 'revoked' ORDER BY created_at, id
 `
 
 func (q *Queries) ListDevicesForAccount(ctx context.Context, accountID pgtype.UUID) ([]Device, error) {
@@ -2942,6 +2950,7 @@ func (q *Queries) ListDevicesForAccount(ctx context.Context, accountID pgtype.UU
 			&i.CreatedAt,
 			&i.AuthorizedAt,
 			&i.RevokedAt,
+			&i.Proof,
 		); err != nil {
 			return nil, err
 		}
@@ -3450,7 +3459,7 @@ func (q *Queries) ListPendingCallInvitations(ctx context.Context, accountID pgty
 }
 
 const listPendingDevices = `-- name: ListPendingDevices :many
-SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, a.email_normalized
+SELECT d.id, d.organization_id, d.account_id, d.kind, d.name, d.sign_public_key, d.box_public_key, d.state, d.certificate, d.authorizer_device_id, d.created_at, d.authorized_at, d.revoked_at, d.proof, a.email_normalized
 FROM device AS d JOIN account AS a ON a.id = d.account_id
 WHERE d.organization_id = $1 AND d.state = 'pending'
 ORDER BY d.created_at, d.id
@@ -3470,6 +3479,7 @@ type ListPendingDevicesRow struct {
 	CreatedAt          pgtype.Timestamptz
 	AuthorizedAt       pgtype.Timestamptz
 	RevokedAt          pgtype.Timestamptz
+	Proof              pgtype.Text
 	EmailNormalized    string
 }
 
@@ -3496,6 +3506,7 @@ func (q *Queries) ListPendingDevices(ctx context.Context, organizationID pgtype.
 			&i.CreatedAt,
 			&i.AuthorizedAt,
 			&i.RevokedAt,
+			&i.Proof,
 			&i.EmailNormalized,
 		); err != nil {
 			return nil, err

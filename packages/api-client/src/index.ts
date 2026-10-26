@@ -31,6 +31,7 @@ export async function updateOrganizationBranding(
   throw new Error(`Unexpected branding update status: ${response.status}`);
 }
 export type Invitation = components["schemas"]["Invitation"];
+export type HistoryMode = components["schemas"]["HistoryMode"];
 export type MembershipKind =
   components["schemas"]["CreateInvitationRequest"]["membershipKind"];
 export type LoginResult =
@@ -120,9 +121,17 @@ export async function createInvitation(
   email: string,
   membershipKind: MembershipKind,
   csrfToken: string,
+  history?: { historyMode: HistoryMode; linkExtra?: string },
 ): Promise<Invitation> {
   const { data, response } = await client.POST("/api/v1/invitations", {
-    body: { email, membershipKind },
+    body: {
+      email,
+      membershipKind,
+      ...(history === undefined ? {} : { historyMode: history.historyMode }),
+      ...(history?.linkExtra === undefined
+        ? {}
+        : { linkExtra: history.linkExtra }),
+    },
     headers: { "X-CSRF-Token": csrfToken },
   });
   if (response.status === 201 && data !== undefined) {
@@ -197,3 +206,16 @@ export async function confirmPasswordReset(
 
 export * from "./work";
 export * from "./e2ee";
+
+export async function setHistoryMode(
+  client: ReturnType<typeof createApiClient>,
+  csrfToken: string,
+  mode: "ask" | "none",
+): Promise<void> {
+  const { response } = await client.PUT("/api/v1/account/history-mode", {
+    body: { mode },
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+  if (response.status !== 204)
+    throw new Error(`Unexpected history mode status: ${response.status}`);
+}

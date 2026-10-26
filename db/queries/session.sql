@@ -5,7 +5,7 @@ RETURNING id, account_id, token_hash, csrf_hash, created_at, last_seen_at, expir
 
 -- name: FindActiveSessionByTokenHash :one
 SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized,
-       m.membership_kind, m.is_admin
+       m.membership_kind, m.is_admin, m.history_mode
 FROM auth_session AS s
 JOIN account AS a ON a.id = s.account_id
 JOIN organization_membership AS m ON m.account_id = a.id

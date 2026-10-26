@@ -233,6 +233,50 @@ export async function createCrypto(
     }
   }
 
+  /**
+   * Proves knowledge of an invitation's secret for one pair of device keys.
+   * The invited browser sends it with its registration; the inviting
+   * administrator's browser, which kept the secret, checks it before approving.
+   */
+  function invitationProof(
+    secret: Uint8Array,
+    signPublicKey: Uint8Array,
+    boxPublicKey: Uint8Array,
+  ): string {
+    if (secret.length !== sodium.crypto_auth_KEYBYTES)
+      throw new CryptoError("malformed");
+    const tag = sodium.crypto_auth(
+      lengthPrefixed(
+        utf8("oddkin/v1/invite-proof"),
+        signPublicKey,
+        boxPublicKey,
+      ),
+      secret,
+    );
+    return toBase64Url(tag);
+  }
+
+  function verifyInvitationProof(
+    secret: Uint8Array,
+    signPublicKey: Uint8Array,
+    boxPublicKey: Uint8Array,
+    proof: string,
+  ): boolean {
+    try {
+      return sodium.crypto_auth_verify(
+        fromBase64Url(proof),
+        lengthPrefixed(
+          utf8("oddkin/v1/invite-proof"),
+          signPublicKey,
+          boxPublicKey,
+        ),
+        secret,
+      );
+    } catch {
+      return false;
+    }
+  }
+
   function fingerprint(publicKey: Uint8Array): string {
     const digest = sodium.crypto_generichash(16, publicKey, null);
     return sodium.to_hex(digest).replace(/(.{4})(?=.)/g, "$1 ");
@@ -417,6 +461,8 @@ export async function createCrypto(
     signDeviceCertificate,
     verifyDeviceCertificate,
     fingerprint,
+    invitationProof,
+    verifyInvitationProof,
     encryptContent,
     decryptContent,
     sealDomainKey,

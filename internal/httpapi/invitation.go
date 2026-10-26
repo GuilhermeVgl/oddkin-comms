@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
@@ -18,6 +19,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// linkExtraPattern keeps the inviter-chosen fragment to plain parameters.
+var linkExtraPattern = regexp.MustCompile(`^[A-Za-z0-9_=&.-]{1,300}$`)
 
 func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
@@ -60,6 +64,27 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	historyMode := "ask"
+	if payload.HistoryMode != nil {
+		historyMode = string(*payload.HistoryMode)
+	}
+	if !gen.HistoryMode(historyMode).Valid() {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var sealedExtra []byte
+	if payload.LinkExtra != nil && *payload.LinkExtra != "" {
+		if historyMode != "auto" || !linkExtraPattern.MatchString(*payload.LinkExtra) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		sealed, sealErr := identity.SealInvitationToken(h.auth.invitationDeliveryKey, *payload.LinkExtra)
+		if sealErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		sealedExtra = sealed
+	}
 	token, record, err := identity.IssueInvitationToken(time.Now())
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -86,7 +111,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 	created, err := queries.CreateOrganizationInvitation(ctx, sqlc.CreateOrganizationInvitationParams{
 		OrganizationID: membership.OrganizationID, EmailNormalized: email,
 		MembershipKind: string(payload.MembershipKind), TokenHash: record.Hash[:],
-		ExpiresAt: pgtype.Timestamptz{Time: record.ExpiresAt, Valid: true},
+		ExpiresAt: pgtype.Timestamptz{Time: record.ExpiresAt, Valid: true}, HistoryMode: historyMode,
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -96,7 +121,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if err = queries.CreateInvitationDelivery(ctx, sqlc.CreateInvitationDeliveryParams{InvitationID: created.ID, TokenCiphertext: sealedToken}); err != nil {
+	if err = queries.CreateInvitationDelivery(ctx, sqlc.CreateInvitationDeliveryParams{InvitationID: created.ID, TokenCiphertext: sealedToken, ExtraCiphertext: sealedExtra}); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -114,6 +139,7 @@ func (h *healthHandler) CreateInvitation(w http.ResponseWriter, r *http.Request)
 		Id: openapi_types.UUID(invitationID), Email: openapi_types.Email(email),
 		MembershipKind: gen.InvitationMembershipKind(payload.MembershipKind),
 		ExpiresAt:      record.ExpiresAt, DeliveryState: gen.InvitationDeliveryStatePending,
+		HistoryMode: func() *gen.HistoryMode { mode := gen.HistoryMode(historyMode); return &mode }(),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -186,6 +212,7 @@ func (h *healthHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request)
 	}
 	if _, err = queries.EnsureOrganizationMembership(ctx, sqlc.EnsureOrganizationMembershipParams{
 		OrganizationID: invitation.OrganizationID, AccountID: account.ID, MembershipKind: invitation.MembershipKind,
+		HistoryMode: invitation.HistoryMode,
 	}); errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusBadRequest)
 		return

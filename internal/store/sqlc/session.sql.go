@@ -47,7 +47,7 @@ func (q *Queries) CreateAuthSession(ctx context.Context, arg CreateAuthSessionPa
 
 const findActiveSessionByTokenHash = `-- name: FindActiveSessionByTokenHash :one
 SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized,
-       m.membership_kind, m.is_admin
+       m.membership_kind, m.is_admin, m.history_mode
 FROM auth_session AS s
 JOIN account AS a ON a.id = s.account_id
 JOIN organization_membership AS m ON m.account_id = a.id
@@ -66,6 +66,7 @@ type FindActiveSessionByTokenHashRow struct {
 	EmailNormalized string
 	MembershipKind  string
 	IsAdmin         bool
+	HistoryMode     string
 }
 
 func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (FindActiveSessionByTokenHashRow, error) {
@@ -79,6 +80,7 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, tokenHash []
 		&i.EmailNormalized,
 		&i.MembershipKind,
 		&i.IsAdmin,
+		&i.HistoryMode,
 	)
 	return i, err
 }

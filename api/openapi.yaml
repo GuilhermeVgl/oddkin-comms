@@ -256,6 +256,27 @@ paths:
           description: Unknown person
         "409":
           description: The last active administrator cannot be deactivated
+  /api/v1/account/history-mode:
+    put:
+      operationId: setHistoryMode
+      summary: Choose whether this account is asked to set up access to encrypted history (ask or none)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetHistoryModeRequest"
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Only ask and none can be chosen by the person
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
   /api/v1/auth/me:
     get:
       operationId: getCurrentAccount
@@ -2825,6 +2846,17 @@ components:
         membershipKind:
           type: string
           enum: [internal, external]
+        historyMode:
+          $ref: "#/components/schemas/HistoryMode"
+        linkExtra:
+          type: string
+          maxLength: 300
+          pattern: "^[A-Za-z0-9_=&.-]*$"
+          description: Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged
+    HistoryMode:
+      type: string
+      enum: [ask, auto, none]
+      description: ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
     Invitation:
       type: object
       required: [id, email, membershipKind, expiresAt, deliveryState]
@@ -2845,6 +2877,8 @@ components:
         deliveryState:
           type: string
           enum: [pending]
+        historyMode:
+          $ref: "#/components/schemas/HistoryMode"
     LoginRequest:
       type: object
       required: [email, password]
@@ -2860,7 +2894,7 @@ components:
           maxLength: 1024
     CurrentAccount:
       type: object
-      required: [id, email, membershipKind, isAdmin]
+      required: [id, email, membershipKind, isAdmin, historyMode]
       additionalProperties: false
       properties:
         id:
@@ -2874,6 +2908,8 @@ components:
           enum: [internal, external]
         isAdmin:
           type: boolean
+        historyMode:
+          $ref: "#/components/schemas/HistoryMode"
     Project:
       type: object
       required:
@@ -3056,6 +3092,12 @@ components:
       additionalProperties: false
       properties:
         active: { type: boolean }
+    SetHistoryModeRequest:
+      type: object
+      required: [mode]
+      additionalProperties: false
+      properties:
+        mode: { $ref: "#/components/schemas/HistoryMode" }
     BoardColumn:
       type: object
       required: [id, name, position, category]
@@ -3665,6 +3707,10 @@ components:
         kind: { type: string, enum: [device, recovery] }
         signPublicKey: { $ref: "#/components/schemas/Base64Url" }
         boxPublicKey: { $ref: "#/components/schemas/Base64Url" }
+        proof:
+          type: string
+          maxLength: 128
+          description: Proof of the invitation secret, checked by the inviting administrator's browser
     Device:
       type: object
       required: [id, name, kind, state, signPublicKey, boxPublicKey]
@@ -3677,6 +3723,7 @@ components:
         signPublicKey: { $ref: "#/components/schemas/Base64Url" }
         boxPublicKey: { $ref: "#/components/schemas/Base64Url" }
         certificate: { $ref: "#/components/schemas/Base64Url" }
+        proof: { type: string }
     PendingDevice:
       type: object
       required: [device, accountId, email]

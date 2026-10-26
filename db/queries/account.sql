@@ -18,13 +18,16 @@ SELECT organization_id, membership_kind, is_admin
 FROM organization_membership
 WHERE account_id = $1;
 
+-- name: SetHistoryMode :exec
+UPDATE organization_membership SET history_mode = $2 WHERE account_id = $1;
+
 -- name: EnsureOrganizationMembership :one
-INSERT INTO organization_membership (organization_id, account_id, membership_kind, is_admin)
-VALUES ($1, $2, $3, false)
+INSERT INTO organization_membership (organization_id, account_id, membership_kind, is_admin, history_mode)
+VALUES ($1, $2, $3, false, COALESCE(NULLIF(sqlc.arg('history_mode')::text, ''), 'ask'))
 ON CONFLICT (organization_id, account_id) DO UPDATE
 SET membership_kind = organization_membership.membership_kind
 WHERE organization_membership.membership_kind = EXCLUDED.membership_kind
-RETURNING organization_id, account_id, membership_kind, is_admin, created_at;
+RETURNING organization_id, account_id, membership_kind, is_admin, created_at, history_mode;
 
 -- name: ListOrganizationPeople :many
 SELECT a.id, a.email_normalized, a.active, m.membership_kind, m.is_admin
@@ -44,6 +47,12 @@ UPDATE account SET active = $2 WHERE id = $1;
 
 -- name: CountActiveAdmins :one
 SELECT count(*)::integer
+FROM organization_membership AS m
+JOIN account AS a ON a.id = m.account_id
+WHERE m.organization_id = $1 AND m.is_admin AND a.active;
+
+-- name: ListOrganizationAdmins :many
+SELECT m.account_id
 FROM organization_membership AS m
 JOIN account AS a ON a.id = m.account_id
 WHERE m.organization_id = $1 AND m.is_admin AND a.active;

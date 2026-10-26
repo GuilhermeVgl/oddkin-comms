@@ -19,6 +19,7 @@ import { go } from "../design/router";
 import { blip } from "../design/sound";
 import { Duo } from "../design/Sprite";
 import { toast } from "../design/toast";
+import { useOptionalE2EE } from "../e2ee/E2EE";
 import { createSprintContent, encryptSprint } from "../e2ee/content";
 import { csrfToken, describeError } from "../errors";
 import { Page } from "../shell/Page";
@@ -49,6 +50,7 @@ function Progress({ rows }: { rows: Row[] }) {
 }
 
 export function Sprints({ account }: { account: CurrentAccount }) {
+  const e2ee = useOptionalE2EE();
   const {
     client,
     projects,
@@ -138,7 +140,24 @@ export function Sprints({ account }: { account: CurrentAccount }) {
           </button>
         </Banner>
       ) : null}
-      {orgKeyed && !unlocked ? (
+      {orgKeyed && !unlocked && e2ee?.phase === "not_enabled" ? (
+        <Banner icon="lock" kind="warn" style={{ marginBottom: 16 }}>
+          Você entrou sem acesso ao histórico cifrado, então os nomes das
+          sprints ficam ocultos.{" "}
+          <button
+            className="btn sm"
+            onClick={() => void e2ee.requestHistoryAccess()}
+            type="button"
+          >
+            Pedir acesso
+          </button>
+        </Banner>
+      ) : orgKeyed && !unlocked && e2ee?.autoManaged === true ? (
+        <Banner icon="lock" style={{ marginBottom: 16 }}>
+          Liberando seu histórico: a administração aprova este navegador sozinha
+          assim que estiver online.
+        </Banner>
+      ) : orgKeyed && !unlocked ? (
         <Banner icon="lock" kind="warn" style={{ marginBottom: 16 }}>
           Libere a criptografia deste navegador para ler os nomes das sprints.{" "}
           <button

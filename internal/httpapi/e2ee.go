@@ -45,6 +45,9 @@ func toDevice(row sqlc.Device) gen.Device {
 		certificate := b64(row.Certificate)
 		device.Certificate = &certificate
 	}
+	if row.Proof.Valid {
+		device.Proof = &row.Proof.String
+	}
 	return device
 }
 
@@ -325,6 +328,10 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	signKey, validSign := unb64(payload.SignPublicKey, 32)
 	boxKey, validBox := unb64(payload.BoxPublicKey, 32)
+	proof := ""
+	if payload.Proof != nil {
+		proof = *payload.Proof
+	}
 	kind := "device"
 	if payload.Kind != nil {
 		kind = string(*payload.Kind)
@@ -342,7 +349,7 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	device, err := q.CreateDevice(ctx, sqlc.CreateDeviceParams{
 		OrganizationID: organizationID, AccountID: session.AccountID, Kind: kind, Name: payload.Name,
-		SignPublicKey: signKey, BoxPublicKey: boxKey,
+		SignPublicKey: signKey, BoxPublicKey: boxKey, Proof: pgtype.Text{String: proof, Valid: proof != ""},
 	})
 	if isUniqueViolation(err) {
 		w.WriteHeader(http.StatusConflict)
@@ -355,6 +362,11 @@ func (h *healthHandler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
+	}
+	// Administrators learn of a new pending device at once, so an invitation that
+	// carries history can be approved without anyone opening a settings page.
+	if admins, adminErr := q.ListOrganizationAdmins(ctx, organizationID); adminErr == nil {
+		_ = emitEvent(ctx, q, admins, eventSpec{Type: "device.changed", ResourceID: device.ID})
 	}
 	writeJSON(w, http.StatusCreated, toDevice(device))
 }
@@ -405,6 +417,12 @@ func (h *healthHandler) ListPendingDevices(w http.ResponseWriter, r *http.Reques
 			Device: gen.Device{
 				Id: fromPG(row.ID), Name: row.Name, Kind: gen.DeviceKind(row.Kind), State: gen.DeviceState(row.State),
 				SignPublicKey: b64(row.SignPublicKey), BoxPublicKey: b64(row.BoxPublicKey),
+				Proof: func() *string {
+					if row.Proof.Valid {
+						return &row.Proof.String
+					}
+					return nil
+				}(),
 			},
 			AccountId: fromPG(row.AccountID), Email: row.EmailNormalized,
 		})

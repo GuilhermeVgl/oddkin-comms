@@ -324,3 +324,56 @@ describe("device certificates", () => {
     expect(c.fingerprint(signPublicKey)).toBe(c.fingerprint(signPublicKey));
   });
 });
+
+describe("invitation proof", () => {
+  it("binds the secret to one pair of device keys", () => {
+    const secret = c.generateDomainKey();
+    const keys = c.generateDeviceKeys();
+    const proof = c.invitationProof(
+      secret,
+      keys.signPublicKey,
+      keys.boxPublicKey,
+    );
+    expect(
+      c.verifyInvitationProof(
+        secret,
+        keys.signPublicKey,
+        keys.boxPublicKey,
+        proof,
+      ),
+    ).toBe(true);
+    const other = c.generateDeviceKeys();
+    // A device the server invented cannot carry a valid proof, and neither can a stolen one.
+    expect(
+      c.verifyInvitationProof(
+        secret,
+        other.signPublicKey,
+        other.boxPublicKey,
+        proof,
+      ),
+    ).toBe(false);
+    expect(
+      c.verifyInvitationProof(
+        c.generateDomainKey(),
+        keys.signPublicKey,
+        keys.boxPublicKey,
+        proof,
+      ),
+    ).toBe(false);
+    expect(
+      c.verifyInvitationProof(
+        secret,
+        keys.signPublicKey,
+        keys.boxPublicKey,
+        "not-a-proof",
+      ),
+    ).toBe(false);
+    expect(() =>
+      c.invitationProof(
+        new Uint8Array(5),
+        keys.signPublicKey,
+        keys.boxPublicKey,
+      ),
+    ).toThrow();
+  });
+});

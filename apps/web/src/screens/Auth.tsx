@@ -18,10 +18,17 @@ import { toast } from "../design/toast";
 import { APP_NAME } from "../brand";
 import { useDuoVisible } from "../design/duoVisibility";
 import { useE2EE } from "../e2ee/E2EE";
+import { rememberProvision } from "../e2ee/invitations";
 
 const MIN_PASSWORD = 12;
 
-export type PendingInvitation = { email: string; token: string };
+export type PendingInvitation = {
+  email: string;
+  token: string;
+  /** Present when the invitation includes history: the secret and the root fingerprint from the link. */
+  historyKey?: string;
+  rootFingerprint?: string;
+};
 
 /** Types a line out one letter at a time (instantly when motion is reduced). */
 function Typewriter({ text, speed = 28 }: { text: string; speed?: number }) {
@@ -404,6 +411,19 @@ export function LoginScreen({
   );
 }
 
+function keepHistoryKey(invitation: PendingInvitation) {
+  if (
+    invitation.historyKey !== undefined &&
+    invitation.rootFingerprint !== undefined
+  ) {
+    rememberProvision({
+      email: invitation.email,
+      secret: invitation.historyKey,
+      rootFingerprint: invitation.rootFingerprint,
+    });
+  }
+}
+
 export function InvitationScreen({
   invitation,
   account,
@@ -453,9 +473,11 @@ export function InvitationScreen({
         return;
       }
       if (account !== undefined) {
+        keepHistoryKey(invitation);
         onAccepted(account);
         return;
       }
+      keepHistoryKey(invitation);
       onConsumed();
       const loggedIn = await login(client, invitation.email, password);
       if (loggedIn !== "authenticated") {

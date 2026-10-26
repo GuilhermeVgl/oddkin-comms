@@ -26,6 +26,7 @@ import { isDone, useWorkspace, type ProjectState } from "../workspace";
 /** What this project does about encryption, and what the person can do about it. */
 export function EncryptionBanner({ state }: { state: ProjectState }) {
   const { client, unlocked, reload, account } = useWorkspace();
+  const e2ee = useOptionalE2EE();
   const [progress, setProgress] = useState("");
   const encrypted = state.crypto?.isEncrypted("work") ?? state.keyed;
   const legacy =
@@ -89,6 +90,34 @@ export function EncryptionBanner({ state }: { state: ProjectState }) {
     }
   }
 
+  if (encrypted && !unlocked && e2ee?.phase === "not_enabled") {
+    return (
+      <Banner
+        icon="lock"
+        kind="warn"
+        role="status"
+        style={{ margin: "0 32px 14px" }}
+      >
+        <b>Você não vê o histórico cifrado.</b> Este projeto é cifrado e você
+        entrou sem acesso a ele.{" "}
+        <button
+          className="btn sm"
+          onClick={() => void e2ee.requestHistoryAccess()}
+          type="button"
+        >
+          Pedir acesso
+        </button>
+      </Banner>
+    );
+  }
+  if (encrypted && !unlocked && e2ee?.autoManaged === true) {
+    return (
+      <Banner icon="lock" role="status" style={{ margin: "0 32px 14px" }}>
+        <b>Liberando seu histórico.</b> A administração aprova este navegador
+        automaticamente assim que estiver online; nada para digitar.
+      </Banner>
+    );
+  }
   if (encrypted && !unlocked) {
     return (
       <Banner

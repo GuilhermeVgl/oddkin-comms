@@ -152,6 +152,7 @@ type Device struct {
 	CreatedAt          pgtype.Timestamptz
 	AuthorizedAt       pgtype.Timestamptz
 	RevokedAt          pgtype.Timestamptz
+	Proof              pgtype.Text
 }
 
 type Epic struct {
@@ -185,6 +186,7 @@ type InvitationDelivery struct {
 	ProviderID      pgtype.Text
 	SentAt          pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	ExtraCiphertext []byte
 }
 
 type KeyDomain struct {
@@ -277,6 +279,7 @@ type OrganizationInvitation struct {
 	CreatedAt       pgtype.Timestamptz
 	RequestedBy     pgtype.UUID
 	RevokedAt       pgtype.Timestamptz
+	HistoryMode     string
 }
 
 type OrganizationMembership struct {
@@ -285,6 +288,7 @@ type OrganizationMembership struct {
 	MembershipKind string
 	IsAdmin        bool
 	CreatedAt      pgtype.Timestamptz
+	HistoryMode    string
 }
 
 type OrganizationTrust struct {

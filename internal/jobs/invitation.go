@@ -64,7 +64,14 @@ func (worker *invitationEmailWorker) Work(ctx context.Context, job *river.Job[In
 		_, _ = queries.MarkInvitationDeliveryFailed(ctx, invitationID)
 		return river.JobCancel(errors.New("invalid invitation delivery"))
 	}
-	link, err := invitationLink(worker.publicURL, delivery.EmailNormalized, token)
+	extra := ""
+	if len(delivery.ExtraCiphertext) > 0 {
+		if extra, err = identity.OpenInvitationToken(worker.deliveryKey, delivery.ExtraCiphertext); err != nil {
+			_, _ = queries.MarkInvitationDeliveryFailed(ctx, invitationID)
+			return river.JobCancel(errors.New("invalid invitation delivery"))
+		}
+	}
+	link, err := invitationLink(worker.publicURL, delivery.EmailNormalized, token, extra)
 	if err != nil {
 		_, _ = queries.MarkInvitationDeliveryFailed(ctx, invitationID)
 		return river.JobCancel(errors.New("invalid invitation public URL"))
@@ -95,7 +102,9 @@ func (worker *invitationEmailWorker) Work(ctx context.Context, job *river.Job[In
 	return nil
 }
 
-func invitationLink(publicURL, email, token string) (string, error) {
+// invitationLink builds the link; extra is made of fragment parameters the
+// inviter chose (the secret of an invitation that includes history).
+func invitationLink(publicURL, email, token, extra string) (string, error) {
 	base, err := url.Parse(publicURL)
 	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" ||
 		base.User != nil || base.RawQuery != "" || base.Fragment != "" {
@@ -104,5 +113,8 @@ func invitationLink(publicURL, email, token string) (string, error) {
 	base.Path = strings.TrimRight(base.Path, "/") + "/"
 	values := url.Values{"email": {email}, "token": {token}}
 	base.Fragment = "accept-invitation?" + values.Encode()
+	if extra != "" {
+		base.Fragment += "&" + extra
+	}
 	return base.String(), nil
 }

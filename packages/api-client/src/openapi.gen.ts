@@ -196,6 +196,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/account/history-mode": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Choose whether this account is asked to set up access to encrypted history (ask or none) */
+    put: operations["setHistoryMode"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/me": {
     parameters: {
       query?: never;
@@ -1782,7 +1799,15 @@ export interface components {
       email: string;
       /** @enum {string} */
       membershipKind: "internal" | "external";
+      historyMode?: components["schemas"]["HistoryMode"];
+      /** @description Extra fragment parameters appended to the e-mailed link (the browser of the inviter puts the history secret here); sealed until the e-mail is sent, never logged */
+      linkExtra?: string;
     };
+    /**
+     * @description ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
+     * @enum {string}
+     */
+    HistoryMode: "ask" | "auto" | "none";
     Invitation: {
       /** Format: uuid */
       id: string;
@@ -1794,6 +1819,7 @@ export interface components {
       expiresAt: string;
       /** @enum {string} */
       deliveryState: "pending";
+      historyMode?: components["schemas"]["HistoryMode"];
     };
     LoginRequest: {
       /** Format: email */
@@ -1808,6 +1834,7 @@ export interface components {
       /** @enum {string} */
       membershipKind: "internal" | "external";
       isAdmin: boolean;
+      historyMode: components["schemas"]["HistoryMode"];
     };
     Project: {
       archived?: boolean;
@@ -1935,6 +1962,9 @@ export interface components {
     };
     SetActiveRequest: {
       active: boolean;
+    };
+    SetHistoryModeRequest: {
+      mode: components["schemas"]["HistoryMode"];
     };
     BoardColumn: {
       /** Format: uuid */
@@ -2428,6 +2458,8 @@ export interface components {
       kind?: "device" | "recovery";
       signPublicKey: components["schemas"]["Base64Url"];
       boxPublicKey: components["schemas"]["Base64Url"];
+      /** @description Proof of the invitation secret, checked by the inviting administrator's browser */
+      proof?: string;
     };
     Device: {
       /** Format: uuid */
@@ -2440,6 +2472,7 @@ export interface components {
       signPublicKey: components["schemas"]["Base64Url"];
       boxPublicKey: components["schemas"]["Base64Url"];
       certificate?: components["schemas"]["Base64Url"];
+      proof?: string;
     };
     PendingDevice: {
       device: components["schemas"]["Device"];
@@ -3108,6 +3141,49 @@ export interface operations {
       };
       /** @description The last active administrator cannot be deactivated */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setHistoryMode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetHistoryModeRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Only ask and none can be chosen by the person */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
         headers: {
           [name: string]: unknown;
         };

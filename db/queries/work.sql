@@ -645,8 +645,8 @@ ON CONFLICT (organization_id) DO NOTHING;
 SELECT * FROM organization_trust WHERE organization_id = $1;
 
 -- name: CreateDevice :one
-INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO device (organization_id, account_id, kind, name, sign_public_key, box_public_key, proof)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: GetDevice :one

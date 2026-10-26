@@ -196,6 +196,7 @@ func (h *healthHandler) GetCurrentAccount(w http.ResponseWriter, r *http.Request
 		Email:          openapi_types.Email(session.EmailNormalized),
 		MembershipKind: gen.CurrentAccountMembershipKind(session.MembershipKind),
 		IsAdmin:        session.IsAdmin,
+		HistoryMode:    gen.HistoryMode(session.HistoryMode),
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil {

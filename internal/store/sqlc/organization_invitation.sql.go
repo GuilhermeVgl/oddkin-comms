@@ -17,7 +17,7 @@ SET consumed_at = clock_timestamp()
 WHERE token_hash = $1
   AND organization_invitation.email_normalized = $2
   AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp()
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, requested_by, revoked_at, history_mode
 `
 
 type ClaimOrganizationInvitationParams struct {
@@ -39,13 +39,14 @@ func (q *Queries) ClaimOrganizationInvitation(ctx context.Context, arg ClaimOrga
 		&i.CreatedAt,
 		&i.RequestedBy,
 		&i.RevokedAt,
+		&i.HistoryMode,
 	)
 	return i, err
 }
 
 const clearInvitationDeliveryToken = `-- name: ClearInvitationDeliveryToken :exec
 UPDATE invitation_delivery
-SET token_ciphertext = '\x00', updated_at = clock_timestamp()
+SET token_ciphertext = '\x00', extra_ciphertext = NULL, updated_at = clock_timestamp()
 WHERE invitation_id = $1
 `
 
@@ -55,24 +56,25 @@ func (q *Queries) ClearInvitationDeliveryToken(ctx context.Context, invitationID
 }
 
 const createInvitationDelivery = `-- name: CreateInvitationDelivery :exec
-INSERT INTO invitation_delivery (invitation_id, token_ciphertext)
-VALUES ($1, $2)
+INSERT INTO invitation_delivery (invitation_id, token_ciphertext, extra_ciphertext)
+VALUES ($1, $2, $3)
 `
 
 type CreateInvitationDeliveryParams struct {
 	InvitationID    pgtype.UUID
 	TokenCiphertext []byte
+	ExtraCiphertext []byte
 }
 
 func (q *Queries) CreateInvitationDelivery(ctx context.Context, arg CreateInvitationDeliveryParams) error {
-	_, err := q.db.Exec(ctx, createInvitationDelivery, arg.InvitationID, arg.TokenCiphertext)
+	_, err := q.db.Exec(ctx, createInvitationDelivery, arg.InvitationID, arg.TokenCiphertext, arg.ExtraCiphertext)
 	return err
 }
 
 const createOrganizationInvitation = `-- name: CreateOrganizationInvitation :one
-INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at
+INSERT INTO organization_invitation (organization_id, email_normalized, membership_kind, token_hash, expires_at, history_mode)
+VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6::text, ''), 'ask'))
+RETURNING id, organization_id, email_normalized, membership_kind, token_hash, expires_at, consumed_at, created_at, history_mode
 `
 
 type CreateOrganizationInvitationParams struct {
@@ -81,6 +83,7 @@ type CreateOrganizationInvitationParams struct {
 	MembershipKind  string
 	TokenHash       []byte
 	ExpiresAt       pgtype.Timestamptz
+	HistoryMode     string
 }
 
 type CreateOrganizationInvitationRow struct {
@@ -92,6 +95,7 @@ type CreateOrganizationInvitationRow struct {
 	ExpiresAt       pgtype.Timestamptz
 	ConsumedAt      pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
+	HistoryMode     string
 }
 
 func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOrganizationInvitationParams) (CreateOrganizationInvitationRow, error) {
@@ -101,6 +105,7 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		arg.MembershipKind,
 		arg.TokenHash,
 		arg.ExpiresAt,
+		arg.HistoryMode,
 	)
 	var i CreateOrganizationInvitationRow
 	err := row.Scan(
@@ -112,12 +117,13 @@ func (q *Queries) CreateOrganizationInvitation(ctx context.Context, arg CreateOr
 		&i.ExpiresAt,
 		&i.ConsumedAt,
 		&i.CreatedAt,
+		&i.HistoryMode,
 	)
 	return i, err
 }
 
 const getInvitationDelivery = `-- name: GetInvitationDelivery :one
-SELECT i.id, i.email_normalized, i.membership_kind, i.expires_at, d.token_ciphertext, d.state
+SELECT i.id, i.email_normalized, i.membership_kind, i.expires_at, d.token_ciphertext, d.extra_ciphertext, d.state
 FROM organization_invitation AS i
 JOIN invitation_delivery AS d ON d.invitation_id = i.id
 WHERE i.id = $1 AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at > clock_timestamp()
@@ -129,6 +135,7 @@ type GetInvitationDeliveryRow struct {
 	MembershipKind  string
 	ExpiresAt       pgtype.Timestamptz
 	TokenCiphertext []byte
+	ExtraCiphertext []byte
 	State           string
 }
 
@@ -141,6 +148,7 @@ func (q *Queries) GetInvitationDelivery(ctx context.Context, id pgtype.UUID) (Ge
 		&i.MembershipKind,
 		&i.ExpiresAt,
 		&i.TokenCiphertext,
+		&i.ExtraCiphertext,
 		&i.State,
 	)
 	return i, err
@@ -163,7 +171,7 @@ func (q *Queries) MarkInvitationDeliveryFailed(ctx context.Context, invitationID
 const markInvitationDeliverySent = `-- name: MarkInvitationDeliverySent :execrows
 UPDATE invitation_delivery
 SET state = 'sent', provider_id = $2, sent_at = clock_timestamp(),
-    token_ciphertext = '\x00', updated_at = clock_timestamp()
+    token_ciphertext = '\x00', extra_ciphertext = NULL, updated_at = clock_timestamp()
 WHERE invitation_id = $1 AND state = 'pending'
 `
 
@@ -189,7 +197,7 @@ WITH revoked AS (
     RETURNING id
 )
 UPDATE invitation_delivery
-SET state = 'cancelled', token_ciphertext = '\x00', updated_at = clock_timestamp()
+SET state = 'cancelled', token_ciphertext = '\x00', extra_ciphertext = NULL, updated_at = clock_timestamp()
 WHERE invitation_id IN (SELECT id FROM revoked) AND state = 'pending'
 `
 

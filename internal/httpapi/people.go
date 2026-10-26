@@ -146,3 +146,27 @@ func (h *healthHandler) SetPersonActive(w http.ResponseWriter, r *http.Request, 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// SetHistoryMode lets a person choose whether they are asked to set up access
+// to encrypted history. "auto" is only ever set by an invitation.
+func (h *healthHandler) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
+	var payload gen.SetHistoryModeRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	if payload.Mode != gen.Ask && payload.Mode != gen.None {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := sqlc.New(h.auth.pool).SetHistoryMode(ctx, sqlc.SetHistoryModeParams{AccountID: session.AccountID, HistoryMode: string(payload.Mode)}); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
