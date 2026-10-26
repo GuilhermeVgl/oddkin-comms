@@ -1,1 +1,52 @@
 /* Classes for drawer, replacing inline styles. */
+
+.card.pad.dr-conflict-card {
+  padding: 10px;
+}
+
+/* Subtasks */
+.dr-sub-head {
+  margin-bottom: 8px;
+}
+.dr-sub {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.dr-sub-done {
+  text-decoration: line-through;
+  color: var(--ink-2);
+}
+.dr-sub-add {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.dr-sub-add .inp {
+  height: 36px;
+}
+
+/* Comments */
+.dr-cmts-title {
+  margin-bottom: 10px;
+}
+.row.dr-cmt {
+  align-items: flex-start;
+  gap: 12px;
+}
+.dr-cmt-body {
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.dr-cmt-form {
+  margin-top: 14px;
+}
+.dr-cmt-denied {
+  margin-top: 12px;
+}
+
+/* History */
+.dr-history-sum {
+  cursor: pointer;
+}
+.dr-history-feed {
+  margin-top: 8px;
+}

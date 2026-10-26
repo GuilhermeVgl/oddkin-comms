@@ -1,1 +1,43 @@
 /* Classes for thread, replacing inline styles. */
+
+/* Header */
+.field.th-search {
+  width: 180px;
+}
+.th-search .inp {
+  height: 36px;
+}
+.th-files {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Messages */
+.mstate.danger {
+  color: var(--danger);
+}
+.btn.sm.mretry {
+  height: 24px;
+  padding: 0 6px;
+}
+
+/* Composer */
+.replybar-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iconbtn.replybar-x {
+  width: 28px;
+  height: 28px;
+}
+.iconbtn.cb-tool {
+  width: 34px;
+  height: 34px;
+}
+.cb-hint {
+  padding-left: 6px;
+}
+.menu .emoji-grid button {
+  padding: 0;
+}
