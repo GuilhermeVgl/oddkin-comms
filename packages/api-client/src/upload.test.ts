@@ -56,7 +56,6 @@ describe("uploadFile", () => {
     const client = createApiClient("http://localhost", apiFetcher(log));
     const result = await uploadFile(
       client,
-      "csrf",
       { contextType: "work_item", contextId: "w1" },
       file,
       (fraction) => progress.push(fraction),
@@ -89,7 +88,6 @@ describe("uploadFile", () => {
     await expect(
       uploadFile(
         client,
-        "csrf",
         { contextType: "conversation", contextId: "c1" },
         file,
         () => undefined,

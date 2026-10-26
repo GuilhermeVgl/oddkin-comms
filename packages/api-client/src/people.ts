@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type OrganizationPerson = Schemas["OrganizationPerson"];
 
@@ -17,7 +11,6 @@ export async function listOrganizationPeople(
 
 export async function setPersonActive(
   client: Client,
-  token: string,
   accountId: string,
   active: boolean,
 ): Promise<void> {
@@ -26,7 +19,6 @@ export async function setPersonActive(
     {
       params: { path: { accountId } },
       body: { active },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204)

@@ -11,7 +11,6 @@ export async function createInvitation(
   client: ReturnType<typeof createApiClient>,
   email: string,
   membershipKind: MembershipKind,
-  csrfToken: string,
   history?: { historyMode: HistoryMode; linkExtra?: string },
   projectId?: string,
 ): Promise<Invitation> {
@@ -25,7 +24,6 @@ export async function createInvitation(
         : { linkExtra: history.linkExtra }),
       ...(projectId === undefined ? {} : { projectId }),
     },
-    headers: { "X-CSRF-Token": csrfToken },
   });
   if (response.status === 201 && data !== undefined) {
     return data;

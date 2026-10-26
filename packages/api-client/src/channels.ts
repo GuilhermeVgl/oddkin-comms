@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type Conversation = Schemas["Conversation"];
 
@@ -22,7 +16,6 @@ export async function listConversations(
 /** Renames a channel whose name is still in the clear. */
 export async function renameChannel(
   client: Client,
-  token: string,
   conversationId: string,
   name: string,
 ): Promise<void> {
@@ -31,7 +24,6 @@ export async function renameChannel(
     {
       params: { path: { conversationId } },
       body: { name },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204)
@@ -40,26 +32,24 @@ export async function renameChannel(
 
 export async function createChannel(
   client: Client,
-  token: string,
   projectId: string,
   body: Schemas["CreateChannelRequest"],
 ): Promise<Conversation> {
   const { data, response } = await client.POST(
     "/api/v1/projects/{projectId}/conversations",
-    { params: { path: { projectId } }, body, headers: csrf(token) },
+    { params: { path: { projectId } }, body },
   );
   return ensure("createChannel", response, data, 201);
 }
 
 export async function reorderChannels(
   client: Client,
-  token: string,
   projectId: string,
   ids: string[],
 ): Promise<void> {
   const { response } = await client.PUT(
     "/api/v1/projects/{projectId}/conversations/order",
-    { params: { path: { projectId } }, body: { ids }, headers: csrf(token) },
+    { params: { path: { projectId } }, body: { ids } },
   );
   if (response.status !== 204)
     throw new ApiStatusError(response.status, "reorderChannels");
@@ -67,7 +57,6 @@ export async function reorderChannels(
 
 export async function setChannelArchived(
   client: Client,
-  token: string,
   conversationId: string,
   archived: boolean,
 ): Promise<void> {
@@ -76,7 +65,6 @@ export async function setChannelArchived(
     {
       params: { path: { conversationId } },
       body: { archived },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204)

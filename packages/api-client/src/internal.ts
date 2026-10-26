@@ -13,10 +13,6 @@ export class ApiStatusError extends Error {
   }
 }
 
-export function csrf(token: string) {
-  return { "X-CSRF-Token": token };
-}
-
 export function ensure<T>(
   operation: string,
   response: Response,

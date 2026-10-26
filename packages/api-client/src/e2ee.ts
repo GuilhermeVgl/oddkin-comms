@@ -27,10 +27,6 @@ export function encryptionErrorFrom(status: number, body: unknown): Error {
   return new EncryptionError(status, code);
 }
 
-function csrf(token: string) {
-  return { "X-CSRF-Token": token };
-}
-
 function expect<T>(
   operation: string,
   response: Response,
@@ -51,24 +47,20 @@ export async function getTrustRoot(client: Client): Promise<TrustRoot | null> {
 
 export async function setTrustRoot(
   client: Client,
-  token: string,
   signPublicKey: string,
 ): Promise<TrustRoot> {
   const { data, response } = await client.PUT("/api/v1/e2ee/trust-root", {
     body: { signPublicKey },
-    headers: csrf(token),
   });
   return expect("setTrustRoot", response, data, 200);
 }
 
 export async function registerDevice(
   client: Client,
-  token: string,
   body: Schemas["RegisterDeviceRequest"],
 ): Promise<Device> {
   const { data, response } = await client.POST("/api/v1/devices", {
     body,
-    headers: csrf(token),
   });
   return expect("registerDevice", response, data, 201);
 }
@@ -87,7 +79,6 @@ export async function listPendingDevices(
 
 export async function authorizeDevice(
   client: Client,
-  token: string,
   deviceId: string,
   certificate: string,
   authorizerDeviceId?: string,
@@ -100,7 +91,6 @@ export async function authorizeDevice(
         certificate,
         ...(authorizerDeviceId === undefined ? {} : { authorizerDeviceId }),
       },
-      headers: csrf(token),
     },
   );
   return expect("authorizeDevice", response, data, 200);
@@ -108,12 +98,10 @@ export async function authorizeDevice(
 
 export async function revokeDevice(
   client: Client,
-  token: string,
   deviceId: string,
 ): Promise<void> {
   const { response } = await client.POST("/api/v1/devices/{deviceId}/revoke", {
     params: { path: { deviceId } },
-    headers: csrf(token),
   });
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, "revokeDevice");
@@ -144,13 +132,12 @@ export async function listKeyDomains(
 
 export async function createKeyDomain(
   client: Client,
-  token: string,
   projectId: string,
   kind: "work" | "chat" | "files",
 ): Promise<KeyDomain> {
   const { data, response } = await client.POST(
     "/api/v1/projects/{projectId}/key-domains",
-    { params: { path: { projectId } }, body: { kind }, headers: csrf(token) },
+    { params: { path: { projectId } }, body: { kind } },
   );
   return expect("createKeyDomain", response, data, 201);
 }
@@ -219,7 +206,6 @@ export async function listCallKeyEnvelopes(
 
 export async function publishCallKey(
   client: Client,
-  token: string,
   callId: string,
   generation: number,
   signerDeviceId: string,
@@ -230,7 +216,6 @@ export async function publishCallKey(
     {
       params: { path: { callId } },
       body: { generation, signerDeviceId, envelopes },
-      headers: csrf(token),
     },
   );
   return expect("publishCallKey", response, data, 200);
@@ -238,7 +223,6 @@ export async function publishCallKey(
 
 export async function publishKeyGeneration(
   client: Client,
-  token: string,
   keyDomainId: string,
   generation: number,
   signerDeviceId: string,
@@ -249,7 +233,6 @@ export async function publishKeyGeneration(
     {
       params: { path: { keyDomainId } },
       body: { generation, signerDeviceId, envelopes },
-      headers: csrf(token),
     },
   );
   return expect("publishKeyGeneration", response, data, 200);
@@ -257,7 +240,6 @@ export async function publishKeyGeneration(
 
 export async function grantKeyEnvelopes(
   client: Client,
-  token: string,
   keyDomainId: string,
   generation: number,
   signerDeviceId: string,
@@ -268,7 +250,6 @@ export async function grantKeyEnvelopes(
     {
       params: { path: { keyDomainId } },
       body: { generation, signerDeviceId, envelopes },
-      headers: csrf(token),
     },
   );
   return expect("grantKeyEnvelopes", response, data, 200);
@@ -290,7 +271,6 @@ function written<T>(operation: string, result: Written<T>, ok: number): T {
 
 export async function createWorkItemRaw(
   client: Client,
-  token: string,
   projectId: string,
   body: Schemas["CreateWorkItemRequest"],
 ): Promise<Schemas["WorkItem"]> {
@@ -299,7 +279,6 @@ export async function createWorkItemRaw(
     await client.POST("/api/v1/projects/{projectId}/work-items", {
       params: { path: { projectId } },
       body,
-      headers: csrf(token),
     }),
     201,
   );
@@ -307,7 +286,6 @@ export async function createWorkItemRaw(
 
 export async function updateWorkItemRaw(
   client: Client,
-  token: string,
   workItemId: string,
   body: Schemas["UpdateWorkItemRequest"],
 ): Promise<Schemas["WorkItem"]> {
@@ -316,7 +294,6 @@ export async function updateWorkItemRaw(
     await client.PATCH("/api/v1/work-items/{workItemId}", {
       params: { path: { workItemId } },
       body,
-      headers: csrf(token),
     }),
     200,
   );
@@ -324,7 +301,6 @@ export async function updateWorkItemRaw(
 
 export async function createEpicRaw(
   client: Client,
-  token: string,
   projectId: string,
   body: Schemas["CreateEpicRequest"],
 ): Promise<Schemas["Epic"]> {
@@ -333,7 +309,6 @@ export async function createEpicRaw(
     await client.POST("/api/v1/projects/{projectId}/epics", {
       params: { path: { projectId } },
       body,
-      headers: csrf(token),
     }),
     201,
   );
@@ -341,7 +316,6 @@ export async function createEpicRaw(
 
 export async function updateEpicRaw(
   client: Client,
-  token: string,
   epicId: string,
   body: Schemas["UpdateEpicRequest"],
 ): Promise<Schemas["Epic"]> {
@@ -350,7 +324,6 @@ export async function updateEpicRaw(
     await client.PATCH("/api/v1/epics/{epicId}", {
       params: { path: { epicId } },
       body,
-      headers: csrf(token),
     }),
     200,
   );
@@ -358,7 +331,6 @@ export async function updateEpicRaw(
 
 export async function createCommentRaw(
   client: Client,
-  token: string,
   workItemId: string,
   body: Schemas["CreateCommentRequest"],
 ): Promise<Schemas["WorkItemComment"]> {
@@ -367,7 +339,6 @@ export async function createCommentRaw(
     await client.POST("/api/v1/work-items/{workItemId}/comments", {
       params: { path: { workItemId } },
       body,
-      headers: csrf(token),
     }),
     201,
   );
@@ -375,7 +346,6 @@ export async function createCommentRaw(
 
 export async function encryptComment(
   client: Client,
-  token: string,
   commentId: string,
   bodyEnc: string,
   signerDeviceId: string,
@@ -385,7 +355,6 @@ export async function encryptComment(
     {
       params: { path: { commentId } },
       body: { bodyEnc, signerDeviceId },
-      headers: csrf(token),
     },
   );
   if (response.status === 204) return;
@@ -397,13 +366,12 @@ export async function encryptComment(
 
 export async function sendMessageRaw(
   client: Client,
-  token: string,
   conversationId: string,
   body: Schemas["SendMessageRequest"],
 ): Promise<Schemas["Message"]> {
   const result = await client.POST(
     "/api/v1/conversations/{conversationId}/messages",
-    { params: { path: { conversationId } }, body, headers: csrf(token) },
+    { params: { path: { conversationId } }, body },
   );
   if (result.response.status === 200 || result.response.status === 201) {
     if (result.data !== undefined) return result.data;
@@ -416,7 +384,6 @@ export async function sendMessageRaw(
 
 export async function editMessageRaw(
   client: Client,
-  token: string,
   messageId: string,
   body: Schemas["EditMessageRequest"],
 ): Promise<Schemas["Message"]> {
@@ -425,7 +392,6 @@ export async function editMessageRaw(
     await client.PATCH("/api/v1/messages/{messageId}", {
       params: { path: { messageId } },
       body,
-      headers: csrf(token),
     }),
     200,
   );
@@ -450,12 +416,11 @@ export async function getConversationKeyDomain(
 
 export async function createConversationKeyDomain(
   client: Client,
-  token: string,
   conversationId: string,
 ): Promise<KeyDomain> {
   const { data, response } = await client.POST(
     "/api/v1/conversations/{conversationId}/key-domain",
-    { params: { path: { conversationId } }, headers: csrf(token) },
+    { params: { path: { conversationId } } },
   );
   return expect("createConversationKeyDomain", response, data, 201);
 }
@@ -470,11 +435,11 @@ export async function getSprintKeyDomain(
 
 export async function createSprintKeyDomain(
   client: Client,
-  token: string,
 ): Promise<KeyDomain> {
-  const { data, response } = await client.POST("/api/v1/e2ee/sprint-domain", {
-    headers: csrf(token),
-  });
+  const { data, response } = await client.POST(
+    "/api/v1/e2ee/sprint-domain",
+    {},
+  );
   return expect("createSprintKeyDomain", response, data, 201);
 }
 
@@ -491,7 +456,6 @@ async function noContent(
 
 export async function updateProjectContent(
   client: Client,
-  token: string,
   projectId: string,
   body: Schemas["UpdateProjectRequest"],
 ): Promise<void> {
@@ -500,14 +464,12 @@ export async function updateProjectContent(
     await client.PATCH("/api/v1/projects/{projectId}", {
       params: { path: { projectId } },
       body,
-      headers: csrf(token),
     }),
   );
 }
 
 export async function updateConversationContent(
   client: Client,
-  token: string,
   conversationId: string,
   body: Schemas["UpdateConversationRequest"],
 ): Promise<void> {
@@ -516,14 +478,12 @@ export async function updateConversationContent(
     await client.PATCH("/api/v1/conversations/{conversationId}", {
       params: { path: { conversationId } },
       body,
-      headers: csrf(token),
     }),
   );
 }
 
 export async function updateSprintContent(
   client: Client,
-  token: string,
   sprintId: string,
   body: Schemas["UpdateSprintRequest"],
 ): Promise<void> {
@@ -532,19 +492,17 @@ export async function updateSprintContent(
     await client.PATCH("/api/v1/sprints/{sprintId}", {
       params: { path: { sprintId } },
       body,
-      headers: csrf(token),
     }),
   );
 }
 
 export async function createSprintRaw(
   client: Client,
-  token: string,
   body: Schemas["CreateSprintRequest"],
 ): Promise<Schemas["Sprint"]> {
   return written(
     "createSprint",
-    await client.POST("/api/v1/sprints", { body, headers: csrf(token) }),
+    await client.POST("/api/v1/sprints", { body }),
     201,
   );
 }
@@ -567,7 +525,6 @@ export async function listRecoveryEnvelopes(
 
 export async function grantRecoveryEnvelopes(
   client: Client,
-  token: string,
   keyDomainId: string,
   generation: number,
   signerDeviceId: string,
@@ -578,7 +535,6 @@ export async function grantRecoveryEnvelopes(
     {
       params: { path: { keyDomainId } },
       body: { generation, signerDeviceId, envelopes },
-      headers: csrf(token),
     },
   );
   return expect("grantRecoveryEnvelopes", response, data, 200);

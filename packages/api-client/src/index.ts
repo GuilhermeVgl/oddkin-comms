@@ -17,14 +17,12 @@ export async function getOrganizationBranding(
 
 export async function updateOrganizationBranding(
   client: ReturnType<typeof createApiClient>,
-  csrfToken: string,
   body: UpdateOrganizationBrandingRequest,
 ): Promise<OrganizationBranding> {
   const { data, response } = await client.PATCH(
     "/api/v1/organization/branding",
     {
       body,
-      headers: { "X-CSRF-Token": csrfToken },
     },
   );
   if (response.status === 200 && data !== undefined) return data;
@@ -33,11 +31,44 @@ export async function updateOrganizationBranding(
 export type LoginResult =
   "authenticated" | "invalid-credentials" | "rate-limited" | "unavailable";
 
+const CSRF_COOKIE = "crewstead_csrf";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export function readCsrfFromCookies(cookies: string): string | null {
+  return readCookie(cookies, CSRF_COOKIE);
+}
+
+function cookieCsrf(): string | null {
+  return typeof document === "undefined"
+    ? null
+    : readCsrfFromCookies(document.cookie);
+}
+
+/**
+ * The API client. Every state-changing request carries the CSRF token read from
+ * the session cookie at the moment it is sent, so callers never pass it around;
+ * a token the caller sets explicitly wins, and with no cookie (sign-in) no
+ * header is sent.
+ */
 export function createApiClient(
   baseUrl: string,
   fetcher: typeof fetch = fetch,
+  csrfSource: () => string | null = cookieCsrf,
 ) {
-  return createClient<paths>({ baseUrl, fetch: fetcher });
+  const client = createClient<paths>({ baseUrl, fetch: fetcher });
+  client.use({
+    onRequest({ request }) {
+      if (
+        SAFE_METHODS.has(request.method) ||
+        request.headers.has("X-CSRF-Token")
+      )
+        return undefined;
+      const token = csrfSource();
+      if (token !== null) request.headers.set("X-CSRF-Token", token);
+      return request;
+    },
+  });
+  return client;
 }
 
 export async function fetchReadiness(
@@ -90,13 +121,10 @@ export async function fetchCurrentAccount(
 
 export async function logout(
   client: ReturnType<typeof createApiClient>,
-  csrfToken: string,
   allSessions = false,
 ): Promise<void> {
   const path = allSessions ? "/api/v1/auth/logout-all" : "/api/v1/auth/logout";
-  const { response } = await client.POST(path, {
-    headers: { "X-CSRF-Token": csrfToken },
-  });
+  const { response } = await client.POST(path, {});
   if (response.status !== 204) {
     throw new Error(`Unexpected logout status: ${response.status}`);
   }
@@ -175,12 +203,10 @@ export { ApiStatusError } from "./internal";
 
 export async function setHistoryMode(
   client: ReturnType<typeof createApiClient>,
-  csrfToken: string,
   mode: "ask" | "none",
 ): Promise<void> {
   const { response } = await client.PUT("/api/v1/account/history-mode", {
     body: { mode },
-    headers: { "X-CSRF-Token": csrfToken },
   });
   if (response.status !== 204)
     throw new Error(`Unexpected history mode status: ${response.status}`);

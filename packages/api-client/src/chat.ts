@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type Message = Schemas["Message"];
 
@@ -22,7 +16,6 @@ export async function listMessages(
 
 export async function sendMessage(
   client: Client,
-  token: string,
   conversationId: string,
   body: string,
   clientMutationId: string,
@@ -42,7 +35,6 @@ export async function sendMessage(
           ? {}
           : { mentionIds: options.mentionIds }),
       },
-      headers: csrf(token),
     },
   );
   if (response.status !== 200 && response.status !== 201) {
@@ -57,7 +49,6 @@ export type ReactionSummary = Schemas["ReactionSummary"];
 
 export async function editMessage(
   client: Client,
-  token: string,
   messageId: string,
   body: string,
 ): Promise<Message> {
@@ -66,7 +57,6 @@ export async function editMessage(
     {
       params: { path: { messageId } },
       body: { body },
-      headers: csrf(token),
     },
   );
   return ensure("editMessage", response, data, 200);
@@ -74,12 +64,10 @@ export async function editMessage(
 
 export async function deleteMessage(
   client: Client,
-  token: string,
   messageId: string,
 ): Promise<void> {
   const { response } = await client.DELETE("/api/v1/messages/{messageId}", {
     params: { path: { messageId } },
-    headers: csrf(token),
   });
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, "deleteMessage");
@@ -88,7 +76,6 @@ export async function deleteMessage(
 
 export async function toggleReaction(
   client: Client,
-  token: string,
   messageId: string,
   emoji: string,
 ): Promise<ReactionSummary[]> {
@@ -97,7 +84,6 @@ export async function toggleReaction(
     {
       params: { path: { messageId } },
       body: { emoji },
-      headers: csrf(token),
     },
   );
   return ensure("toggleReaction", response, data, 200);
@@ -119,12 +105,10 @@ export async function listDirectConversations(
 
 export async function openDirectConversation(
   client: Client,
-  token: string,
   accountId: string,
 ): Promise<DirectConversation> {
   const { data, response } = await client.POST("/api/v1/direct-conversations", {
     body: { accountId },
-    headers: csrf(token),
   });
   if (response.status !== 200 && response.status !== 201) {
     throw new ApiStatusError(response.status, "openDirectConversation");
@@ -134,7 +118,6 @@ export async function openDirectConversation(
 
 export async function setReadCursor(
   client: Client,
-  token: string,
   conversationId: string,
   seq: number,
 ): Promise<void> {
@@ -143,7 +126,6 @@ export async function setReadCursor(
     {
       params: { path: { conversationId } },
       body: { seq },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204) {

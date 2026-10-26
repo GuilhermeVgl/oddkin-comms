@@ -96,14 +96,16 @@ describe("account session", () => {
     "logs out through the selected scope",
     async (allSessions, expectedPath) => {
       let request: Request | undefined;
-      const client = createApiClient("http://localhost:8080", async (input) => {
-        request = input instanceof Request ? input : new Request(input);
-        return new Response(null, { status: 204 });
-      });
+      const client = createApiClient(
+        "http://localhost:8080",
+        async (input) => {
+          request = input instanceof Request ? input : new Request(input);
+          return new Response(null, { status: 204 });
+        },
+        () => "csrf-token",
+      );
 
-      await expect(
-        logout(client, "csrf-token", allSessions),
-      ).resolves.toBeUndefined();
+      await expect(logout(client, allSessions)).resolves.toBeUndefined();
       expect(request?.url).toBe(`http://localhost:8080${expectedPath}`);
       expect(request?.headers.get("X-CSRF-Token")).toBe("csrf-token");
     },
@@ -114,7 +116,7 @@ describe("account session", () => {
       "http://localhost:8080",
       async () => new Response(null, { status: 403 }),
     );
-    await expect(logout(client, "bad-token")).rejects.toThrow(
+    await expect(logout(client)).rejects.toThrow(
       "Unexpected logout status: 403",
     );
   });
@@ -143,12 +145,16 @@ describe("account session", () => {
       deliveryState: "pending" as const,
     };
     let request: Request | undefined;
-    const client = createApiClient("http://localhost:8080", async (input) => {
-      request = input instanceof Request ? input : new Request(input);
-      return Response.json(invitation, { status: 201 });
-    });
+    const client = createApiClient(
+      "http://localhost:8080",
+      async (input) => {
+        request = input instanceof Request ? input : new Request(input);
+        return Response.json(invitation, { status: 201 });
+      },
+      () => "csrf-token",
+    );
     await expect(
-      createInvitation(client, invitation.email, "external", "csrf-token"),
+      createInvitation(client, invitation.email, "external"),
     ).resolves.toEqual(invitation);
     expect(request?.headers.get("X-CSRF-Token")).toBe("csrf-token");
   });
@@ -159,7 +165,7 @@ describe("account session", () => {
       async () => new Response(null, { status: 403 }),
     );
     await expect(
-      createInvitation(client, "person@example.test", "internal", "csrf"),
+      createInvitation(client, "person@example.test", "internal"),
     ).rejects.toThrow("Unexpected invitation status: 403");
   });
 

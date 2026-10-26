@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 import type { WorkItem } from "./workItems";
 
 export type Sprint = Schemas["Sprint"];
@@ -20,24 +14,21 @@ export async function listSprints(client: Client): Promise<Sprint[]> {
 
 export async function createSprint(
   client: Client,
-  token: string,
   body: Schemas["CreateSprintRequest"],
 ): Promise<Sprint> {
   const { data, response } = await client.POST("/api/v1/sprints", {
     body,
-    headers: csrf(token),
   });
   return ensure("createSprint", response, data, 201);
 }
 
 export async function startSprint(
   client: Client,
-  token: string,
   sprintId: string,
 ): Promise<Sprint> {
   const { data, response } = await client.POST(
     "/api/v1/sprints/{sprintId}/start",
-    { params: { path: { sprintId } }, headers: csrf(token) },
+    { params: { path: { sprintId } } },
   );
   return ensure("startSprint", response, data, 200);
 }
@@ -66,7 +57,6 @@ export async function getSprintClosePreview(
 
 export async function closeSprint(
   client: Client,
-  token: string,
   sprintId: string,
   decisions: SprintDecision[],
   destinationSprintId?: string,
@@ -77,7 +67,6 @@ export async function closeSprint(
       decisions,
       ...(destinationSprintId === undefined ? {} : { destinationSprintId }),
     },
-    headers: csrf(token),
   });
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, "closeSprint");

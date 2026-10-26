@@ -81,7 +81,7 @@ function recorder(status: number, payload: unknown) {
           headers: { "Content-Type": "application/json" },
         });
   };
-  return { client: createApiClient("http://api.test", fetcher), seen };
+  return { client: createApiClient("http://api.test", fetcher, () => T), seen };
 }
 
 type Case = {
@@ -119,7 +119,7 @@ const cases: Case[] = [
   },
   {
     name: "setKudos (thank)",
-    call: (c) => setKudos(c, T, "w1", true),
+    call: (c) => setKudos(c, "w1", true),
     status: 204,
     method: "PUT",
     path: "/api/v1/work-items/w1/kudos",
@@ -127,7 +127,7 @@ const cases: Case[] = [
   },
   {
     name: "setKudos (take back)",
-    call: (c) => setKudos(c, T, "w1", false),
+    call: (c) => setKudos(c, "w1", false),
     status: 204,
     method: "DELETE",
     path: "/api/v1/work-items/w1/kudos",
@@ -135,7 +135,7 @@ const cases: Case[] = [
   },
   {
     name: "recordFocusSession",
-    call: (c) => recordFocusSession(c, T, "w1", 25),
+    call: (c) => recordFocusSession(c, "w1", 25),
     status: 204,
     method: "POST",
     path: "/api/v1/work-items/w1/focus",
@@ -153,7 +153,7 @@ const cases: Case[] = [
   },
   {
     name: "createProject",
-    call: (c) => createProject(c, T, "Alfa", "desc"),
+    call: (c) => createProject(c, "Alfa", "desc"),
     status: 201,
     payload: { id: P },
     method: "POST",
@@ -163,7 +163,7 @@ const cases: Case[] = [
   },
   {
     name: "createProject without description",
-    call: (c) => createProject(c, T, "Alfa"),
+    call: (c) => createProject(c, "Alfa"),
     status: 201,
     payload: { id: P },
     method: "POST",
@@ -173,7 +173,7 @@ const cases: Case[] = [
   },
   {
     name: "setProjectAppearance",
-    call: (c) => setProjectAppearance(c, T, P, "#112233"),
+    call: (c) => setProjectAppearance(c, P, "#112233"),
     status: 204,
     method: "PUT",
     path: "/api/v1/projects/p1/appearance",
@@ -191,7 +191,7 @@ const cases: Case[] = [
   },
   {
     name: "setProjectArchived",
-    call: (c) => setProjectArchived(c, T, P, true),
+    call: (c) => setProjectArchived(c, P, true),
     status: 204,
     method: "PUT",
     path: "/api/v1/projects/p1/archive",
@@ -210,7 +210,7 @@ const cases: Case[] = [
   {
     name: "createBoardColumn",
     call: (c) =>
-      createBoardColumn(c, T, P, { name: "Revisão", category: "in_progress" }),
+      createBoardColumn(c, P, { name: "Revisão", category: "in_progress" }),
     status: 201,
     payload: { id: "c1" },
     method: "POST",
@@ -220,7 +220,7 @@ const cases: Case[] = [
   },
   {
     name: "updateBoardColumn",
-    call: (c) => updateBoardColumn(c, T, P, "c1", { name: "Nova" }),
+    call: (c) => updateBoardColumn(c, P, "c1", { name: "Nova" }),
     status: 200,
     payload: { id: "c1" },
     method: "PATCH",
@@ -230,7 +230,7 @@ const cases: Case[] = [
   },
   {
     name: "deleteBoardColumn",
-    call: (c) => deleteBoardColumn(c, T, P, "c1"),
+    call: (c) => deleteBoardColumn(c, P, "c1"),
     status: 204,
     method: "DELETE",
     path: "/api/v1/projects/p1/columns/c1",
@@ -238,7 +238,7 @@ const cases: Case[] = [
   },
   {
     name: "deleteBoardColumn moving cards",
-    call: (c) => deleteBoardColumn(c, T, P, "c1", "c2"),
+    call: (c) => deleteBoardColumn(c, P, "c1", "c2"),
     status: 204,
     method: "DELETE",
     path: "/api/v1/projects/p1/columns/c1?moveTo=c2",
@@ -246,7 +246,7 @@ const cases: Case[] = [
   },
   {
     name: "reorderBoardColumns",
-    call: (c) => reorderBoardColumns(c, T, P, ["c2", "c1"]),
+    call: (c) => reorderBoardColumns(c, P, ["c2", "c1"]),
     status: 200,
     payload: [],
     method: "PUT",
@@ -265,7 +265,7 @@ const cases: Case[] = [
   },
   {
     name: "createEpic",
-    call: (c) => createEpic(c, T, P, "Login"),
+    call: (c) => createEpic(c, P, "Login"),
     status: 201,
     payload: { id: "e1" },
     method: "POST",
@@ -275,7 +275,7 @@ const cases: Case[] = [
   },
   {
     name: "updateEpic",
-    call: (c) => updateEpic(c, T, "e1", { version: 1, title: "Entrar" }),
+    call: (c) => updateEpic(c, "e1", { version: 1, title: "Entrar" }),
     status: 200,
     payload: { id: "e1" },
     method: "PATCH",
@@ -294,7 +294,7 @@ const cases: Case[] = [
   },
   {
     name: "startSprint",
-    call: (c) => startSprint(c, T, "s1"),
+    call: (c) => startSprint(c, "s1"),
     status: 200,
     payload: { id: "s1" },
     method: "POST",
@@ -321,7 +321,7 @@ const cases: Case[] = [
   },
   {
     name: "closeSprint to the next sprint",
-    call: (c) => closeSprint(c, T, "s1", [], "s2"),
+    call: (c) => closeSprint(c, "s1", [], "s2"),
     status: 204,
     method: "POST",
     path: "/api/v1/sprints/s1/close",
@@ -330,7 +330,7 @@ const cases: Case[] = [
   },
   {
     name: "closeSprint without a destination",
-    call: (c) => closeSprint(c, T, "s1", []),
+    call: (c) => closeSprint(c, "s1", []),
     status: 204,
     method: "POST",
     path: "/api/v1/sprints/s1/close",
@@ -349,9 +349,9 @@ const cases: Case[] = [
   {
     name: "createWorkItem",
     call: (c) =>
-      createWorkItem(c, T, P, { kind: "task", title: "X" } as Parameters<
+      createWorkItem(c, P, { kind: "task", title: "X" } as Parameters<
         typeof createWorkItem
-      >[3]),
+      >[2]),
     status: 201,
     payload: { id: "w1" },
     method: "POST",
@@ -361,9 +361,9 @@ const cases: Case[] = [
   {
     name: "updateWorkItem",
     call: (c) =>
-      updateWorkItem(c, T, "w1", { version: 1, title: "Y" } as Parameters<
+      updateWorkItem(c, "w1", { version: 1, title: "Y" } as Parameters<
         typeof updateWorkItem
-      >[3]),
+      >[2]),
     status: 200,
     payload: { id: "w1" },
     method: "PATCH",
@@ -381,7 +381,7 @@ const cases: Case[] = [
   },
   {
     name: "createComment",
-    call: (c) => createComment(c, T, "w1", "oi"),
+    call: (c) => createComment(c, "w1", "oi"),
     status: 201,
     payload: { id: "k1" },
     method: "POST",
@@ -400,7 +400,7 @@ const cases: Case[] = [
   },
   {
     name: "setFollowing (follow)",
-    call: (c) => setFollowing(c, T, "w1", true),
+    call: (c) => setFollowing(c, "w1", true),
     status: 204,
     method: "PUT",
     path: "/api/v1/work-items/w1/followers/me",
@@ -408,7 +408,7 @@ const cases: Case[] = [
   },
   {
     name: "setFollowing (unfollow)",
-    call: (c) => setFollowing(c, T, "w1", false),
+    call: (c) => setFollowing(c, "w1", false),
     status: 204,
     method: "DELETE",
     path: "/api/v1/work-items/w1/followers/me",
@@ -425,7 +425,7 @@ const cases: Case[] = [
   },
   {
     name: "addMember",
-    call: (c) => addMember(c, T, P, "a@x.test"),
+    call: (c) => addMember(c, P, "a@x.test"),
     status: 204,
     method: "POST",
     path: "/api/v1/projects/p1/members",
@@ -434,7 +434,7 @@ const cases: Case[] = [
   },
   {
     name: "removeProjectMember",
-    call: (c) => removeProjectMember(c, T, P, "a1"),
+    call: (c) => removeProjectMember(c, P, "a1"),
     status: 204,
     method: "DELETE",
     path: "/api/v1/projects/p1/members/a1",
@@ -442,7 +442,7 @@ const cases: Case[] = [
   },
   {
     name: "setInvitePolicy",
-    call: (c) => setInvitePolicy(c, T, P, "managers"),
+    call: (c) => setInvitePolicy(c, P, "managers"),
     status: 204,
     method: "PUT",
     path: "/api/v1/projects/p1/invite-policy",
@@ -451,7 +451,7 @@ const cases: Case[] = [
   },
   {
     name: "setMemberRole",
-    call: (c) => setMemberRole(c, T, P, "a1", true),
+    call: (c) => setMemberRole(c, P, "a1", true),
     status: 204,
     method: "PUT",
     path: "/api/v1/projects/p1/members/a1",
@@ -469,7 +469,7 @@ const cases: Case[] = [
   },
   {
     name: "renameChannel",
-    call: (c) => renameChannel(c, T, "k1", "novo"),
+    call: (c) => renameChannel(c, "k1", "novo"),
     status: 204,
     method: "PATCH",
     path: "/api/v1/conversations/k1",
@@ -479,9 +479,9 @@ const cases: Case[] = [
   {
     name: "createChannel",
     call: (c) =>
-      createChannel(c, T, P, { name: "geral" } as Parameters<
+      createChannel(c, P, { name: "geral" } as Parameters<
         typeof createChannel
-      >[3]),
+      >[2]),
     status: 201,
     payload: { id: "k1" },
     method: "POST",
@@ -490,7 +490,7 @@ const cases: Case[] = [
   },
   {
     name: "reorderChannels",
-    call: (c) => reorderChannels(c, T, P, ["k2", "k1"]),
+    call: (c) => reorderChannels(c, P, ["k2", "k1"]),
     status: 204,
     method: "PUT",
     path: "/api/v1/projects/p1/conversations/order",
@@ -499,7 +499,7 @@ const cases: Case[] = [
   },
   {
     name: "setChannelArchived",
-    call: (c) => setChannelArchived(c, T, "k1", true),
+    call: (c) => setChannelArchived(c, "k1", true),
     status: 204,
     method: "PUT",
     path: "/api/v1/conversations/k1/archive",
@@ -517,7 +517,7 @@ const cases: Case[] = [
   },
   {
     name: "markNotificationRead",
-    call: (c) => markNotificationRead(c, T, "n1"),
+    call: (c) => markNotificationRead(c, "n1"),
     status: 204,
     method: "POST",
     path: "/api/v1/notifications/n1/read",
@@ -525,7 +525,7 @@ const cases: Case[] = [
   },
   {
     name: "markAllNotificationsRead",
-    call: (c) => markAllNotificationsRead(c, T),
+    call: (c) => markAllNotificationsRead(c),
     status: 204,
     method: "POST",
     path: "/api/v1/notifications/read-all",
@@ -542,7 +542,7 @@ const cases: Case[] = [
   },
   {
     name: "setPersonActive",
-    call: (c) => setPersonActive(c, T, "a1", false),
+    call: (c) => setPersonActive(c, "a1", false),
     status: 204,
     method: "PUT",
     path: "/api/v1/organization/people/a1/active",
@@ -560,7 +560,7 @@ const cases: Case[] = [
   },
   {
     name: "revokeSession",
-    call: (c) => revokeSession(c, T, "s9"),
+    call: (c) => revokeSession(c, "s9"),
     status: 204,
     method: "DELETE",
     path: "/api/v1/sessions/s9",
@@ -577,7 +577,7 @@ const cases: Case[] = [
   },
   {
     name: "deleteAvatar",
-    call: (c) => deleteAvatar(c, T),
+    call: (c) => deleteAvatar(c),
     status: 204,
     method: "DELETE",
     path: "/api/v1/account/avatar",
@@ -608,7 +608,7 @@ describe("API client wrappers", () => {
 
   it("createSprint sends the body and the token", async () => {
     const { client, seen } = recorder(201, { id: "s1" });
-    await createSprint(client, T, {
+    await createSprint(client, {
       name: "Sprint 1",
       goal: "",
       startsOn: "2026-10-26",
@@ -624,10 +624,10 @@ describe("API client wrappers", () => {
 
   it("updateExternalPolicy puts the policy", async () => {
     const { client, seen } = recorder(200, { version: 2 });
-    await updateExternalPolicy(client, T, P, {
+    await updateExternalPolicy(client, P, {
       version: 1,
       permissions: ["work.read"],
-    } as Parameters<typeof updateExternalPolicy>[3]);
+    } as Parameters<typeof updateExternalPolicy>[2]);
     expect(seen[0]).toMatchObject({
       method: "PUT",
       path: "/api/v1/projects/p1/external-policy",

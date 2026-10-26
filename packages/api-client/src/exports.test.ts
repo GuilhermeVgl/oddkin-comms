@@ -101,6 +101,7 @@ const expectedRuntimeExports = [
   "publishKeyGeneration",
   "putAvatar",
   "readCookie",
+  "readCsrfFromCookies",
   "recordFocusSession",
   "registerDevice",
   "removeProjectMember",

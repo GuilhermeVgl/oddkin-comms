@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type WorkItem = Schemas["WorkItem"];
 export type WorkItemComment = Schemas["WorkItemComment"];
@@ -24,26 +18,24 @@ export async function listWorkItems(
 
 export async function createWorkItem(
   client: Client,
-  token: string,
   projectId: string,
   body: CreateWorkItem,
 ): Promise<WorkItem> {
   const { data, response } = await client.POST(
     "/api/v1/projects/{projectId}/work-items",
-    { params: { path: { projectId } }, body, headers: csrf(token) },
+    { params: { path: { projectId } }, body },
   );
   return ensure("createWorkItem", response, data, 201);
 }
 
 export async function updateWorkItem(
   client: Client,
-  token: string,
   workItemId: string,
   body: UpdateWorkItem,
 ): Promise<WorkItem> {
   const { data, response } = await client.PATCH(
     "/api/v1/work-items/{workItemId}",
-    { params: { path: { workItemId } }, body, headers: csrf(token) },
+    { params: { path: { workItemId } }, body },
   );
   return ensure("updateWorkItem", response, data, 200);
 }
@@ -61,13 +53,12 @@ export async function listComments(
 
 export async function createComment(
   client: Client,
-  token: string,
   workItemId: string,
   body: string,
 ): Promise<WorkItemComment> {
   const { data, response } = await client.POST(
     "/api/v1/work-items/{workItemId}/comments",
-    { params: { path: { workItemId } }, body: { body }, headers: csrf(token) },
+    { params: { path: { workItemId } }, body: { body } },
   );
   return ensure("createComment", response, data, 201);
 }
@@ -85,13 +76,11 @@ export async function getFollowing(
 
 export async function setFollowing(
   client: Client,
-  token: string,
   workItemId: string,
   following: boolean,
 ): Promise<void> {
   const options = {
     params: { path: { workItemId } },
-    headers: csrf(token),
   };
   const { response } = following
     ? await client.PUT("/api/v1/work-items/{workItemId}/followers/me", options)

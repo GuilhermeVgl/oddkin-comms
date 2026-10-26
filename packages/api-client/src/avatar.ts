@@ -1,5 +1,5 @@
 import type { components } from "./openapi.gen";
-import type { createApiClient } from "./index";
+import { readCsrfFromCookies, type createApiClient } from "./index";
 
 export type AvatarVersion = components["schemas"]["AvatarVersion"];
 
@@ -12,10 +12,14 @@ export async function listAvatars(
 }
 
 /** Uploads the caller's photo, already resized by the browser. */
-export async function putAvatar(csrfToken: string, photo: Blob): Promise<void> {
+export async function putAvatar(photo: Blob): Promise<void> {
+  const token = readCsrfFromCookies(document.cookie);
   const response = await fetch("/api/v1/account/avatar", {
     method: "PUT",
-    headers: { "Content-Type": photo.type, "X-CSRF-Token": csrfToken },
+    headers: {
+      "Content-Type": photo.type,
+      ...(token === null ? {} : { "X-CSRF-Token": token }),
+    },
     body: photo,
   });
   if (response.status !== 204)
@@ -24,11 +28,8 @@ export async function putAvatar(csrfToken: string, photo: Blob): Promise<void> {
 
 export async function deleteAvatar(
   client: ReturnType<typeof createApiClient>,
-  csrfToken: string,
 ): Promise<void> {
-  const { response } = await client.DELETE("/api/v1/account/avatar", {
-    headers: { "X-CSRF-Token": csrfToken },
-  });
+  const { response } = await client.DELETE("/api/v1/account/avatar", {});
   if (response.status !== 204)
     throw new Error(`Unexpected avatar status: ${response.status}`);
 }

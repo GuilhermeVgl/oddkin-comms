@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type MyStats = Schemas["MyStats"];
 export type WorkItemEngagement = Schemas["WorkItemEngagement"];
@@ -29,13 +23,11 @@ export async function getWorkItemEngagement(
 /** Thanks whoever finished the activity, or takes the thanks back. */
 export async function setKudos(
   client: Client,
-  token: string,
   workItemId: string,
   thanked: boolean,
 ): Promise<void> {
   const options = {
     params: { path: { workItemId } },
-    headers: csrf(token),
   };
   const { response } = thanked
     ? await client.PUT("/api/v1/work-items/{workItemId}/kudos", options)
@@ -46,7 +38,6 @@ export async function setKudos(
 
 export async function recordFocusSession(
   client: Client,
-  token: string,
   workItemId: string,
   minutes: number,
 ): Promise<void> {
@@ -54,7 +45,6 @@ export async function recordFocusSession(
     "/api/v1/work-items/{workItemId}/focus",
     {
       params: { path: { workItemId } },
-      headers: csrf(token),
       body: { minutes },
     },
   );

@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type BoardColumn = Schemas["BoardColumn"];
 
@@ -21,27 +15,25 @@ export async function listBoardColumns(
 
 export async function createBoardColumn(
   client: Client,
-  token: string,
   projectId: string,
   body: Schemas["CreateBoardColumnRequest"],
 ): Promise<BoardColumn> {
   const { data, response } = await client.POST(
     "/api/v1/projects/{projectId}/columns",
-    { params: { path: { projectId } }, body, headers: csrf(token) },
+    { params: { path: { projectId } }, body },
   );
   return ensure("createBoardColumn", response, data, 201);
 }
 
 export async function updateBoardColumn(
   client: Client,
-  token: string,
   projectId: string,
   columnId: string,
   body: Schemas["UpdateBoardColumnRequest"],
 ): Promise<BoardColumn> {
   const { data, response } = await client.PATCH(
     "/api/v1/projects/{projectId}/columns/{columnId}",
-    { params: { path: { projectId, columnId } }, body, headers: csrf(token) },
+    { params: { path: { projectId, columnId } }, body },
   );
   return ensure("updateBoardColumn", response, data, 200);
 }
@@ -49,7 +41,6 @@ export async function updateBoardColumn(
 /** Deletes a column; its activities move to `moveTo` in the same transaction. */
 export async function deleteBoardColumn(
   client: Client,
-  token: string,
   projectId: string,
   columnId: string,
   moveTo?: string,
@@ -61,7 +52,6 @@ export async function deleteBoardColumn(
         path: { projectId, columnId },
         query: moveTo === undefined ? {} : { moveTo },
       },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204) {
@@ -71,7 +61,6 @@ export async function deleteBoardColumn(
 
 export async function reorderBoardColumns(
   client: Client,
-  token: string,
   projectId: string,
   columnIds: string[],
 ): Promise<BoardColumn[]> {
@@ -80,7 +69,6 @@ export async function reorderBoardColumns(
     {
       params: { path: { projectId } },
       body: { columnIds },
-      headers: csrf(token),
     },
   );
   return ensure("reorderBoardColumns", response, data, 200);

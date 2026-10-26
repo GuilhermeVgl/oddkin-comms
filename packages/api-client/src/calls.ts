@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type Call = Schemas["Call"];
 export type CallInvitation = Schemas["CallInvitation"];
@@ -31,13 +25,11 @@ function conflict(response: Response, data: unknown): never {
 
 export async function startCall(
   client: Client,
-  token: string,
   conversationId: string,
   inviteeIds: string[],
 ): Promise<Call> {
   const { data, response } = await client.POST("/api/v1/calls", {
     body: { conversationId, inviteeIds },
-    headers: csrf(token),
   });
   return ensure("startCall", response, data, 201);
 }
@@ -80,7 +72,6 @@ export async function listCallInvitations(
 /** Reserves a seat; a 409 carries the reason (full, other call, other device). */
 export async function joinCall(
   client: Client,
-  token: string,
   callId: string,
   deviceId: string,
   transfer = false,
@@ -90,7 +81,6 @@ export async function joinCall(
     {
       params: { path: { callId } },
       body: transfer ? { deviceId, transfer: true } : { deviceId },
-      headers: csrf(token),
     },
   );
   if (response.status === 200 && data !== undefined) return data;
@@ -99,12 +89,11 @@ export async function joinCall(
 
 export async function startScreenShare(
   client: Client,
-  token: string,
   callId: string,
 ): Promise<CallTicket> {
   const { data, error, response } = await client.POST(
     "/api/v1/calls/{callId}/screen-share",
-    { params: { path: { callId } }, headers: csrf(token) },
+    { params: { path: { callId } } },
   );
   if (response.status === 200 && data !== undefined) return data;
   return conflict(response, error);
@@ -112,36 +101,30 @@ export async function startScreenShare(
 
 async function callAction(
   client: Client,
-  token: string,
   callId: string,
   action: "decline" | "leave" | "end",
 ): Promise<void> {
   const { response } = await client.POST(`/api/v1/calls/{callId}/${action}`, {
     params: { path: { callId } },
-    headers: csrf(token),
   });
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, action);
   }
 }
 
-export const declineCall = (c: Client, t: string, id: string) =>
-  callAction(c, t, id, "decline");
-export const leaveCall = (c: Client, t: string, id: string) =>
-  callAction(c, t, id, "leave");
-export const endCall = (c: Client, t: string, id: string) =>
-  callAction(c, t, id, "end");
+export const declineCall = (c: Client, id: string) =>
+  callAction(c, id, "decline");
+export const leaveCall = (c: Client, id: string) => callAction(c, id, "leave");
+export const endCall = (c: Client, id: string) => callAction(c, id, "end");
 
 export async function stopScreenShare(
   client: Client,
-  token: string,
   callId: string,
 ): Promise<void> {
   const { response } = await client.DELETE(
     "/api/v1/calls/{callId}/screen-share",
     {
       params: { path: { callId } },
-      headers: csrf(token),
     },
   );
   if (response.status !== 204) {

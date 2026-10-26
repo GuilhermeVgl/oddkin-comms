@@ -1,10 +1,4 @@
-import {
-  ApiStatusError,
-  csrf,
-  ensure,
-  type Client,
-  type Schemas,
-} from "./internal";
+import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
 
 export type Attachment = Schemas["Attachment"];
 export type UploadSession = Schemas["Upload"];
@@ -23,7 +17,6 @@ export type UploadNameEncryption = {
 
 export async function createUpload(
   client: Client,
-  token: string,
   context: UploadContext,
   file: { name: string; type: string; size: number },
   encryption?: UploadNameEncryption,
@@ -50,7 +43,6 @@ export async function createUpload(
       size: file.size,
       ...(file.type === "" ? {} : { contentType: file.type }),
     },
-    headers: csrf(token),
   });
   return ensure("createUpload", response, data, 201);
 }
@@ -69,7 +61,6 @@ export async function presignUploadPart(
 
 export async function completeUpload(
   client: Client,
-  token: string,
   uploadId: string,
   parts: { partNumber: number; etag: string }[],
 ): Promise<Attachment> {
@@ -78,7 +69,6 @@ export async function completeUpload(
     {
       params: { path: { uploadId } },
       body: { parts },
-      headers: csrf(token),
     },
   );
   return ensure("completeUpload", response, data, 200);
@@ -86,12 +76,10 @@ export async function completeUpload(
 
 export async function abortUpload(
   client: Client,
-  token: string,
   uploadId: string,
 ): Promise<void> {
   await client.POST("/api/v1/uploads/{uploadId}/abort", {
     params: { path: { uploadId } },
-    headers: csrf(token),
   });
 }
 
@@ -126,12 +114,11 @@ export async function getDownloadUrl(
 
 export async function deleteAttachment(
   client: Client,
-  token: string,
   attachmentId: string,
 ): Promise<void> {
   const { response } = await client.DELETE(
     "/api/v1/attachments/{attachmentId}",
-    { params: { path: { attachmentId } }, headers: csrf(token) },
+    { params: { path: { attachmentId } } },
   );
   if (response.status !== 204) {
     throw new ApiStatusError(response.status, "deleteAttachment");
@@ -147,14 +134,13 @@ const PART_ATTEMPTS = 3;
  */
 export async function uploadFile(
   client: Client,
-  token: string,
   context: UploadContext,
   file: File,
   onProgress: (fraction: number) => void,
   putPart: typeof fetch = fetch,
   encryption?: UploadNameEncryption,
 ): Promise<Attachment> {
-  const session = await createUpload(client, token, context, file, encryption);
+  const session = await createUpload(client, context, file, encryption);
   const etags = new Array<string>(session.partCount);
   let next = 0;
   let finished = 0;
@@ -199,12 +185,11 @@ export async function uploadFile(
     );
     return await completeUpload(
       client,
-      token,
       session.id,
       etags.map((etag, index) => ({ partNumber: index + 1, etag })),
     );
   } catch (error) {
-    await abortUpload(client, token, session.id).catch(() => undefined);
+    await abortUpload(client, session.id).catch(() => undefined);
     throw error;
   }
 }
