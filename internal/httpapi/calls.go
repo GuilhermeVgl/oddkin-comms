@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -109,30 +108,6 @@ func eligibleInvitees(ctx context.Context, q *sqlc.Queries, conversation sqlc.Co
 		return nil, err
 	}
 	return slices.DeleteFunc(readers, func(id pgtype.UUID) bool { return !slices.Contains(joiners, id) }), nil
-}
-
-// callKeyState derives, from who holds a seat and who holds the current key,
-// whether media may keep flowing: someone who left and still holds the key
-// forces a rotation; someone who joined without it makes the call wait for one.
-func callKeyState(ctx context.Context, q *sqlc.Queries, call sqlc.Call) (string, error) {
-	if call.KeyGeneration == 0 {
-		return "pending_keys", nil
-	}
-	seats, err := q.ListSeatDevices(ctx, call.ID)
-	if err != nil {
-		return "", err
-	}
-	holders, err := q.ListCallKeyHolders(ctx, sqlc.ListCallKeyHoldersParams{CallID: call.ID, Generation: call.KeyGeneration})
-	if err != nil {
-		return "", err
-	}
-	if slices.ContainsFunc(holders, func(id pgtype.UUID) bool { return !slices.Contains(seats, id) }) {
-		return "rotation_required", nil
-	}
-	if slices.ContainsFunc(seats, func(id pgtype.UUID) bool { return !slices.Contains(holders, id) }) {
-		return "pending_keys", nil
-	}
-	return "ok", nil
 }
 
 func buildCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, rights callRights, me pgtype.UUID) (gen.Call, error) {
@@ -253,108 +228,6 @@ func (h *apiServer) closeCall(ctx context.Context, call sqlc.Call, reason string
 	})
 }
 
-func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	rights, ok := resolveCallRights(ctx, w, q, toPG(params.ConversationId), session.AccountID)
-	if !ok {
-		return
-	}
-	result := []gen.Call{}
-	if rights.join {
-		call, err := q.ActiveCallForConversation(ctx, rights.conversation.ID)
-		if err == nil {
-			built, buildErr := buildCall(ctx, q, call, rights, session.AccountID)
-			if buildErr != nil {
-				serverError(w, r, buildErr)
-				return
-			}
-			result = append(result, built)
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			serverError(w, r, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, result)
-}
-
-func (h *apiServer) ListCallInvitations(w http.ResponseWriter, r *http.Request) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	rows, err := q.ListPendingCallInvitations(ctx, session.AccountID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	result := []gen.CallInvitation{}
-	for _, row := range rows {
-		visible, authErr := canReceive(ctx, q, session.AccountID, pgtype.UUID{}, row.ConversationID, work.ChatRead)
-		if authErr != nil {
-			serverError(w, r, authErr)
-			return
-		}
-		if visible {
-			result = append(result, gen.CallInvitation{CallId: fromPG(row.CallID), ConversationId: fromPG(row.ConversationID), StartedBy: row.StartedByEmail, StartedById: uuidPtr(row.StartedBy), CreatedAt: row.CreatedAt.Time})
-		}
-	}
-	writeJSON(w, http.StatusOK, result)
-}
-
-// ListCallHistory is the record of calls a conversation shows between its
-// messages. Anyone who can read the conversation may see who took part.
-func (h *apiServer) ListCallHistory(w http.ResponseWriter, r *http.Request, params gen.ListCallHistoryParams) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	rights, ok := resolveCallRights(ctx, w, q, toPG(params.ConversationId), session.AccountID)
-	if !ok {
-		return
-	}
-	limit := 30
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	rows, err := q.ListCallRecords(ctx, sqlc.ListCallRecordsParams{ConversationID: rights.conversation.ID, Limit: int32(limit)})
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	now := time.Now()
-	result := make([]gen.CallRecord, 0, len(rows))
-	for _, row := range rows {
-		end := now
-		record := gen.CallRecord{
-			Id: fromPG(row.ID), State: gen.CallRecordState(row.State), StartedBy: row.StartedByEmail, StartedById: uuidPtr(row.StartedBy),
-			StartedAt: row.CreatedAt.Time, Participants: row.ParticipantEmails, Answered: len(row.ParticipantEmails) >= 2,
-		}
-		if row.EndedAt.Valid {
-			end = row.EndedAt.Time
-			ended := row.EndedAt.Time
-			record.EndedAt = &ended
-		}
-		if row.EndedReason.Valid {
-			record.EndedReason = &row.EndedReason.String
-		}
-		record.DurationSeconds = max(0, int(end.Sub(row.CreatedAt.Time).Seconds()))
-		result = append(result, record)
-	}
-	writeJSON(w, http.StatusOK, result)
-}
-
 // loadCall resolves a call and the caller's rights, answering 404 otherwise.
 func loadCall(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, lock bool) (sqlc.Call, callRights, bool) {
 	var (
@@ -376,30 +249,6 @@ func loadCall(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id op
 	}
 	rights, ok := resolveCallRights(ctx, w, q, call.ConversationID, account)
 	return call, rights, ok
-}
-
-func (h *apiServer) GetCall(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, false)
-	if !ok {
-		return
-	}
-	if !rights.join {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	response, err := buildCall(ctx, q, call, rights, session.AccountID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *apiServer) ticket(call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, screenShare bool) (gen.CallTicket, error) {
@@ -594,84 +443,6 @@ func (h *apiServer) EndCall(w http.ResponseWriter, r *http.Request, callId gen.C
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.mutator(w, r)
-	if !ok {
-		return
-	}
-	if !h.mediaConfigured(w, r) {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	var (
-		call   sqlc.Call
-		ticket gen.CallTicket
-	)
-	err := h.inTx(ctx, func(q *sqlc.Queries) error {
-		var (
-			rights callRights
-			err    error
-		)
-		if call, rights, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
-			return err
-		}
-		if !rights.screen {
-			return statusError(http.StatusForbidden)
-		}
-		if call.State != "active" {
-			return callConflict(gen.CallEnded)
-		}
-		if err = acquireScreenShare(ctx, q, call, session.AccountID); err != nil {
-			return err
-		}
-		if err = calls.Announce(ctx, q, call); err != nil {
-			return err
-		}
-		ticket, err = h.ticket(call, session, true)
-		return err
-	})
-	if respondCallError(w, r, err) {
-		return
-	}
-	// The slot is ours; now let LiveKit accept the screen from this person,
-	// outside any database lock. If it cannot, give the slot back.
-	if grantErr := h.auth.rooms.SetScreenShare(ctx, call.RoomName, uuid.UUID(session.AccountID.Bytes).String(), true); grantErr != nil {
-		slog.Warn("screen share permission was not granted", "error", grantErr)
-		_ = sqlc.New(h.auth.pool).ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID})
-		serverError(w, r, grantErr)
-		return
-	}
-	writeJSON(w, http.StatusOK, ticket)
-}
-
-func (h *apiServer) StopScreenShare(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.mutator(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	var call sqlc.Call
-	err := h.inTx(ctx, func(q *sqlc.Queries) error {
-		var err error
-		if call, _, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
-			return err
-		}
-		if err = q.ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID}); err != nil {
-			return err
-		}
-		return calls.Announce(ctx, q, call)
-	})
-	if respondError(w, r, err) {
-		return
-	}
-	if h.auth.rooms != nil {
-		_ = h.auth.rooms.SetScreenShare(ctx, call.RoomName, uuid.UUID(session.AccountID.Bytes).String(), false)
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // LivekitWebhook verifies the signature, ignores replays and reconciles presence.
 func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil || h.auth.rooms == nil {
@@ -720,138 +491,6 @@ func seatOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, call sq
 		return seat, false
 	}
 	return seat, true
-}
-
-func (h *apiServer) ListCallKeyDevices(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, false)
-	if !ok {
-		return
-	}
-	if _, ok = seatOf(ctx, w, q, call, session.AccountID); !ok {
-		return
-	}
-	seats, err := q.ListSeatDevices(ctx, call.ID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	devices := make([]gen.DirectoryDevice, 0, len(seats))
-	for _, id := range seats {
-		device, getErr := q.GetDevice(ctx, id)
-		if getErr != nil {
-			serverError(w, r, getErr)
-			return
-		}
-		email := ""
-		if owner, ownerErr := q.GetAccountByID(ctx, device.AccountID); ownerErr == nil {
-			email = owner.EmailNormalized
-		}
-		devices = append(devices, directoryEntry(device.ID, device.AccountID, email, device.Kind, device.State, device.SignPublicKey, device.BoxPublicKey, device.Certificate, device.AuthorizerDeviceID))
-	}
-	writeJSON(w, http.StatusOK, devices)
-}
-
-func (h *apiServer) ListCallKeyEnvelopes(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.reader(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	q := sqlc.New(h.auth.pool)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, false)
-	if !ok {
-		return
-	}
-	seat, ok := seatOf(ctx, w, q, call, session.AccountID)
-	if !ok {
-		return
-	}
-	rows, err := q.ListCallKeyEnvelopes(ctx, sqlc.ListCallKeyEnvelopesParams{CallID: call.ID, RecipientDeviceID: seat.DeviceID})
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	envelopes := make([]gen.KeyEnvelope, 0, len(rows))
-	for _, row := range rows {
-		envelopes = append(envelopes, gen.KeyEnvelope{
-			Generation: int(row.Generation), RecipientDeviceId: fromPG(row.RecipientDeviceID), SignerDeviceId: fromPG(row.SignerDeviceID),
-			Sealed: b64(row.Sealed), Signature: b64(row.Signature),
-		})
-	}
-	writeJSON(w, http.StatusOK, envelopes)
-}
-
-// PublishCallKey stores the next ephemeral media key, sealed for exactly the
-// devices that hold a seat right now. The server only checks who may receive
-// it and who sealed it; it never sees the key. The recovery identity is not a
-// recipient: calls are not recorded and not recoverable.
-func (h *apiServer) PublishCallKey(w http.ResponseWriter, r *http.Request, callId gen.CallId) {
-	session, ok := h.mutator(w, r)
-	if !ok {
-		return
-	}
-	var payload gen.PublishGenerationRequest
-	if !decodeJSONBodyLimit(w, r, &payload, 1<<20) {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	var response gen.Call
-	err := h.inTx(ctx, func(q *sqlc.Queries) error {
-		call, rights, err := loadCallTx(ctx, w, q, callId, session.AccountID, true)
-		if err != nil {
-			return err
-		}
-		if !rights.join {
-			return statusError(http.StatusForbidden)
-		}
-		if call.State != "active" {
-			return callConflict(gen.CallEnded)
-		}
-		seat, err := seatTx(ctx, w, q, call, session.AccountID)
-		if err != nil {
-			return err
-		}
-		signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.ID != seat.DeviceID || signer.State != "active")) {
-			return statusError(http.StatusForbidden)
-		}
-		if err != nil {
-			return err
-		}
-		if int32(payload.Generation) != call.KeyGeneration+1 {
-			return statusError(http.StatusConflict)
-		}
-		seats, err := q.ListSeatDevices(ctx, call.ID)
-		if err != nil {
-			return err
-		}
-		items := toGrantItems(payload.Envelopes)
-		if err = checkEnvelopeRecipients(items, seats); err != nil {
-			return err
-		}
-		if err = storeCallKey(ctx, q, call, signer, payload.Generation, items); err != nil {
-			return err
-		}
-		call.KeyGeneration = int32(payload.Generation)
-		if err = calls.Announce(ctx, q, call); err != nil {
-			return err
-		}
-		response, err = buildCall(ctx, q, call, rights, session.AccountID)
-		return err
-	})
-	if respondCallError(w, r, err) {
-		return
-	}
-	writeJSON(w, http.StatusOK, response)
 }
 
 // respondCallError is respondError for call handlers: a callConflict becomes
