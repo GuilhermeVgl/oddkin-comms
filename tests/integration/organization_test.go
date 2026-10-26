@@ -5,26 +5,14 @@ package integration
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestOnlyOneOrganizationPerInstallation(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required for integration tests")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal("could not configure test database pool")
-	}
-	defer pool.Close()
+	ctx, pool := openTestPool(t, 10*time.Second)
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal("begin organization test transaction:", err)

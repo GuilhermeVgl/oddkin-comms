@@ -3,10 +3,8 @@
 package integration
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -15,40 +13,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestAccountRegistrationKeepsInvitationAtomic(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	const orgID = "40000000-0000-4000-8000-000000000001"
+	ctx, pool := openTestPool(t, 20*time.Second)
 	const email = "member@example.test"
-	if _, err := pool.Exec(ctx, `INSERT INTO organization (id, timezone) VALUES ($1, 'UTC')`, orgID); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, orgID); err != nil {
-			t.Error(err)
-		}
-	}()
+	typedOrgID := newTestOrganization(t, ctx, pool, "40000000-0000-4000-8000-000000000001", "UTC")
 	token, record, err := identity.IssueInvitationToken(time.Now())
 	if err != nil || token == "" {
 		t.Fatalf("issue invitation: %v", err)
-	}
-	var typedOrgID pgtype.UUID
-	if err := typedOrgID.Scan(orgID); err != nil {
-		t.Fatal(err)
 	}
 	if _, err := sqlc.New(pool).CreateOrganizationInvitation(ctx, sqlc.CreateOrganizationInvitationParams{
 		OrganizationID: typedOrgID, EmailNormalized: email, MembershipKind: "internal",
@@ -56,10 +29,7 @@ func TestAccountRegistrationKeepsInvitationAtomic(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := identity.HashPassword("sufficiently long password")
-	if err != nil {
-		t.Fatal(err)
-	}
+	hash := testPasswordHash(t, "sufficiently long password")
 	register := func(commit bool) error {
 		tx, err := pool.Begin(ctx)
 		if err != nil {

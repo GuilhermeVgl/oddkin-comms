@@ -4,62 +4,20 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestHTTPLoginSessionAndLogout(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	hash, err := identity.HashPassword("correct long password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	account, err := sqlc.New(pool).CreateAccount(ctx, sqlc.CreateAccountParams{
-		EmailNormalized: "login@example.test", PasswordHash: hash,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('72000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sqlc.New(pool).CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-		OrganizationID: organizationID, AccountID: account.ID, MembershipKind: "internal", IsAdmin: false,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
-			t.Error(err)
-		}
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM account WHERE id = $1`, account.ID); err != nil {
-			t.Error(err)
-		}
-	}()
+	ctx, pool := openTestPool(t, 20*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "72000000-0000-4000-8000-000000000001", "UTC", "login@example.test")
+	createTestAccount(t, ctx, sqlc.New(pool), organizationID, "login@example.test", "correct long password", "internal", false)
 	handler, err := httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)

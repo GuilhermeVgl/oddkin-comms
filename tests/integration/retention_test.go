@@ -4,41 +4,25 @@ package integration
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Records past their retention are removed; recent ones, and sessions still in
 // use, stay.
 func TestRetentionRemovesOnlyWhatIsPastItsPeriod(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
+	ctx, pool := openTestPool(t, 20*time.Second)
+	created, err := sqlc.New(pool).CreateAccount(ctx, sqlc.CreateAccountParams{
+		EmailNormalized: "retention@example.test", PasswordHash: testPasswordHash(t, "correct retention password"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
-	hash, err := identity.HashPassword("correct retention password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := sqlc.New(pool).CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: "retention@example.test", PasswordHash: hash})
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountID := uuid.UUID(created.ID.Bytes).String()
-	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM account WHERE id = $1`, accountID) }()
+	accountID := formatUUID(created.ID)
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM account WHERE id = $1`, accountID) })
 	session := func(tag byte, createdAgo, expiresIn string, revokedAgo *string) {
 		revoked := "NULL"
 		if revokedAgo != nil {

@@ -3,9 +3,7 @@
 package integration
 
 import (
-	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -14,33 +12,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestOrganizationInvitationIsSingleUseAndTimeBound(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required for integration tests")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal("configure test pool:", err)
-	}
-	defer pool.Close()
-	const organizationID = "20000000-0000-4000-8000-000000000001"
-	var orgID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ($1, 'UTC') RETURNING id`, organizationID).Scan(&orgID); err != nil {
-		t.Fatal("create test organization:", err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
-			t.Error("delete test organization:", err)
-		}
-	}()
+	ctx, pool := openTestPool(t, 20*time.Second)
+	orgID := newTestOrganization(t, ctx, pool, "20000000-0000-4000-8000-000000000001", "UTC")
 	queries := sqlc.New(pool)
 	now := time.Now().UTC()
 	email, err := identity.NormalizeEmail(" Person@Example.TEST ")

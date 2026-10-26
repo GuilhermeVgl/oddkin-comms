@@ -4,28 +4,16 @@ package integration
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/jobs"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 func TestOperationalProbeJobCompletes(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required for integration tests")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal("configure test pool:", err)
-	}
-	defer pool.Close()
+	ctx, pool := openTestPool(t, 20*time.Second)
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 1}},
 		Workers: jobs.NewWorkers(pool),

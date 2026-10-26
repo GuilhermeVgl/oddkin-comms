@@ -9,18 +9,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type wsFrame struct {
@@ -81,49 +77,9 @@ func (s *socket) expect(ctx context.Context, want ...string) wsFrame {
 }
 
 func TestEventsNotificationsAndReadCursors(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('76000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID)
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized LIKE 'evt-%@example.test'`)
-	}()
-	hash, err := identity.HashPassword("correct events password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	queries := sqlc.New(pool)
-	ids := map[string]string{}
-	for _, email := range []string{"evt-admin@example.test", "evt-member@example.test", "evt-external@example.test", "evt-outsider@example.test"} {
-		account, createErr := queries.CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: email, PasswordHash: hash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		kind := "internal"
-		if strings.Contains(email, "external") {
-			kind = "external"
-		}
-		if _, createErr = queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-			OrganizationID: organizationID, AccountID: account.ID, MembershipKind: kind, IsAdmin: strings.Contains(email, "admin"),
-		}); createErr != nil {
-			t.Fatal(createErr)
-		}
-		ids[email] = fmt.Sprintf("%x-%x-%x-%x-%x", account.ID.Bytes[0:4], account.ID.Bytes[4:6], account.ID.Bytes[6:8], account.ID.Bytes[8:10], account.ID.Bytes[10:16])
-	}
+	ctx, pool := openTestPool(t, 90*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "76000000-0000-4000-8000-000000000001", "UTC", "evt-%@example.test")
+	ids := createTestMembers(t, ctx, sqlc.New(pool), organizationID, "correct events password", []string{"evt-admin@example.test", "evt-member@example.test", "evt-external@example.test", "evt-outsider@example.test"})
 	handler, err := httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)

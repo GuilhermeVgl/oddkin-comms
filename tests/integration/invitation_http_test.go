@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/resendmail"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
@@ -36,47 +34,11 @@ func (mailer *recordingInvitationMailer) Send(_ context.Context, message resendm
 }
 
 func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('71000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID)
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized IN ('invite-admin@example.test', 'invite-member@example.test')`)
-	}()
-
-	passwordHash, err := identity.HashPassword("correct invitation password")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ctx, pool := openTestPool(t, 20*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "71000000-0000-4000-8000-000000000001", "UTC", "invite-admin@example.test", "invite-member@example.test")
 	queries := sqlc.New(pool)
-	createAccount := func(email string, admin bool) {
-		account, createErr := queries.CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: email, PasswordHash: passwordHash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		if _, createErr = queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-			OrganizationID: organizationID, AccountID: account.ID, MembershipKind: "internal", IsAdmin: admin,
-		}); createErr != nil {
-			t.Fatal(createErr)
-		}
-	}
-	createAccount("invite-admin@example.test", true)
-	createAccount("invite-member@example.test", false)
+	createTestAccount(t, ctx, queries, organizationID, "invite-admin@example.test", "correct invitation password", "internal", true)
+	createTestAccount(t, ctx, queries, organizationID, "invite-member@example.test", "correct invitation password", "internal", false)
 
 	deliveryKey := bytes.Repeat([]byte{0x42}, identity.InvitationDeliveryKeySize)
 	handler, err := httpapi.NewAppHandlerWithConfig(pool, httpapi.AppConfig{
@@ -95,21 +57,8 @@ func TestInvitationHTTPRequiresOrganizationAdministrator(t *testing.T) {
 		return req
 	}
 	login := func(email string) (*http.Cookie, *http.Cookie) {
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, request(http.MethodPost, "/api/v1/auth/login", `{"email":"`+email+`","password":"correct invitation password"}`))
-		if result.Code != http.StatusNoContent {
-			t.Fatalf("login %s: status=%d", email, result.Code)
-		}
-		var session, csrf *http.Cookie
-		for _, cookie := range result.Result().Cookies() {
-			switch cookie.Name {
-			case "crewstead_session":
-				session = cookie
-			case "crewstead_csrf":
-				csrf = cookie
-			}
-		}
-		return session, csrf
+		client := loginClient(t, handler, email, "correct invitation password")
+		return client.session, client.csrf
 	}
 	postInvitation := func(session, csrf *http.Cookie, email, kind string) *httptest.ResponseRecorder {
 		req := request(http.MethodPost, "/api/v1/invitations", fmt.Sprintf(`{"email":%q,"membershipKind":%q}`, email, kind))

@@ -3,9 +3,7 @@
 package integration
 
 import (
-	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -13,51 +11,18 @@ import (
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestSessionExpiresByInactivityAndCanBeRevoked(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	ctx, pool := openTestPool(t, 20*time.Second)
 	queries := sqlc.New(pool)
-	passwordHash, err := identity.HashPassword("another long password")
+	const email = "session@example.test"
+	organizationID := newTestOrganization(t, ctx, pool, "73000000-0000-4000-8000-000000000001", "UTC", email)
+	createTestAccount(t, ctx, queries, organizationID, email, "another long password", "internal", false)
+	account, err := queries.GetAccountByEmail(ctx, email)
 	if err != nil {
 		t.Fatal(err)
 	}
-	account, err := queries.CreateAccount(ctx, sqlc.CreateAccountParams{
-		EmailNormalized: "session@example.test", PasswordHash: passwordHash,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('73000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-		OrganizationID: organizationID, AccountID: account.ID, MembershipKind: "internal", IsAdmin: false,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
-			t.Error(err)
-		}
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM account WHERE id = $1`, account.ID); err != nil {
-			t.Error(err)
-		}
-	}()
 	issued, err := identity.IssueSession(time.Now())
 	if err != nil {
 		t.Fatal(err)

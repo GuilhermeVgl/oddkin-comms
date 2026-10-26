@@ -4,98 +4,32 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/keys"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestEncryptedContentRulesAndMigration(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('7a000000-0000-4000-8000-000000000001', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
-			t.Error(err)
-		}
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized LIKE 'enc-%@example.test'`)
-	}()
-	orgString := fmt.Sprintf("%x-%x-%x-%x-%x", organizationID.Bytes[0:4], organizationID.Bytes[4:6], organizationID.Bytes[6:8], organizationID.Bytes[8:10], organizationID.Bytes[10:16])
-	hash, err := identity.HashPassword("correct encryption password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	queries := sqlc.New(pool)
-	accounts := map[string]string{}
-	for _, email := range []string{"enc-admin@example.test", "enc-member@example.test", "enc-external@example.test"} {
-		account, createErr := queries.CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: email, PasswordHash: hash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		kind := "internal"
-		if strings.Contains(email, "external") {
-			kind = "external"
-		}
-		if _, createErr = queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-			OrganizationID: organizationID, AccountID: account.ID, MembershipKind: kind, IsAdmin: strings.Contains(email, "admin"),
-		}); createErr != nil {
-			t.Fatal(createErr)
-		}
-		accounts[email] = fmt.Sprintf("%x-%x-%x-%x-%x", account.ID.Bytes[0:4], account.ID.Bytes[4:6], account.ID.Bytes[6:8], account.ID.Bytes[8:10], account.ID.Bytes[10:16])
-	}
+	ctx, pool := openTestPool(t, 90*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "7a000000-0000-4000-8000-000000000001", "UTC", "enc-%@example.test")
+	orgString := formatUUID(organizationID)
+	const password = "correct encryption password"
+	accounts := createTestMembers(t, ctx, sqlc.New(pool), organizationID, password, []string{"enc-admin@example.test", "enc-member@example.test", "enc-external@example.test"})
 	handler, err := httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	login := func(email string) *workClient {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct encryption password"}`))
-		req.Host = "crewstead.test"
-		req.Header.Set("Origin", "http://crewstead.test")
-		req.Header.Set("Content-Type", "application/json")
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, req)
-		if result.Code != http.StatusNoContent {
-			t.Fatalf("login %s: %d", email, result.Code)
-		}
-		c := &workClient{t: t, handler: handler}
-		for _, cookie := range result.Result().Cookies() {
-			if cookie.Name == "crewstead_session" {
-				c.session = cookie
-			}
-			if cookie.Name == "crewstead_csrf" {
-				c.csrf = cookie
-			}
-		}
-		return c
-	}
+	login := func(email string) *workClient { return loginClient(t, handler, email, password) }
 	admin, member, external := login("enc-admin@example.test"), login("enc-member@example.test"), login("enc-external@example.test")
 
 	rootPublic, rootSecret, _ := ed25519.GenerateKey(rand.Reader)

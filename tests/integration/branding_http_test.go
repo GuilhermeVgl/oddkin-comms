@@ -3,86 +3,25 @@
 package integration
 
 import (
-	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestOrganizationBrandingRequiresAdminAndPersists(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('75000000-0000-4000-8000-000000000061', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID)
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized LIKE 'brand-%@example.test'`)
-	}()
-	hash, err := identity.HashPassword("correct branding password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, row := range []struct {
-		email string
-		admin bool
-	}{{"brand-admin@example.test", true}, {"brand-member@example.test", false}} {
-		account, createErr := sqlc.New(pool).CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: row.email, PasswordHash: hash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		if _, createErr := sqlc.New(pool).CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{OrganizationID: organizationID, AccountID: account.ID, MembershipKind: "internal", IsAdmin: row.admin}); createErr != nil {
-			t.Fatal(createErr)
-		}
-	}
+	ctx, pool := openTestPool(t, 30*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "75000000-0000-4000-8000-000000000061", "UTC", "brand-%@example.test")
+	createTestMembers(t, ctx, sqlc.New(pool), organizationID, "correct branding password", []string{"brand-admin@example.test", "brand-member@example.test"})
 	handler, err := httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	login := func(email string) *workClient {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct branding password"}`))
-		req.Host = "crewstead.test"
-		req.Header.Set("Origin", "http://crewstead.test")
-		req.Header.Set("Content-Type", "application/json")
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, req)
-		if result.Code != http.StatusNoContent {
-			t.Fatalf("login %s: %d", email, result.Code)
-		}
-		client := &workClient{t: t, handler: handler}
-		for _, cookie := range result.Result().Cookies() {
-			switch cookie.Name {
-			case "crewstead_session":
-				client.session = cookie
-			case "crewstead_csrf":
-				client.csrf = cookie
-			}
-		}
-		return client
-	}
-	admin := login("brand-admin@example.test")
-	member := login("brand-member@example.test")
+	admin := loginClient(t, handler, "brand-admin@example.test", "correct branding password")
+	member := loginClient(t, handler, "brand-member@example.test", "correct branding password")
 	path := "/api/v1/organization/branding"
 	var before struct {
 		Name    string

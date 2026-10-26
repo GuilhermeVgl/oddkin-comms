@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"errors"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -13,21 +12,10 @@ import (
 	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/installation"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestBootstrapCreatesOneAdministratorAtomically(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	ctx, pool := openTestPool(t, 20*time.Second)
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
@@ -79,7 +67,7 @@ func TestBootstrapCreatesOneAdministratorAtomically(t *testing.T) {
 	}
 	var email, passwordHash, timezone, kind string
 	var isAdmin bool
-	err = pool.QueryRow(ctx, `SELECT a.email_normalized, a.password_hash, o.timezone, m.membership_kind, m.is_admin FROM organization AS o JOIN organization_membership AS m ON m.organization_id = o.id JOIN account AS a ON a.id = m.account_id`).Scan(&email, &passwordHash, &timezone, &kind, &isAdmin)
+	err := pool.QueryRow(ctx, `SELECT a.email_normalized, a.password_hash, o.timezone, m.membership_kind, m.is_admin FROM organization AS o JOIN organization_membership AS m ON m.organization_id = o.id JOIN account AS a ON a.id = m.account_id`).Scan(&email, &passwordHash, &timezone, &kind, &isAdmin)
 	if err != nil || timezone != "America/Campo_Grande" || kind != "internal" || !isAdmin || !identity.VerifyPassword("a long enough password", passwordHash) {
 		t.Fatalf("administrator not installed correctly: email=%q timezone=%q kind=%q admin=%t err=%v", email, timezone, kind, isAdmin, err)
 	}

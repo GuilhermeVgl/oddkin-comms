@@ -3,94 +3,29 @@
 package integration
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"os"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Board columns are changed only by project managers, one transaction at a
 // time, and the board always keeps a column for open work and one for done work.
 func TestBoardColumnManagementAndPermissions(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ('75000000-0000-4000-8000-000000000031', 'UTC') RETURNING id`).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
+	ctx, pool := openTestPool(t, 60*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, "75000000-0000-4000-8000-000000000031", "UTC", "col-%@example.test")
+	const password = "correct column password"
 	emails := []string{"col-admin@example.test", "col-member@example.test", "col-outsider@example.test", "col-external@example.test"}
-	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID)
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized LIKE 'col-%@example.test'`)
-	}()
-	passwordHash, err := identity.HashPassword("correct column password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	queries := sqlc.New(pool)
-	for _, email := range emails {
-		account, createErr := queries.CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: email, PasswordHash: passwordHash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		kind := "internal"
-		if email == "col-external@example.test" {
-			kind = "external"
-		}
-		if _, createErr = queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-			OrganizationID: organizationID, AccountID: account.ID, MembershipKind: kind, IsAdmin: email == "col-admin@example.test",
-		}); createErr != nil {
-			t.Fatal(createErr)
-		}
-	}
+	createTestMembers(t, ctx, sqlc.New(pool), organizationID, password, emails)
 	handler, err := httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	login := func(email string) *workClient {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct column password"}`))
-		req.Host = "crewstead.test"
-		req.Header.Set("Origin", "http://crewstead.test")
-		req.Header.Set("Content-Type", "application/json")
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, req)
-		if result.Code != http.StatusNoContent {
-			t.Fatalf("login %s: %d", email, result.Code)
-		}
-		client := &workClient{t: t, handler: handler}
-		for _, cookie := range result.Result().Cookies() {
-			switch cookie.Name {
-			case "crewstead_session":
-				client.session = cookie
-			case "crewstead_csrf":
-				client.csrf = cookie
-			}
-		}
-		return client
-	}
+	login := func(email string) *workClient { return loginClient(t, handler, email, password) }
 	admin, member, outsider, external := login(emails[0]), login(emails[1]), login(emails[2]), login(emails[3])
 
 	type column struct {

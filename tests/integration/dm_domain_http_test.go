@@ -3,26 +3,23 @@
 package integration
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/identity"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/keys"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const fixturePassword = "correct fixture password"
 
 // e2eeFixture is a small organization with trusted devices, shared by the DM, name and recovery tests.
 type e2eeFixture struct {
@@ -40,55 +37,21 @@ type e2eeFixture struct {
 
 func newE2EEFixture(t *testing.T, orgSeed string, prefix string, emails []string) *e2eeFixture {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	t.Cleanup(cancel)
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	var organizationID pgtype.UUID
-	if err := pool.QueryRow(ctx, `INSERT INTO organization (id, timezone) VALUES ($1, 'UTC') RETURNING id`, orgSeed).Scan(&organizationID); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM organization WHERE id = $1`, organizationID); err != nil {
-			t.Error(err)
-		}
-		_, _ = pool.Exec(cleanupCtx, `DELETE FROM account WHERE email_normalized LIKE $1`, prefix+"-%@example.test")
-	})
-	hash, err := identity.HashPassword("correct fixture password")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ctx, pool := openTestPool(t, 90*time.Second)
+	organizationID := newTestOrganization(t, ctx, pool, orgSeed, "UTC", prefix+"-%@example.test")
 	f := &e2eeFixture{
 		t: t, ctx: ctx, pool: pool, accounts: map[string]string{}, clients: map[string]*workClient{}, devices: map[string]testDevice{},
-		orgID: fmt.Sprintf("%x-%x-%x-%x-%x", organizationID.Bytes[0:4], organizationID.Bytes[4:6], organizationID.Bytes[6:8], organizationID.Bytes[8:10], organizationID.Bytes[10:16]),
+		orgID: formatUUID(organizationID),
 	}
 	queries := sqlc.New(pool)
 	for _, name := range emails {
-		email := prefix + "-" + name + "@example.test"
-		account, createErr := queries.CreateAccount(ctx, sqlc.CreateAccountParams{EmailNormalized: email, PasswordHash: hash})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
 		kind := "internal"
 		if strings.HasPrefix(name, "external") {
 			kind = "external"
 		}
-		if _, createErr = queries.CreateOrganizationMembership(ctx, sqlc.CreateOrganizationMembershipParams{
-			OrganizationID: organizationID, AccountID: account.ID, MembershipKind: kind, IsAdmin: name == "admin",
-		}); createErr != nil {
-			t.Fatal(createErr)
-		}
-		f.accounts[name] = fmt.Sprintf("%x-%x-%x-%x-%x", account.ID.Bytes[0:4], account.ID.Bytes[4:6], account.ID.Bytes[6:8], account.ID.Bytes[8:10], account.ID.Bytes[10:16])
+		f.accounts[name] = createTestAccount(t, ctx, queries, organizationID, prefix+"-"+name+"@example.test", fixturePassword, kind, name == "admin")
 	}
+	var err error
 	f.handler, err = httpapi.NewAppHandler(pool)
 	if err != nil {
 		t.Fatal(err)
@@ -106,25 +69,7 @@ func newE2EEFixture(t *testing.T, orgSeed string, prefix string, emails []string
 }
 
 func (f *e2eeFixture) login(email string) *workClient {
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"`+email+`","password":"correct fixture password"}`))
-	req.Host = "crewstead.test"
-	req.Header.Set("Origin", "http://crewstead.test")
-	req.Header.Set("Content-Type", "application/json")
-	result := httptest.NewRecorder()
-	f.handler.ServeHTTP(result, req)
-	if result.Code != http.StatusNoContent {
-		f.t.Fatalf("login %s: %d", email, result.Code)
-	}
-	c := &workClient{t: f.t, handler: f.handler}
-	for _, cookie := range result.Result().Cookies() {
-		if cookie.Name == "crewstead_session" {
-			c.session = cookie
-		}
-		if cookie.Name == "crewstead_csrf" {
-			c.csrf = cookie
-		}
-	}
-	return c
+	return loginClient(f.t, f.handler, email, fixturePassword)
 }
 
 // activate registers a device for the person and approves it with the trust root.
