@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -13,17 +12,25 @@ import (
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/calls"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
-	"github.com/GuilhermeVgl/crewstead-comms/internal/keys"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/work"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/webhook"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const callTokenTTL = 5 * time.Minute
+
+var errMediaNotConfigured = errors.New("media server is not configured")
+
+// callConflict ends a transaction with a 409 whose body says why the call
+// cannot proceed; respondCallError writes it.
+type callConflict gen.CallConflictCode
+
+func (c callConflict) Error() string { return "call conflict: " + string(c) }
 
 // callRights is what an account may do with calls in one conversation.
 type callRights struct {
@@ -68,9 +75,9 @@ func resolveCallRights(ctx context.Context, w http.ResponseWriter, q *sqlc.Queri
 	return rights, true
 }
 
-func (h *apiServer) mediaConfigured(w http.ResponseWriter) bool {
+func (h *apiServer) mediaConfigured(w http.ResponseWriter, r *http.Request) bool {
 	if h.auth == nil || h.auth.rooms == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errMediaNotConfigured)
 		return false
 	}
 	return true
@@ -180,7 +187,7 @@ func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.mediaConfigured(w) {
+	if !h.mediaConfigured(w, r) {
 		return
 	}
 	var payload gen.StartCallRequest
@@ -194,79 +201,39 @@ func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	rights, ok := resolveCallRights(ctx, w, q, toPG(payload.ConversationId), session.AccountID)
-	if !ok {
-		return
-	}
-	if !rights.start {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if rights.archived {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	eligible, err := eligibleInvitees(ctx, q, rights.conversation)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	var invitees []pgtype.UUID
-	if payload.InviteeIds != nil {
-		for _, id := range *payload.InviteeIds {
-			invitee := toPG(id)
-			if invitee == session.AccountID || !slices.Contains(eligible, invitee) || slices.Contains(invitees, invitee) {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			invitees = append(invitees, invitee)
+	var (
+		call   sqlc.Call
+		rights callRights
+	)
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if rights, err = callRightsTx(ctx, w, q, toPG(payload.ConversationId), session.AccountID); err != nil {
+			return err
 		}
-	}
-	if rights.conversation.Kind == "dm" && len(invitees) == 0 {
-		for _, id := range eligible {
-			if id != session.AccountID {
-				invitees = append(invitees, id)
-			}
+		if !rights.start {
+			return statusError(http.StatusForbidden)
 		}
-	}
-	call, err := q.CreateCall(ctx, sqlc.CreateCallParams{ConversationID: rights.conversation.ID, StartedBy: session.AccountID, RoomName: room})
-	if isUniqueViolation(err) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	for _, invitee := range invitees {
+		if rights.archived {
+			return statusError(http.StatusConflict)
+		}
+		eligible, err := eligibleInvitees(ctx, q, rights.conversation)
 		if err != nil {
-			break
+			return err
 		}
-		err = q.UpsertCallInvitation(ctx, sqlc.UpsertCallInvitationParams{CallID: call.ID, AccountID: invitee})
-		if err == nil {
-			err = notifyAccount(ctx, q, invitee, "call_invite", call.ID, rights.conversation.ProjectID, rights.conversation.ID)
+		invitees, valid := chooseInvitees(payload.InviteeIds, eligible, session.AccountID, rights.conversation.Kind)
+		if !valid {
+			return statusError(http.StatusBadRequest)
 		}
-	}
-	if err == nil && len(invitees) > 0 {
-		err = emitEvent(ctx, q, invitees, eventSpec{Type: "call.invited", ResourceID: call.ID, ProjectID: rights.conversation.ProjectID, ConversationID: rights.conversation.ID})
-	}
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		call, err = createCall(ctx, q, rights.conversation, session.AccountID, room, invitees)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	// Media-server effect after commit; on failure close the call again.
 	if err = h.auth.rooms.CreateRoom(ctx, room, calls.MaxParticipants); err != nil {
 		h.closeCall(ctx, call, "room_unavailable")
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, err)
 		return
 	}
 	reader := sqlc.New(h.auth.pool)
@@ -280,14 +247,10 @@ func (h *apiServer) StartCall(w http.ResponseWriter, r *http.Request) {
 
 // closeCall ends a call in its own transaction (used after external failures).
 func (h *apiServer) closeCall(ctx context.Context, call sqlc.Call, reason string) {
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err = calls.End(ctx, sqlc.New(tx), call, reason); err == nil {
-		_ = tx.Commit(ctx)
-	}
+	_ = h.inTx(ctx, func(q *sqlc.Queries) error {
+		_, err := calls.End(ctx, q, call, reason)
+		return err
+	})
 }
 
 func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, params gen.ListActiveCallsParams) {
@@ -313,7 +276,7 @@ func (h *apiServer) ListActiveCalls(w http.ResponseWriter, r *http.Request, para
 			}
 			result = append(result, built)
 		} else if !errors.Is(err, pgx.ErrNoRows) {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -456,7 +419,7 @@ func (h *apiServer) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.
 	if !ok {
 		return
 	}
-	if !h.mediaConfigured(w) {
+	if !h.mediaConfigured(w, r) {
 		return
 	}
 	var payload gen.JoinCallRequest
@@ -467,101 +430,51 @@ func (h *apiServer) JoinCall(w http.ResponseWriter, r *http.Request, callId gen.
 	deviceID := toPG(payload.DeviceId)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	// The call row lock serializes concurrent admissions: the seat count and
-	// the insert below are one atomic decision.
-	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	if !rights.join {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	// Media is end-to-end encrypted: a seat needs an active device of the caller
-	// to seal the call key for. There is no unencrypted way in.
-	device, deviceErr := q.GetDevice(ctx, deviceID)
-	if errors.Is(deviceErr, pgx.ErrNoRows) || (deviceErr == nil && (device.AccountID != session.AccountID || device.State != "active" || device.Kind != "device")) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if deviceErr != nil {
-		serverError(w, r, deviceErr)
-		return
-	}
-	if call.State != "active" {
-		writeConflict(w, gen.CallEnded)
-		return
-	}
-	invited := call.StartedBy == session.AccountID
-	invitation, invErr := q.GetCallInvitation(ctx, sqlc.GetCallInvitationParams{CallID: call.ID, AccountID: session.AccountID})
-	if invErr == nil && (invitation.State == "pending" || invitation.State == "accepted") {
-		invited = true
-	} else if invErr != nil && !errors.Is(invErr, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if !invited {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err = q.ExpireStaleAdmissionsForAccount(ctx, session.AccountID); err == nil {
-		err = q.ExpireStaleAdmissionsForCall(ctx, call.ID)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	existing, err := q.ActiveAdmissionForAccount(ctx, session.AccountID)
-	switch {
-	case err == nil && existing.CallID != call.ID:
-		writeConflict(w, gen.InOtherCall)
-		return
-	case err == nil:
-		// Same call: a reconnect of this session renews the seat; another
-		// device must ask to take it over explicitly.
-		if existing.SessionID != session.ID && !transfer {
-			writeConflict(w, gen.OtherDevice)
-			return
-		}
-		_, err = q.RenewAdmission(ctx, sqlc.RenewAdmissionParams{ID: existing.ID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
-	case errors.Is(err, pgx.ErrNoRows):
-		seats, countErr := q.CountCallSeats(ctx, call.ID)
-		if countErr != nil {
-			serverError(w, r, countErr)
-			return
-		}
-		if seats >= calls.MaxParticipants {
-			writeConflict(w, gen.CallFull)
-			return
-		}
-		_, err = q.InsertAdmission(ctx, sqlc.InsertAdmissionParams{CallID: call.ID, AccountID: session.AccountID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
-	}
-	if isUniqueViolation(err) {
-		writeConflict(w, gen.InOtherCall)
-		return
-	}
-	if err == nil && invErr == nil {
-		_, err = q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: session.AccountID, State: "accepted"})
-	}
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
 	var ticket gen.CallTicket
-	if err == nil {
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		// The call row lock serializes concurrent admissions: the seat count and
+		// the insert below are one atomic decision.
+		call, rights, err := loadCallTx(ctx, w, q, callId, session.AccountID, true)
+		if err != nil {
+			return err
+		}
+		if !rights.join {
+			return statusError(http.StatusForbidden)
+		}
+		if err = requireJoiningDevice(ctx, q, deviceID, session.AccountID); err != nil {
+			return err
+		}
+		if call.State != "active" {
+			return callConflict(gen.CallEnded)
+		}
+		invitation, err := lookupCallInvitation(ctx, q, call, session.AccountID)
+		if err != nil {
+			return err
+		}
+		if !invitation.invited {
+			return statusError(http.StatusForbidden)
+		}
+		if err = q.ExpireStaleAdmissionsForAccount(ctx, session.AccountID); err != nil {
+			return err
+		}
+		if err = q.ExpireStaleAdmissionsForCall(ctx, call.ID); err != nil {
+			return err
+		}
+		if err = admitToCall(ctx, q, call, session, deviceID, transfer); err != nil {
+			return err
+		}
+		if invitation.exists {
+			if _, err = q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: session.AccountID, State: "accepted"}); err != nil {
+				return err
+			}
+		}
+		if err = calls.Announce(ctx, q, call); err != nil {
+			return err
+		}
 		ticket, err = h.ticket(call, session, call.ScreenSharerID == session.AccountID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondCallError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, ticket)
@@ -574,30 +487,14 @@ func (h *apiServer) DeclineCall(w http.ResponseWriter, r *http.Request, callId g
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	changed, err := q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: session.AccountID, State: "declined"})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		call, _, err := loadCallTx(ctx, w, q, callId, session.AccountID, true)
+		if err != nil {
+			return err
+		}
+		return setCallInvitationState(ctx, q, call, session.AccountID, "declined")
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -610,34 +507,17 @@ func (h *apiServer) CancelCallInvitation(w http.ResponseWriter, r *http.Request,
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	if call.StartedBy != session.AccountID {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	changed, err := q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: toPG(accountId), State: "cancelled"})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		call, _, err := loadCallTx(ctx, w, q, callId, session.AccountID, true)
+		if err != nil {
+			return err
+		}
+		if call.StartedBy != session.AccountID {
+			return statusError(http.StatusForbidden)
+		}
+		return setCallInvitationState(ctx, q, call, toPG(accountId), "cancelled")
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -650,26 +530,21 @@ func (h *apiServer) LeaveCall(w http.ResponseWriter, r *http.Request, callId gen
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	ended := false
-	if call.State == "active" {
-		if ended, err = calls.ParticipantLeft(ctx, q, call, session.AccountID); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+	var (
+		call  sqlc.Call
+		ended bool
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if call, _, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
+			return err
 		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		if call.State == "active" {
+			ended, err = calls.ParticipantLeft(ctx, q, call, session.AccountID)
+		}
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	if h.auth.rooms != nil {
@@ -690,29 +565,27 @@ func (h *apiServer) EndCall(w http.ResponseWriter, r *http.Request, callId gen.C
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	// The initiator or, in a channel, a project manager may end the call. In a
-	// DM the other person leaves instead.
-	if call.StartedBy != session.AccountID && (rights.conversation.Kind != "channel" || !rights.manager) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	ended, err := calls.End(ctx, q, call, "ended")
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	var (
+		call  sqlc.Call
+		ended bool
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		var (
+			rights callRights
+			err    error
+		)
+		if call, rights, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
+			return err
+		}
+		// The initiator or, in a channel, a project manager may end the call. In a
+		// DM the other person leaves instead.
+		if call.StartedBy != session.AccountID && (rights.conversation.Kind != "channel" || !rights.manager) {
+			return statusError(http.StatusForbidden)
+		}
+		ended, err = calls.End(ctx, q, call, "ended")
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	if ended && h.auth.rooms != nil {
@@ -726,55 +599,39 @@ func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, cal
 	if !ok {
 		return
 	}
-	if !h.mediaConfigured(w) {
+	if !h.mediaConfigured(w, r) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	if !rights.screen {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if call.State != "active" {
-		writeConflict(w, gen.CallEnded)
-		return
-	}
-	seat, err := q.ActiveAdmissionForAccount(ctx, session.AccountID)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && seat.CallID != call.ID) {
-		writeConflict(w, gen.NotInCall)
-		return
-	}
-	var taken int64
-	if err == nil {
-		taken, err = q.AcquireScreenShare(ctx, sqlc.AcquireScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID})
-	}
-	if err == nil && taken == 0 {
-		writeConflict(w, gen.ScreenShareTaken)
-		return
-	}
-	var ticket gen.CallTicket
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
-	if err == nil {
+	var (
+		call   sqlc.Call
+		ticket gen.CallTicket
+	)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		var (
+			rights callRights
+			err    error
+		)
+		if call, rights, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
+			return err
+		}
+		if !rights.screen {
+			return statusError(http.StatusForbidden)
+		}
+		if call.State != "active" {
+			return callConflict(gen.CallEnded)
+		}
+		if err = acquireScreenShare(ctx, q, call, session.AccountID); err != nil {
+			return err
+		}
+		if err = calls.Announce(ctx, q, call); err != nil {
+			return err
+		}
 		ticket, err = h.ticket(call, session, true)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondCallError(w, r, err) {
 		return
 	}
 	// The slot is ours; now let LiveKit accept the screen from this person,
@@ -782,7 +639,7 @@ func (h *apiServer) StartScreenShare(w http.ResponseWriter, r *http.Request, cal
 	if grantErr := h.auth.rooms.SetScreenShare(ctx, call.RoomName, uuid.UUID(session.AccountID.Bytes).String(), true); grantErr != nil {
 		slog.Warn("screen share permission was not granted", "error", grantErr)
 		_ = sqlc.New(h.auth.pool).ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID})
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, grantErr)
 		return
 	}
 	writeJSON(w, http.StatusOK, ticket)
@@ -795,26 +652,18 @@ func (h *apiServer) StopScreenShare(w http.ResponseWriter, r *http.Request, call
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, _, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	err = q.ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID})
-	if err == nil {
-		err = calls.Announce(ctx, q, call)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	var call sqlc.Call
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if call, _, err = loadCallTx(ctx, w, q, callId, session.AccountID, true); err != nil {
+			return err
+		}
+		if err = q.ReleaseScreenShare(ctx, sqlc.ReleaseScreenShareParams{ID: call.ID, ScreenSharerID: session.AccountID}); err != nil {
+			return err
+		}
+		return calls.Announce(ctx, q, call)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	if h.auth.rooms != nil {
@@ -826,7 +675,7 @@ func (h *apiServer) StopScreenShare(w http.ResponseWriter, r *http.Request, call
 // LivekitWebhook verifies the signature, ignores replays and reconciles presence.
 func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	if h.auth == nil || h.auth.rooms == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, r, errMediaNotConfigured)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -837,70 +686,20 @@ func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
+	var effects webhookEffects
+	err = h.inTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		effects, err = reconcileWebhook(ctx, q, event)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	if event.GetId() != "" {
-		fresh, recordErr := q.RecordWebhookEvent(ctx, event.GetId())
-		if recordErr != nil {
-			serverError(w, r, recordErr)
-			return
-		}
-		if fresh == 0 {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	if effects.kick {
+		_ = h.auth.rooms.Remove(ctx, effects.roomName, effects.identity)
 	}
-	roomName := event.GetRoom().GetName()
-	call, err := q.GetCallByRoom(ctx, roomName)
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if err == nil {
-		call, err = q.LockCall(ctx, call.ID)
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	var kick, deleteRoom bool
-	identity := event.GetParticipant().GetIdentity()
-	account, parseErr := uuid.Parse(identity)
-	switch event.GetEvent() {
-	case "participant_joined":
-		if parseErr != nil {
-			kick = true
-		} else if kick, err = calls.ParticipantJoined(ctx, q, call, pgUUID(account)); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-	case "participant_left":
-		if parseErr == nil && call.State == "active" {
-			if deleteRoom, err = calls.ParticipantLeft(ctx, q, call, pgUUID(account)); err != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				return
-			}
-		}
-	case "room_finished":
-		if _, err = calls.End(ctx, q, call, "room_finished"); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if kick {
-		_ = h.auth.rooms.Remove(ctx, roomName, identity)
-	}
-	if deleteRoom {
-		_ = h.auth.rooms.DeleteRoom(ctx, roomName)
+	if effects.deleteRoom {
+		_ = h.auth.rooms.DeleteRoom(ctx, effects.roomName)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -908,7 +707,7 @@ func (h *apiServer) LivekitWebhook(w http.ResponseWriter, r *http.Request) {
 // seatOf returns the caller's seat in this call, answering 403 otherwise.
 func seatOf(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID) (sqlc.CallAdmission, bool) {
 	if err := q.ExpireStaleAdmissionsForCall(ctx, call.ID); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		serverError(w, nil, err)
 		return sqlc.CallAdmission{}, false
 	}
 	seat, err := q.ActiveAdmissionForAccount(ctx, account)
@@ -1005,98 +804,311 @@ func (h *apiServer) PublishCallKey(w http.ResponseWriter, r *http.Request, callI
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	call, rights, ok := loadCall(ctx, w, q, callId, session.AccountID, true)
-	if !ok {
-		return
-	}
-	if !rights.join {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if call.State != "active" {
-		writeConflict(w, gen.CallEnded)
-		return
-	}
-	seat, ok := seatOf(ctx, w, q, call, session.AccountID)
-	if !ok {
-		return
-	}
-	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.ID != seat.DeviceID || signer.State != "active")) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if int32(payload.Generation) != call.KeyGeneration+1 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	seats, err := q.ListSeatDevices(ctx, call.ID)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	given := make([]pgtype.UUID, 0, len(payload.Envelopes))
-	for _, envelope := range payload.Envelopes {
-		recipient := toPG(envelope.RecipientDeviceId)
-		if slices.Contains(given, recipient) || !slices.Contains(seats, recipient) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		given = append(given, recipient)
-	}
-	if len(given) != len(seats) {
-		// Someone joined or left while the client was preparing the envelopes.
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err = q.InsertCallKeyGeneration(ctx, sqlc.InsertCallKeyGenerationParams{CallID: call.ID, Generation: int32(payload.Generation), CreatedByDevice: signer.ID}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	for _, envelope := range payload.Envelopes {
-		sealed, validSealed := unb64(envelope.Sealed, 0)
-		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
-		recipient := toPG(envelope.RecipientDeviceId)
-		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
-			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
-				RecipientDeviceID: uuidString(recipient), DomainID: "call:" + uuidString(call.ID), Generation: uint32(payload.Generation), Sealed: sealed,
-			}, signature) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if err = q.InsertCallKeyEnvelope(ctx, sqlc.InsertCallKeyEnvelopeParams{
-			CallID: call.ID, Generation: int32(payload.Generation), RecipientDeviceID: recipient,
-			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
-		}); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-	}
-	if err = q.AdvanceCallKey(ctx, sqlc.AdvanceCallKeyParams{ID: call.ID, KeyGeneration: int32(payload.Generation)}); err == nil {
-		call.KeyGeneration = int32(payload.Generation)
-		err = calls.Announce(ctx, q, call)
-	}
 	var response gen.Call
-	if err == nil {
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		call, rights, err := loadCallTx(ctx, w, q, callId, session.AccountID, true)
+		if err != nil {
+			return err
+		}
+		if !rights.join {
+			return statusError(http.StatusForbidden)
+		}
+		if call.State != "active" {
+			return callConflict(gen.CallEnded)
+		}
+		seat, err := seatTx(ctx, w, q, call, session.AccountID)
+		if err != nil {
+			return err
+		}
+		signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.ID != seat.DeviceID || signer.State != "active")) {
+			return statusError(http.StatusForbidden)
+		}
+		if err != nil {
+			return err
+		}
+		if int32(payload.Generation) != call.KeyGeneration+1 {
+			return statusError(http.StatusConflict)
+		}
+		seats, err := q.ListSeatDevices(ctx, call.ID)
+		if err != nil {
+			return err
+		}
+		items := toGrantItems(payload.Envelopes)
+		if err = checkEnvelopeRecipients(items, seats); err != nil {
+			return err
+		}
+		if err = storeCallKey(ctx, q, call, signer, payload.Generation, items); err != nil {
+			return err
+		}
+		call.KeyGeneration = int32(payload.Generation)
+		if err = calls.Announce(ctx, q, call); err != nil {
+			return err
+		}
 		response, err = buildCall(ctx, q, call, rights, session.AccountID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondCallError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// respondCallError is respondError for call handlers: a callConflict becomes
+// the 409 body clients use to tell why the call cannot proceed.
+func respondCallError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var conflict callConflict
+	if errors.As(err, &conflict) {
+		writeConflict(w, gen.CallConflictCode(conflict))
+		return true
+	}
+	return respondError(w, r, err)
+}
+
+// callRightsTx is resolveCallRights for use inside inTx: when it has already
+// answered (404 and the like) it returns errResponded.
+func callRightsTx(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, conversationID, accountID pgtype.UUID) (callRights, error) {
+	rights, ok := resolveCallRights(ctx, w, q, conversationID, accountID)
+	if !ok {
+		return rights, errResponded
+	}
+	return rights, nil
+}
+
+// loadCallTx is loadCall for use inside inTx.
+func loadCallTx(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, id openapi_types.UUID, account pgtype.UUID, lock bool) (sqlc.Call, callRights, error) {
+	call, rights, ok := loadCall(ctx, w, q, id, account, lock)
+	if !ok {
+		return call, rights, errResponded
+	}
+	return call, rights, nil
+}
+
+// seatTx is seatOf for use inside inTx.
+func seatTx(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID) (sqlc.CallAdmission, error) {
+	seat, ok := seatOf(ctx, w, q, call, account)
+	if !ok {
+		return seat, errResponded
+	}
+	return seat, nil
+}
+
+// chooseInvitees validates who a call should ring. Every requested person must
+// be eligible, not the caller and listed once. A DM with no explicit list rings
+// the other person. It reports false for an invalid request.
+func chooseInvitees(requested *[]openapi_types.UUID, eligible []pgtype.UUID, self pgtype.UUID, conversationKind string) ([]pgtype.UUID, bool) {
+	var invitees []pgtype.UUID
+	if requested != nil {
+		for _, id := range *requested {
+			invitee := toPG(id)
+			if invitee == self || !slices.Contains(eligible, invitee) || slices.Contains(invitees, invitee) {
+				return nil, false
+			}
+			invitees = append(invitees, invitee)
+		}
+	}
+	if conversationKind == "dm" && len(invitees) == 0 {
+		for _, id := range eligible {
+			if id != self {
+				invitees = append(invitees, id)
+			}
+		}
+	}
+	return invitees, true
+}
+
+// createCall opens the call and, in the same transaction, invites, notifies and
+// announces it. A conversation can have one active call, so a second is a 409.
+func createCall(ctx context.Context, q *sqlc.Queries, conversation sqlc.Conversation, starter pgtype.UUID, room string, invitees []pgtype.UUID) (sqlc.Call, error) {
+	call, err := q.CreateCall(ctx, sqlc.CreateCallParams{ConversationID: conversation.ID, StartedBy: starter, RoomName: room})
+	if isUniqueViolation(err) {
+		return call, statusError(http.StatusConflict)
+	}
+	if err != nil {
+		return call, err
+	}
+	for _, invitee := range invitees {
+		if err = q.UpsertCallInvitation(ctx, sqlc.UpsertCallInvitationParams{CallID: call.ID, AccountID: invitee}); err != nil {
+			return call, err
+		}
+		if err = notifyAccount(ctx, q, invitee, "call_invite", call.ID, conversation.ProjectID, conversation.ID); err != nil {
+			return call, err
+		}
+	}
+	if len(invitees) > 0 {
+		err = emitEvent(ctx, q, invitees, eventSpec{Type: "call.invited", ResourceID: call.ID, ProjectID: conversation.ProjectID, ConversationID: conversation.ID})
+		if err != nil {
+			return call, err
+		}
+	}
+	return call, calls.Announce(ctx, q, call)
+}
+
+// requireJoiningDevice checks the device the caller wants to join with. Media
+// is end-to-end encrypted: a seat needs an active device of the caller to seal
+// the call key for. There is no unencrypted way in.
+func requireJoiningDevice(ctx context.Context, q *sqlc.Queries, deviceID, account pgtype.UUID) error {
+	device, err := q.GetDevice(ctx, deviceID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (device.AccountID != account || device.State != "active" || device.Kind != "device")) {
+		return statusError(http.StatusBadRequest)
+	}
+	return err
+}
+
+// callInvitation is what the account's invitation row says about joining.
+type callInvitation struct {
+	exists  bool // a row exists, so joining must mark it accepted
+	invited bool // the account started the call or holds a live invitation
+}
+
+// lookupCallInvitation reads the account's standing in a call it wants to join.
+func lookupCallInvitation(ctx context.Context, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID) (callInvitation, error) {
+	result := callInvitation{invited: call.StartedBy == account}
+	row, err := q.GetCallInvitation(ctx, sqlc.GetCallInvitationParams{CallID: call.ID, AccountID: account})
+	switch {
+	case err == nil:
+		result.exists = true
+		if row.State == "pending" || row.State == "accepted" {
+			result.invited = true
+		}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return result, err
+	}
+	return result, nil
+}
+
+// admitToCall gives the session a seat: renews it on a reconnect, takes it over
+// for another device when asked to, or counts the seats against the limit. The
+// caller holds the call row lock.
+func admitToCall(ctx context.Context, q *sqlc.Queries, call sqlc.Call, session sqlc.FindActiveSessionByTokenHashRow, deviceID pgtype.UUID, transfer bool) error {
+	existing, err := q.ActiveAdmissionForAccount(ctx, session.AccountID)
+	switch {
+	case err == nil && existing.CallID != call.ID:
+		return callConflict(gen.InOtherCall)
+	case err == nil:
+		// Same call: a reconnect of this session renews the seat; another
+		// device must ask to take it over explicitly.
+		if existing.SessionID != session.ID && !transfer {
+			return callConflict(gen.OtherDevice)
+		}
+		_, err = q.RenewAdmission(ctx, sqlc.RenewAdmissionParams{ID: existing.ID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
+	case errors.Is(err, pgx.ErrNoRows):
+		seats, countErr := q.CountCallSeats(ctx, call.ID)
+		if countErr != nil {
+			return countErr
+		}
+		if seats >= calls.MaxParticipants {
+			return callConflict(gen.CallFull)
+		}
+		_, err = q.InsertAdmission(ctx, sqlc.InsertAdmissionParams{CallID: call.ID, AccountID: session.AccountID, SessionID: session.ID, DeviceID: deviceID, Seconds: float64(calls.ReservationSeconds)})
+	}
+	if isUniqueViolation(err) {
+		return callConflict(gen.InOtherCall)
+	}
+	return err
+}
+
+// setCallInvitationState moves an invitation to a new state and announces it.
+// Someone who was never invited gets a 404.
+func setCallInvitationState(ctx context.Context, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID, state string) error {
+	changed, err := q.SetCallInvitationState(ctx, sqlc.SetCallInvitationStateParams{CallID: call.ID, AccountID: account, State: state})
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return statusError(http.StatusNotFound)
+	}
+	return calls.Announce(ctx, q, call)
+}
+
+// acquireScreenShare takes the call's single screen-share slot for an account
+// that holds a seat in it. The caller holds the call row lock.
+func acquireScreenShare(ctx context.Context, q *sqlc.Queries, call sqlc.Call, account pgtype.UUID) error {
+	seat, err := q.ActiveAdmissionForAccount(ctx, account)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && seat.CallID != call.ID) {
+		return callConflict(gen.NotInCall)
+	}
+	if err != nil {
+		return err
+	}
+	taken, err := q.AcquireScreenShare(ctx, sqlc.AcquireScreenShareParams{ID: call.ID, ScreenSharerID: account})
+	if err != nil {
+		return err
+	}
+	if taken == 0 {
+		return callConflict(gen.ScreenShareTaken)
+	}
+	return nil
+}
+
+// webhookEffects are the media-server actions a webhook calls for once its
+// database changes have committed.
+type webhookEffects struct {
+	roomName, identity string
+	kick, deleteRoom   bool
+}
+
+// reconcileWebhook applies one LiveKit event to the database. An event that is
+// a replay or names no known call ends in statusError(204): the transaction
+// rolls back and LiveKit is told the event was handled.
+func reconcileWebhook(ctx context.Context, q *sqlc.Queries, event *livekit.WebhookEvent) (webhookEffects, error) {
+	effects := webhookEffects{roomName: event.GetRoom().GetName(), identity: event.GetParticipant().GetIdentity()}
+	if event.GetId() != "" {
+		fresh, err := q.RecordWebhookEvent(ctx, event.GetId())
+		if err != nil {
+			return effects, err
+		}
+		if fresh == 0 {
+			return effects, statusError(http.StatusNoContent)
+		}
+	}
+	call, err := q.GetCallByRoom(ctx, effects.roomName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return effects, statusError(http.StatusNoContent)
+	}
+	if err == nil {
+		call, err = q.LockCall(ctx, call.ID)
+	}
+	if err != nil {
+		return effects, err
+	}
+	account, parseErr := uuid.Parse(effects.identity)
+	switch event.GetEvent() {
+	case "participant_joined":
+		if parseErr != nil {
+			effects.kick = true
+		} else {
+			effects.kick, err = calls.ParticipantJoined(ctx, q, call, pgUUID(account))
+		}
+	case "participant_left":
+		if parseErr == nil && call.State == "active" {
+			effects.deleteRoom, err = calls.ParticipantLeft(ctx, q, call, pgUUID(account))
+		}
+	case "room_finished":
+		_, err = calls.End(ctx, q, call, "room_finished")
+	}
+	return effects, err
+}
+
+// storeCallKey records the next key generation of a call and its envelopes,
+// refusing (400) any envelope whose signer, recipient or size does not check
+// out, then moves the call to the new generation.
+func storeCallKey(ctx context.Context, q *sqlc.Queries, call sqlc.Call, signer sqlc.Device, generation int, items []grantItem) error {
+	if err := q.InsertCallKeyGeneration(ctx, sqlc.InsertCallKeyGenerationParams{CallID: call.ID, Generation: int32(generation), CreatedByDevice: signer.ID}); err != nil {
+		return err
+	}
+	domainID := "call:" + uuidString(call.ID)
+	for _, item := range items {
+		sealed, signature, valid := openKeyEnvelope(signer.SignPublicKey, domainID, item, generation)
+		if !valid {
+			return statusError(http.StatusBadRequest)
+		}
+		if err := q.InsertCallKeyEnvelope(ctx, sqlc.InsertCallKeyEnvelopeParams{
+			CallID: call.ID, Generation: int32(generation), RecipientDeviceID: item.recipient,
+			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
+		}); err != nil {
+			return err
+		}
+	}
+	return q.AdvanceCallKey(ctx, sqlc.AdvanceCallKeyParams{ID: call.ID, KeyGeneration: int32(generation)})
 }

@@ -36,6 +36,70 @@ func unb64(value string, exactly int) ([]byte, bool) {
 
 func uuidString(id pgtype.UUID) string { return uuid.UUID(id.Bytes).String() }
 
+// envelopeInput is one sealed key in a request body; the generated request
+// types for publishing and granting keys share this exact shape.
+type envelopeInput = struct {
+	RecipientDeviceId openapi_types.UUID `json:"recipientDeviceId"`
+
+	// Sealed Unpadded base64url (RFC 4648 section 5) of binary data
+	Sealed gen.Base64Url `json:"sealed"`
+
+	// Signature Unpadded base64url (RFC 4648 section 5) of binary data
+	Signature gen.Base64Url `json:"signature"`
+}
+
+func toGrantItems(envelopes []envelopeInput) []grantItem {
+	items := make([]grantItem, len(envelopes))
+	for i, envelope := range envelopes {
+		items[i] = grantItem{recipient: toPG(envelope.RecipientDeviceId), sealed: envelope.Sealed, signature: envelope.Signature}
+	}
+	return items
+}
+
+// ownActiveDevice loads one of the caller's own active devices, the only kind
+// that may sign keys. Anything else is a 403, whether it does not exist or
+// belongs to someone else.
+func ownActiveDevice(ctx context.Context, q *sqlc.Queries, id, account pgtype.UUID) (sqlc.Device, error) {
+	device, err := q.GetDevice(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (device.AccountID != account || device.State != "active" || device.Kind != "device")) {
+		return device, statusError(http.StatusForbidden)
+	}
+	return device, err
+}
+
+// checkEnvelopeRecipients requires exactly one envelope per required device:
+// 400 for one addressed to someone who must not hold the key (or twice to one
+// device), 409 when the set is incomplete because membership changed while the
+// client was preparing the envelopes.
+func checkEnvelopeRecipients(items []grantItem, required []pgtype.UUID) error {
+	given := make([]pgtype.UUID, 0, len(items))
+	for _, item := range items {
+		if slices.Contains(given, item.recipient) || !slices.Contains(required, item.recipient) {
+			return statusError(http.StatusBadRequest)
+		}
+		given = append(given, item.recipient)
+	}
+	if len(given) != len(required) {
+		return statusError(http.StatusConflict)
+	}
+	return nil
+}
+
+// openKeyEnvelope decodes an envelope and checks that signKey signed exactly
+// this recipient, domain and generation.
+func openKeyEnvelope(signKey []byte, domainID string, item grantItem, generation int) (sealed, signature []byte, ok bool) {
+	sealed, validSealed := unb64(item.sealed, 0)
+	signature, validSignature := unb64(item.signature, ed25519.SignatureSize)
+	if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes {
+		return nil, nil, false
+	}
+	envelope := keys.KeyEnvelope{RecipientDeviceID: uuidString(item.recipient), DomainID: domainID, Generation: uint32(generation), Sealed: sealed}
+	if !keys.VerifyKeyEnvelope(signKey, envelope, signature) {
+		return nil, nil, false
+	}
+	return sealed, signature, true
+}
+
 func toDevice(row sqlc.Device) gen.Device {
 	device := gen.Device{
 		Id: fromPG(row.ID), Name: row.Name, Kind: gen.DeviceKind(row.Kind), State: gen.DeviceState(row.State),
@@ -468,95 +532,30 @@ func (h *apiServer) AuthorizeDevice(w http.ResponseWriter, r *http.Request, devi
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	target, err := q.GetDevice(ctx, toPG(deviceId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	var (
-		signer     ed25519.PublicKey
-		authorizer pgtype.UUID
-	)
-	if payload.AuthorizerDeviceId == nil {
-		// The trust root signs: only an administrator can present it.
-		if !session.IsAdmin {
-			w.WriteHeader(http.StatusForbidden)
-			return
+	var target sqlc.Device
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if target, err = q.GetDevice(ctx, toPG(deviceId)); errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
+		} else if err != nil {
+			return err
 		}
-		organizationID, orgOK := h.organizationOf(ctx, w, q, session.AccountID)
-		if !orgOK {
-			return
+		signer, authorizer, err := h.certifyingKey(ctx, w, q, session, target, payload.AuthorizerDeviceId)
+		if err != nil {
+			return err
 		}
-		if target.OrganizationID != organizationID {
-			w.WriteHeader(http.StatusNotFound)
-			return
+		if target.State != "pending" {
+			return statusError(http.StatusConflict)
 		}
-		root, rootErr := q.GetTrustRoot(ctx, organizationID)
-		if errors.Is(rootErr, pgx.ErrNoRows) {
-			w.WriteHeader(http.StatusConflict)
-			return
+		if !keys.VerifyDeviceCertificate(signer, keys.DeviceCertificate{
+			AccountID: uuidString(target.AccountID), DeviceID: uuidString(target.ID),
+			SignPublicKey: target.SignPublicKey, BoxPublicKey: target.BoxPublicKey,
+		}, certificate) {
+			return statusError(http.StatusBadRequest)
 		}
-		if rootErr != nil {
-			serverError(w, r, rootErr)
-			return
-		}
-		signer = root.RootSignPublicKey
-	} else {
-		// An existing device of the same person vouches for the new one.
-		if target.AccountID != session.AccountID || target.Kind != "device" {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		existing, getErr := q.GetDevice(ctx, toPG(*payload.AuthorizerDeviceId))
-		if errors.Is(getErr, pgx.ErrNoRows) || (getErr == nil && (existing.AccountID != session.AccountID || existing.State != "active" || existing.Kind != "device")) {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		if getErr != nil {
-			serverError(w, r, getErr)
-			return
-		}
-		signer, authorizer = existing.SignPublicKey, existing.ID
-	}
-	if target.State != "pending" {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if !keys.VerifyDeviceCertificate(signer, keys.DeviceCertificate{
-		AccountID: uuidString(target.AccountID), DeviceID: uuidString(target.ID),
-		SignPublicKey: target.SignPublicKey, BoxPublicKey: target.BoxPublicKey,
-	}, certificate) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	changed, err := q.ActivateDevice(ctx, sqlc.ActivateDeviceParams{ID: target.ID, Certificate: certificate, AuthorizerDeviceID: authorizer})
-	if err == nil && changed == 0 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		target.State = "active"
-		err = refreshAccountDomains(ctx, q, target)
-	}
-	if err == nil {
-		err = emitEvent(ctx, q, []pgtype.UUID{target.AccountID}, eventSpec{Type: "device.changed", ResourceID: target.ID})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return activateDevice(ctx, q, target, certificate, authorizer)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	activated, err := sqlc.New(h.auth.pool).GetDevice(ctx, target.ID)
@@ -574,33 +573,23 @@ func (h *apiServer) RevokeDevice(w http.ResponseWriter, r *http.Request, deviceI
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	target, err := q.GetDevice(ctx, toPG(deviceId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && target.AccountID != session.AccountID && !session.IsAdmin) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if _, err = q.RevokeDevice(ctx, target.ID); err == nil {
-		err = refreshAccountDomains(ctx, q, target)
-	}
-	if err == nil {
-		err = emitEvent(ctx, q, []pgtype.UUID{target.AccountID}, eventSpec{Type: "device.changed", ResourceID: target.ID})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		target, err := q.GetDevice(ctx, toPG(deviceId))
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && target.AccountID != session.AccountID && !session.IsAdmin) {
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err = q.RevokeDevice(ctx, target.ID); err != nil {
+			return err
+		}
+		if err = refreshAccountDomains(ctx, q, target); err != nil {
+			return err
+		}
+		return emitEvent(ctx, q, []pgtype.UUID{target.AccountID}, eventSpec{Type: "device.changed", ResourceID: target.ID})
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -658,39 +647,29 @@ func (h *apiServer) CreateKeyDomain(w http.ResponseWriter, r *http.Request, proj
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
-	if !ok {
-		return
-	}
-	if access.access.Kind != "internal" {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	organizationID, err := q.GetProjectOrganization(ctx, pgUUID(projectId))
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	domain, err := q.CreateKeyDomain(ctx, sqlc.CreateKeyDomainParams{OrganizationID: organizationID, ProjectID: pgUUID(projectId), Kind: string(payload.Kind)})
-	if isUniqueViolation(err) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		err = announceDomain(ctx, q, domain)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, ok := loadAccess(ctx, w, q, pgUUID(projectId), session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		if access.access.Kind != "internal" {
+			return statusError(http.StatusForbidden)
+		}
+		organizationID, err := q.GetProjectOrganization(ctx, pgUUID(projectId))
+		if err != nil {
+			return err
+		}
+		domain, err = q.CreateKeyDomain(ctx, sqlc.CreateKeyDomainParams{OrganizationID: organizationID, ProjectID: pgUUID(projectId), Kind: string(payload.Kind)})
+		if isUniqueViolation(err) {
+			return statusError(http.StatusConflict)
+		}
+		if err != nil {
+			return err
+		}
+		return announceDomain(ctx, q, domain)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
@@ -722,6 +701,9 @@ func (h *apiServer) ListKeyDomains(w http.ResponseWriter, r *http.Request, proje
 	writeJSON(w, http.StatusOK, domains)
 }
 
+// PublishKeyGeneration stores the next generation of a domain's key, sealed
+// for exactly the devices that must hold it. The server checks who may receive
+// it and who sealed it; it never sees the key.
 func (h *apiServer) PublishKeyGeneration(w http.ResponseWriter, r *http.Request, keyDomainId gen.KeyDomainId) {
 	session, ok := h.mutator(w, r)
 	if !ok {
@@ -733,92 +715,44 @@ func (h *apiServer) PublishKeyGeneration(w http.ResponseWriter, r *http.Request,
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	// The domain row lock makes "next generation" and "recipient set is
-	// complete" one atomic decision.
-	domain, err := q.LockKeyDomain(ctx, toPG(keyDomainId))
-	if errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if !requireReader(ctx, w, q, domain, session.AccountID) {
-		return
-	}
-	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if int32(payload.Generation) != domain.CurrentGeneration+1 {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	required, err := authorizedDevices(ctx, q, domain)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	given := make([]pgtype.UUID, 0, len(payload.Envelopes))
-	for _, envelope := range payload.Envelopes {
-		recipient := toPG(envelope.RecipientDeviceId)
-		if slices.Contains(given, recipient) || !slices.Contains(required, recipient) {
-			// An envelope for someone who must not hold this key (or twice for one device).
-			w.WriteHeader(http.StatusBadRequest)
-			return
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		// The domain row lock makes "next generation" and "recipient set is
+		// complete" one atomic decision.
+		var err error
+		if domain, err = q.LockKeyDomain(ctx, toPG(keyDomainId)); errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
+		} else if err != nil {
+			return err
 		}
-		given = append(given, recipient)
-	}
-	if len(given) != len(required) {
-		// Membership or devices changed while the client was preparing envelopes.
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err = q.InsertKeyGeneration(ctx, sqlc.InsertKeyGenerationParams{DomainID: domain.ID, Generation: int32(payload.Generation), CreatedByDevice: signer.ID}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	for _, envelope := range payload.Envelopes {
-		sealed, validSealed := unb64(envelope.Sealed, 0)
-		signature, validSignature := unb64(envelope.Signature, ed25519.SignatureSize)
-		recipient := toPG(envelope.RecipientDeviceId)
-		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
-			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
-				RecipientDeviceID: uuidString(recipient), DomainID: uuidString(domain.ID), Generation: uint32(payload.Generation), Sealed: sealed,
-			}, signature) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+		if !requireReader(ctx, w, q, domain, session.AccountID) {
+			return errResponded
 		}
-		if err = q.InsertKeyEnvelope(ctx, sqlc.InsertKeyEnvelopeParams{
-			DomainID: domain.ID, Generation: int32(payload.Generation), RecipientDeviceID: recipient,
-			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
-		}); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+		signer, err := ownActiveDevice(ctx, q, toPG(payload.SignerDeviceId), session.AccountID)
+		if err != nil {
+			return err
 		}
-	}
-	if err = q.AdvanceKeyDomain(ctx, sqlc.AdvanceKeyDomainParams{ID: domain.ID, CurrentGeneration: int32(payload.Generation)}); err == nil {
+		if int32(payload.Generation) != domain.CurrentGeneration+1 {
+			return statusError(http.StatusConflict)
+		}
+		required, err := authorizedDevices(ctx, q, domain)
+		if err != nil {
+			return err
+		}
+		items := toGrantItems(payload.Envelopes)
+		if err = checkEnvelopeRecipients(items, required); err != nil {
+			return err
+		}
+		if err = storeKeyGeneration(ctx, q, domain, signer, payload.Generation, items); err != nil {
+			return err
+		}
+		if err = q.AdvanceKeyDomain(ctx, sqlc.AdvanceKeyDomainParams{ID: domain.ID, CurrentGeneration: int32(payload.Generation)}); err != nil {
+			return err
+		}
 		domain.CurrentGeneration, domain.State = int32(payload.Generation), "ok"
-		err = announceDomain(ctx, q, domain)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return announceDomain(ctx, q, domain)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
@@ -1002,56 +936,31 @@ func (h *apiServer) GrantKeyEnvelopes(w http.ResponseWriter, r *http.Request, ke
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	if _, err = q.LockKeyDomain(ctx, toPG(keyDomainId)); errors.Is(err, pgx.ErrNoRows) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	} else if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	domain, ok := h.domainForReader(ctx, w, q, keyDomainId, session.AccountID)
-	if !ok {
-		return
-	}
-	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if payload.Generation < 1 || int32(payload.Generation) > domain.CurrentGeneration {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	items := make([]grantItem, len(payload.Envelopes))
-	for i, envelope := range payload.Envelopes {
-		items[i] = grantItem{recipient: toPG(envelope.RecipientDeviceId), sealed: envelope.Sealed, signature: envelope.Signature}
-	}
-	if status, _, grantErr := applyGrant(ctx, q, domain, signer, payload.Generation, items); grantErr != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	} else if status != 0 {
-		w.WriteHeader(status)
-		return
-	}
-	if err = refreshDomainAfterGrant(ctx, q, domain); err == nil {
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.LockKeyDomain(ctx, toPG(keyDomainId)); errors.Is(err, pgx.ErrNoRows) {
+			return statusError(http.StatusNotFound)
+		} else if err != nil {
+			return err
+		}
+		var ok bool
+		if domain, ok = h.domainForReader(ctx, w, q, keyDomainId, session.AccountID); !ok {
+			return errResponded
+		}
+		signer, err := ownActiveDevice(ctx, q, toPG(payload.SignerDeviceId), session.AccountID)
+		if err != nil {
+			return err
+		}
+		if _, err = applyGrant(ctx, q, domain, signer, payload.Generation, toGrantItems(payload.Envelopes)); err != nil {
+			return err
+		}
+		if err = refreshDomainAfterGrant(ctx, q, domain); err != nil {
+			return err
+		}
 		domain, err = q.GetKeyDomain(ctx, domain.ID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
@@ -1094,43 +1003,32 @@ func (h *apiServer) CreateConversationKeyDomain(w http.ResponseWriter, r *http.R
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	conversation, err := q.GetConversation(ctx, toPG(conversationId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh)) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if conversation.Kind != "dm" {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
-	if !ok {
-		return
-	}
-	domain, err := q.CreateDMKeyDomain(ctx, sqlc.CreateDMKeyDomainParams{OrganizationID: organizationID, ConversationID: conversation.ID})
-	if isUniqueViolation(err) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		err = announceDomain(ctx, q, domain)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		conversation, err := q.GetConversation(ctx, toPG(conversationId))
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (session.AccountID != conversation.DmLow && session.AccountID != conversation.DmHigh)) {
+			return statusError(http.StatusNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if conversation.Kind != "dm" {
+			return statusError(http.StatusForbidden)
+		}
+		organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		domain, err = q.CreateDMKeyDomain(ctx, sqlc.CreateDMKeyDomainParams{OrganizationID: organizationID, ConversationID: conversation.ID})
+		if isUniqueViolation(err) {
+			return statusError(http.StatusConflict)
+		}
+		if err != nil {
+			return err
+		}
+		return announceDomain(ctx, q, domain)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
@@ -1175,30 +1073,23 @@ func (h *apiServer) CreateSprintKeyDomain(w http.ResponseWriter, r *http.Request
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
-	if !ok {
-		return
-	}
-	domain, err := q.CreateSprintKeyDomain(ctx, organizationID)
-	if isUniqueViolation(err) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-	if err == nil {
-		err = announceDomain(ctx, q, domain)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+		if !ok {
+			return errResponded
+		}
+		var err error
+		domain, err = q.CreateSprintKeyDomain(ctx, organizationID)
+		if isUniqueViolation(err) {
+			return statusError(http.StatusConflict)
+		}
+		if err != nil {
+			return err
+		}
+		return announceDomain(ctx, q, domain)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toKeyDomain(domain))
@@ -1209,47 +1100,36 @@ type grantItem struct {
 	sealed, signature string
 }
 
-// applyGrant stores envelopes for authorized devices that lack the generation.
-// It returns a non-zero HTTP status when a request must be refused, and the
-// devices that received a key.
-func applyGrant(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain, signer sqlc.Device, generation int, items []grantItem) (int, []pgtype.UUID, error) {
+// applyGrant stores envelopes for authorized devices that lack the generation
+// and returns the devices that received a key. A request that must be refused
+// comes back as a statusError.
+func applyGrant(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain, signer sqlc.Device, generation int, items []grantItem) ([]pgtype.UUID, error) {
 	if generation < 1 || int32(generation) > domain.CurrentGeneration {
-		return http.StatusConflict, nil, nil
+		return nil, statusError(http.StatusConflict)
 	}
 	authorized, err := authorizedDevices(ctx, q, domain)
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	holders, err := q.ListEnvelopeRecipients(ctx, sqlc.ListEnvelopeRecipientsParams{DomainID: domain.ID, Generation: int32(generation)})
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	var granted []pgtype.UUID
 	for _, item := range items {
 		if !slices.Contains(authorized, item.recipient) {
-			return http.StatusBadRequest, nil, nil
+			return nil, statusError(http.StatusBadRequest)
 		}
 		if slices.Contains(holders, item.recipient) {
-			return http.StatusConflict, nil, nil
+			return nil, statusError(http.StatusConflict)
 		}
-		sealed, validSealed := unb64(item.sealed, 0)
-		signature, validSignature := unb64(item.signature, ed25519.SignatureSize)
-		if !validSealed || !validSignature || len(sealed) < 48 || len(sealed) > maxSealedKeyBytes ||
-			!keys.VerifyKeyEnvelope(signer.SignPublicKey, keys.KeyEnvelope{
-				RecipientDeviceID: uuidString(item.recipient), DomainID: uuidString(domain.ID), Generation: uint32(generation), Sealed: sealed,
-			}, signature) {
-			return http.StatusBadRequest, nil, nil
-		}
-		if err = q.InsertKeyEnvelope(ctx, sqlc.InsertKeyEnvelopeParams{
-			DomainID: domain.ID, Generation: int32(generation), RecipientDeviceID: item.recipient,
-			SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
-		}); err != nil {
-			return 0, nil, err
+		if err = storeKeyEnvelope(ctx, q, domain, signer, generation, item); err != nil {
+			return nil, err
 		}
 		holders = append(holders, item.recipient)
 		granted = append(granted, item.recipient)
 	}
-	return 0, granted, nil
+	return granted, nil
 }
 
 // recoveryAdmin answers 403 unless the caller is an administrator whose
@@ -1400,74 +1280,39 @@ func (h *apiServer) GrantRecoveryEnvelopes(w http.ResponseWriter, r *http.Reques
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	tx, err := h.auth.pool.Begin(ctx)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
-	organizationID, _, ok := h.recoveryAdmin(ctx, w, q, session)
-	if !ok {
-		return
-	}
-	domain, err := q.LockKeyDomain(ctx, toPG(keyDomainId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && domain.OrganizationID != organizationID) {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	signer, err := q.GetDevice(ctx, toPG(payload.SignerDeviceId))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (signer.AccountID != session.AccountID || signer.State != "active" || signer.Kind != "device")) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	items := make([]grantItem, len(payload.Envelopes))
-	for i, envelope := range payload.Envelopes {
-		items[i] = grantItem{recipient: toPG(envelope.RecipientDeviceId), sealed: envelope.Sealed, signature: envelope.Signature}
-	}
-	status, granted, err := applyGrant(ctx, q, domain, signer, payload.Generation, items)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if status != 0 {
-		w.WriteHeader(status)
-		return
-	}
-	for _, recipient := range granted {
-		device, getErr := q.GetDevice(ctx, recipient)
-		if getErr == nil {
-			err = q.InsertRecoveryAudit(ctx, sqlc.InsertRecoveryAuditParams{
-				OrganizationID: organizationID, ApproverAccountID: session.AccountID, ApproverDeviceID: signer.ID,
-				DomainID: domain.ID, Generation: int32(payload.Generation), RecipientDeviceID: device.ID, RecipientAccountID: device.AccountID,
-			})
-			if err == nil && device.AccountID != session.AccountID {
-				err = notifyAccount(ctx, q, device.AccountID, "recovery_access", domain.ID, pgtype.UUID{}, pgtype.UUID{})
-			}
-		} else {
-			err = getErr
+	var domain sqlc.KeyDomain
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		organizationID, _, ok := h.recoveryAdmin(ctx, w, q, session)
+		if !ok {
+			return errResponded
+		}
+		var err error
+		domain, err = q.LockKeyDomain(ctx, toPG(keyDomainId))
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && domain.OrganizationID != organizationID) {
+			return statusError(http.StatusNotFound)
 		}
 		if err != nil {
-			serverError(w, r, err)
-			return
+			return err
 		}
-	}
-	if err = refreshDomainAfterGrant(ctx, q, domain); err == nil {
+		signer, err := ownActiveDevice(ctx, q, toPG(payload.SignerDeviceId), session.AccountID)
+		if err != nil {
+			return err
+		}
+		granted, err := applyGrant(ctx, q, domain, signer, payload.Generation, toGrantItems(payload.Envelopes))
+		if err != nil {
+			return err
+		}
+		audit := recoveryGrantAudit{organizationID: organizationID, approver: session.AccountID, approverDevice: signer.ID, domain: domain.ID, generation: payload.Generation}
+		if err = audit.record(ctx, q, granted); err != nil {
+			return err
+		}
+		if err = refreshDomainAfterGrant(ctx, q, domain); err != nil {
+			return err
+		}
 		domain, err = q.GetKeyDomain(ctx, domain.ID)
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		serverError(w, r, err)
+		return err
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toKeyDomain(domain))
@@ -1533,4 +1378,113 @@ func announceDeviceRequest(ctx context.Context, q *sqlc.Queries, device sqlc.Dev
 		}
 		_ = notifyAccount(ctx, q, recipient, "device_request", device.ID, pgtype.UUID{}, pgtype.UUID{})
 	}
+}
+
+// certifyingKey picks who vouches for a new device and returns that signer's
+// public key plus the vouching device (invalid when the trust root signs). The
+// trust root signs for an administrator; otherwise an existing active device of
+// the same person does.
+func (h *apiServer) certifyingKey(ctx context.Context, w http.ResponseWriter, q *sqlc.Queries, session sqlc.FindActiveSessionByTokenHashRow, target sqlc.Device, authorizerID *openapi_types.UUID) (ed25519.PublicKey, pgtype.UUID, error) {
+	if authorizerID != nil {
+		// An existing device of the same person vouches for the new one.
+		if target.AccountID != session.AccountID || target.Kind != "device" {
+			return nil, pgtype.UUID{}, statusError(http.StatusForbidden)
+		}
+		existing, err := ownActiveDevice(ctx, q, toPG(*authorizerID), session.AccountID)
+		if err != nil {
+			return nil, pgtype.UUID{}, err
+		}
+		return existing.SignPublicKey, existing.ID, nil
+	}
+	// The trust root signs: only an administrator can present it.
+	if !session.IsAdmin {
+		return nil, pgtype.UUID{}, statusError(http.StatusForbidden)
+	}
+	organizationID, ok := h.organizationOf(ctx, w, q, session.AccountID)
+	if !ok {
+		return nil, pgtype.UUID{}, errResponded
+	}
+	if target.OrganizationID != organizationID {
+		return nil, pgtype.UUID{}, statusError(http.StatusNotFound)
+	}
+	root, err := q.GetTrustRoot(ctx, organizationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, pgtype.UUID{}, statusError(http.StatusConflict)
+	}
+	if err != nil {
+		return nil, pgtype.UUID{}, err
+	}
+	return root.RootSignPublicKey, pgtype.UUID{}, nil
+}
+
+// activateDevice marks a pending device active and tells everyone who must hear
+// about it: the domains it can now read and its owner's other devices.
+func activateDevice(ctx context.Context, q *sqlc.Queries, target sqlc.Device, certificate []byte, authorizer pgtype.UUID) error {
+	changed, err := q.ActivateDevice(ctx, sqlc.ActivateDeviceParams{ID: target.ID, Certificate: certificate, AuthorizerDeviceID: authorizer})
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return statusError(http.StatusConflict)
+	}
+	target.State = "active"
+	if err = refreshAccountDomains(ctx, q, target); err != nil {
+		return err
+	}
+	return emitEvent(ctx, q, []pgtype.UUID{target.AccountID}, eventSpec{Type: "device.changed", ResourceID: target.ID})
+}
+
+// storeKeyGeneration records a new generation and its envelopes, refusing
+// (400) any envelope whose signer, recipient or size does not check out.
+func storeKeyGeneration(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain, signer sqlc.Device, generation int, items []grantItem) error {
+	if err := q.InsertKeyGeneration(ctx, sqlc.InsertKeyGenerationParams{DomainID: domain.ID, Generation: int32(generation), CreatedByDevice: signer.ID}); err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err := storeKeyEnvelope(ctx, q, domain, signer, generation, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// storeKeyEnvelope verifies one envelope against the signer and stores it.
+func storeKeyEnvelope(ctx context.Context, q *sqlc.Queries, domain sqlc.KeyDomain, signer sqlc.Device, generation int, item grantItem) error {
+	sealed, signature, ok := openKeyEnvelope(signer.SignPublicKey, uuidString(domain.ID), item, generation)
+	if !ok {
+		return statusError(http.StatusBadRequest)
+	}
+	return q.InsertKeyEnvelope(ctx, sqlc.InsertKeyEnvelopeParams{
+		DomainID: domain.ID, Generation: int32(generation), RecipientDeviceID: item.recipient,
+		SignerDeviceID: signer.ID, Sealed: sealed, Signature: signature,
+	})
+}
+
+// recoveryGrantAudit is who restored which generation of which domain.
+type recoveryGrantAudit struct {
+	organizationID, approver, approverDevice, domain pgtype.UUID
+	generation                                       int
+}
+
+// record writes one audit row per device that received a key and tells the
+// owner, unless the owner is the approver.
+func (a recoveryGrantAudit) record(ctx context.Context, q *sqlc.Queries, recipients []pgtype.UUID) error {
+	for _, recipient := range recipients {
+		device, err := q.GetDevice(ctx, recipient)
+		if err != nil {
+			return err
+		}
+		if err = q.InsertRecoveryAudit(ctx, sqlc.InsertRecoveryAuditParams{
+			OrganizationID: a.organizationID, ApproverAccountID: a.approver, ApproverDeviceID: a.approverDevice,
+			DomainID: a.domain, Generation: int32(a.generation), RecipientDeviceID: device.ID, RecipientAccountID: device.AccountID,
+		}); err != nil {
+			return err
+		}
+		if device.AccountID != a.approver {
+			if err = notifyAccount(ctx, q, device.AccountID, "recovery_access", a.domain, pgtype.UUID{}, pgtype.UUID{}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
