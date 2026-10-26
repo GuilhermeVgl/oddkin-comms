@@ -15,6 +15,11 @@ import { bytes } from "./design/format";
 import { Icon } from "./design/icons";
 import { toast } from "./design/toast";
 import { useOptionalE2EE } from "./e2ee/E2EE";
+import {
+  describeDownloadFailure,
+  downloadEncryptedFile,
+  uploadEncryptedFile,
+} from "./e2ee/encryptedFiles";
 import { resources, type ContentCrypto } from "./e2ee/projectCrypto";
 import { useEvents } from "./events";
 
@@ -166,15 +171,36 @@ export function Attachments({
           };
         }
       }
-      await uploadFile(
-        client,
-        csrf,
-        context,
-        file,
-        setProgress,
-        undefined,
-        encryption,
-      );
+      const bodyKind = crypto?.fileKind();
+      if (
+        crypto !== null &&
+        bodyKind !== undefined &&
+        crypto.isEncrypted(bodyKind)
+      ) {
+        // Once the files domain has a key the server refuses plaintext bodies.
+        if (!crypto.canWrite(bodyKind))
+          throw new Error("encryption unavailable");
+        await uploadEncryptedFile({
+          client,
+          token: csrf,
+          context,
+          file,
+          crypto,
+          id: encryption?.id ?? window.crypto.randomUUID(),
+          nameEncryption: encryption,
+          onProgress: setProgress,
+        });
+      } else {
+        await uploadFile(
+          client,
+          csrf,
+          context,
+          file,
+          setProgress,
+          undefined,
+          encryption,
+        );
+      }
       await reload();
     } catch (error) {
       notify(describe(error));
@@ -184,6 +210,35 @@ export function Attachments({
   }
 
   async function download(item: Attachment) {
+    if (item.bodyEncrypted === true) {
+      try {
+        const crypto = await cryptoFor(false);
+        if (crypto === null) throw new Error("locked");
+        setProgress(0);
+        await downloadEncryptedFile({
+          client,
+          attachment: item,
+          name: names.get(item.id) ?? "arquivo",
+          crypto,
+          onProgress: setProgress,
+        });
+        toast("Arquivo decifrado e salvo.", { icon: "check" });
+      } catch (error) {
+        const failure = describeDownloadFailure(error);
+        notify(
+          failure === "unsupported"
+            ? "Este navegador não consegue gravar arquivos grandes em partes. Use um navegador baseado em Chromium."
+            : failure === "locked"
+              ? "Desbloqueie este navegador para baixar o arquivo."
+              : failure === "invalid"
+                ? "O arquivo falhou na verificação e nada foi salvo."
+                : "Não foi possível baixar o arquivo agora.",
+        );
+      } finally {
+        setProgress(null);
+      }
+      return;
+    }
     try {
       const url = await getDownloadUrl(client, item.id);
       const link = document.createElement("a");
@@ -247,8 +302,13 @@ export function Attachments({
           <div className="grow col" style={{ minWidth: 0 }}>
             <span className="nm">{names.get(item.id) ?? item.name}</span>
             <span className="sz">
-              {bytes(item.size)} · {item.uploaderEmail}
-              {item.encrypted ? " · cifrado de ponta a ponta" : ""}
+              {bytes(Number(item.contentSize ?? item.size))} ·{" "}
+              {item.uploaderEmail}
+              {item.bodyEncrypted === true
+                ? " · cifrado de ponta a ponta"
+                : item.encrypted
+                  ? " · nome cifrado, conteúdo sem cifra"
+                  : ""}
             </span>
           </div>
           <button

@@ -433,3 +433,5 @@ export type Crypto = Awaited<ReturnType<typeof createCrypto>>;
 export async function loadSodium(): Promise<Sodium> {
   return (await import("libsodium-wrappers-sumo")).default;
 }
+
+export * from "./files";

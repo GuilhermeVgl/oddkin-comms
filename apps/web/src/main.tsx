@@ -37,7 +37,41 @@ type Entry =
   | { kind: "reset"; token: string }
   | null;
 
-/** Links from e-mails carry a one-time token in the hash; read it once and clear it. */
+const ENTRY_KEY = "crewstead.pending-entry";
+
+/**
+ * The link's token leaves the address bar as soon as it is read, so it is kept
+ * for this tab until it is used: a reload on the invitation screen must not
+ * lose it. Cleared the moment the invitation is accepted or the reset is done.
+ */
+function rememberEntry(entry: Entry): void {
+  try {
+    if (entry === null) window.sessionStorage.removeItem(ENTRY_KEY);
+    else window.sessionStorage.setItem(ENTRY_KEY, JSON.stringify(entry));
+  } catch {
+    // Without storage a reload loses the link; the e-mail still has it.
+  }
+}
+
+function storedEntry(): Entry {
+  try {
+    const raw = window.sessionStorage.getItem(ENTRY_KEY);
+    if (raw === null) return null;
+    const value = JSON.parse(raw) as Entry;
+    if (
+      value?.kind === "invitation" &&
+      typeof value.invitation?.token === "string"
+    )
+      return value;
+    if (value?.kind === "reset" && typeof value.token === "string")
+      return value;
+  } catch {
+    // Unreadable: treat as absent.
+  }
+  return null;
+}
+
+/** Links from e-mails carry a one-time token in the hash; read it once and keep it until used. */
 function readEntry(): Entry {
   const hash = window.location.hash;
   const invitation = /^#accept-invitation\?(.*)$/.exec(hash);
@@ -46,16 +80,23 @@ function readEntry(): Entry {
     const email = params.get("email");
     const token = params.get("token");
     if (email !== null && token !== null && token.length === 43) {
-      return { kind: "invitation", invitation: { email, token } };
+      const entry: Entry = { kind: "invitation", invitation: { email, token } };
+      rememberEntry(entry);
+      return entry;
     }
-    return null;
+    return storedEntry();
   }
   const reset = /^#reset-password\?(.*)$/.exec(hash);
   if (reset !== null) {
     const token = new URLSearchParams(reset[1]).get("token");
-    if (token !== null && token.length === 43) return { kind: "reset", token };
+    if (token !== null && token.length === 43) {
+      const entry: Entry = { kind: "reset", token };
+      rememberEntry(entry);
+      return entry;
+    }
+    return storedEntry();
   }
-  return null;
+  return storedEntry();
 }
 
 const SKIP_KEY = "crewstead.gate.skipped";
@@ -123,7 +164,11 @@ function Authenticated({
 function App() {
   const client = useMemo(() => createApiClient(""), []);
   const [session, setSession] = useState<SessionState>({ status: "checking" });
-  const [entry, setEntry] = useState<Entry>(readEntry);
+  const [entry, setEntryState] = useState<Entry>(readEntry);
+  const setEntry = (next: Entry) => {
+    rememberEntry(next);
+    setEntryState(next);
+  };
   const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
@@ -157,7 +202,18 @@ function App() {
   }, [client]);
 
   let screen: React.ReactNode;
-  if (session.status === "checking") {
+  if (entry?.kind === "reset" && session.status !== "checking") {
+    // A reset ends every session, so whoever was signed in signs in again afterwards.
+    screen = (
+      <ResetPasswordScreen
+        onDone={() => {
+          setEntry(null);
+          setSession({ status: "anonymous" });
+        }}
+        token={entry.token}
+      />
+    );
+  } else if (session.status === "checking") {
     screen = <StatusScreen title="Preparando seu espaço…" />;
   } else if (session.status === "unavailable") {
     screen = (
@@ -177,7 +233,17 @@ function App() {
             setEntry(null);
             setSession({ status: "authenticated", account });
           }}
+          onConsumed={() => setEntry(null)}
           onSignIn={() => setSigningIn(true)}
+          onSwitchAccount={() => {
+            const token = readCookie(document.cookie, "crewstead_csrf");
+            const done = () => setSession({ status: "anonymous" });
+            if (token === null) done();
+            else
+              void logout(client, token)
+                .catch(() => undefined)
+                .then(done);
+          }}
         />
       );
     } else {
@@ -195,10 +261,6 @@ function App() {
         </EventsProvider>
       );
     }
-  } else if (entry?.kind === "reset") {
-    screen = (
-      <ResetPasswordScreen onDone={() => setEntry(null)} token={entry.token} />
-    );
   } else if (entry?.kind === "invitation" && !signingIn) {
     screen = (
       <InvitationScreen
@@ -207,6 +269,7 @@ function App() {
           setEntry(null);
           setSession({ status: "authenticated", account });
         }}
+        onConsumed={() => setEntry(null)}
         onSignIn={() => setSigningIn(true)}
       />
     );

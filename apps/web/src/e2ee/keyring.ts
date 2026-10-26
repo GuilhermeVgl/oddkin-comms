@@ -240,7 +240,7 @@ export class Keyring {
   /** Creates the missing domains of a project (internal members only; others skip). */
   async ensureDomains(projectId: string): Promise<KeyDomain[]> {
     let domains = await listKeyDomains(this.deps.client, projectId);
-    for (const kind of ["work", "chat"] as const) {
+    for (const kind of ["work", "chat", "files"] as const) {
       if (!domains.some((domain) => domain.kind === kind)) {
         try {
           await createKeyDomain(

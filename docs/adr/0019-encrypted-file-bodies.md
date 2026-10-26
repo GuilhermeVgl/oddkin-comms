@@ -2,7 +2,7 @@
 
 ## Estado
 
-Proposta com suporte inicial no servidor, **sem revisão criptográfica independente**; vale a ressalva do [ADR 0015](./0015-e2ee-key-directory.md). O cliente ainda precisa produzir e consumir o formato descrito abaixo. Hoje, a interface cifra apenas o nome do anexo.
+Implementada no servidor e no cliente, com testes unitários do formato, do envio em partes e da decifragem em stream, e testes de integração do servidor. **Sem revisão criptográfica independente**; vale a ressalva do [ADR 0015](./0015-e2ee-key-directory.md). Completa o que a [ADR 0013](./0013-attachments-multipart.md) e a [ADR 0016](./0016-client-side-encryption.md) deixaram pendente: até aqui só o nome do anexo era cifrado.
 
 ## Problema
 

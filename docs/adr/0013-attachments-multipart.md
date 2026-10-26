@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceita. O conteúdo ainda não é cifrado ([ADR 0012](./0012-work-and-chat-v1.md)).
+Aceita. O corpo passou a ser cifrado no cliente pela [ADR 0019](./0019-encrypted-file-bodies.md); este texto descreve o transporte, que continua valendo (o tamanho reservado é o cifrado).
 
 ## Decisão
 
