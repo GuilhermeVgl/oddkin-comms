@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { confirmDialog } from "../design/confirm";
 import { celebrate } from "../design/celebrate";
 import { celebrationSize } from "../design/gamify";
+import { doneColumn, startColumn } from "../columns";
 import { csrfToken } from "../errors";
 import { isDone, useWorkspace, type ProjectState } from "../workspace";
 
@@ -86,9 +87,8 @@ export function useItemActions() {
     async (state: ProjectState, item: WorkItem) => {
       const finished = isDone(state.columns, item.columnId);
       const target = finished
-        ? (state.columns.find((column) => column.category === "todo") ??
-          state.columns[0])
-        : state.columns.find((column) => column.category === "done");
+        ? startColumn(state.columns)
+        : doneColumn(state.columns);
       if (target === undefined) return false;
       return move(state, item, target.id);
     },

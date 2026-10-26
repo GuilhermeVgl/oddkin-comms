@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { localStore } from "./safeStorage";
 
 export type Theme = "papel" | "carvao";
 
@@ -14,20 +15,14 @@ const KEY = "crewstead.prefs.v1";
 const defaults: Prefs = { theme: "papel", motion: true, sound: false };
 
 function read(): Prefs {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (raw === null) return defaults;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return defaults;
-    const record = parsed as Record<string, unknown>;
-    return {
-      theme: record["theme"] === "carvao" ? "carvao" : "papel",
-      motion: record["motion"] !== false,
-      sound: record["sound"] === true,
-    };
-  } catch {
-    return defaults;
-  }
+  const parsed = localStore.getJSON(KEY);
+  if (typeof parsed !== "object" || parsed === null) return defaults;
+  const record = parsed as Record<string, unknown>;
+  return {
+    theme: record["theme"] === "carvao" ? "carvao" : "papel",
+    motion: record["motion"] !== false,
+    sound: record["sound"] === true,
+  };
 }
 
 let current: Prefs = read();
@@ -47,11 +42,7 @@ export function getPrefs(): Prefs {
 
 export function setPrefs(patch: Partial<Prefs>) {
   current = { ...current, ...patch };
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(current));
-  } catch {
-    // Storage can be blocked; the preference then lasts for this session.
-  }
+  localStore.setJSON(KEY, current);
   apply();
   listeners.forEach((listener) => listener());
   if (patch.motion !== undefined) motionListeners.forEach((fn) => fn());

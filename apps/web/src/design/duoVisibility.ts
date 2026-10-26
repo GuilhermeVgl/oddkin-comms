@@ -1,22 +1,13 @@
 import { useSyncExternalStore } from "react";
+import { localStore } from "./safeStorage";
 
 const KEY = "crewstead.showDuo";
-let visible = (() => {
-  try {
-    return window.localStorage.getItem(KEY) !== "false";
-  } catch {
-    return true;
-  }
-})();
+let visible = localStore.get(KEY) !== "false";
 const listeners = new Set<() => void>();
 
 export function setDuoVisible(next: boolean) {
   visible = next;
-  try {
-    window.localStorage.setItem(KEY, String(next));
-  } catch {
-    // The choice still lasts until this page is closed.
-  }
+  localStore.set(KEY, String(next));
   listeners.forEach((listener) => listener());
 }
 

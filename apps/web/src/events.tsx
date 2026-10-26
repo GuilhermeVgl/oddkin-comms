@@ -131,3 +131,18 @@ export function useEvents(handler: Listener) {
     return context.subscribe((event) => latest.current(event));
   }, [context]);
 }
+
+/** Whether an event (or a resync request) means a screen listening for these types must reload. */
+export function wantsReload(
+  event: DomainEvent | "resync",
+  types: readonly string[],
+): boolean {
+  return event === "resync" || types.includes(event.eventType);
+}
+
+/** Runs reload on a resync and whenever one of the event types arrives. */
+export function useReloadOn(types: readonly string[], reload: () => void) {
+  useEvents((event) => {
+    if (wantsReload(event, types)) reload();
+  });
+}

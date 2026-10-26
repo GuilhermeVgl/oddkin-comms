@@ -14,6 +14,8 @@ import { burst } from "../design/sprites";
 import { toast } from "../design/toast";
 import { useEvents } from "../events";
 import { useWorkspace } from "../workspace";
+import { go } from "../design/router";
+import { localStore } from "../design/safeStorage";
 
 type StatsValue = {
   stats: MyStats | null;
@@ -29,24 +31,15 @@ export function useStats(): StatsValue {
 }
 
 function readAnnounced(key: string): string[] | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((entry): entry is string => typeof entry === "string")
-      : null;
-  } catch {
-    return null;
-  }
+  const parsed = localStore.getJSON(key);
+  return Array.isArray(parsed)
+    ? parsed.filter((entry): entry is string => typeof entry === "string")
+    : null;
 }
 
 function writeAnnounced(key: string, ids: string[]) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(ids));
-  } catch {
-    // The badges just show again next time.
-  }
+  // If storage is blocked the badges just show again next time.
+  localStore.setJSON(key, ids);
 }
 
 /**
@@ -88,7 +81,7 @@ export function StatsProvider({
           toast(`Conquista: ${entry.title}`, {
             icon: entry.icon,
             ms: 4500,
-            act: ["Ver", () => (window.location.hash = "#/settings/perfil")],
+            act: ["Ver", () => go("settings/perfil")],
           });
         }, 600 * index);
       });

@@ -45,6 +45,14 @@ export function toast(message: string, options: ToastOptions = {}) {
   window.setTimeout(() => dismiss(id), options.ms ?? 3800);
 }
 
+/** A failure message, in the error style. */
+export function toastError(
+  message: string,
+  options: Omit<ToastOptions, "kind"> = {},
+) {
+  toast(message, { ...options, kind: "err" });
+}
+
 export function ToastHost() {
   const showDuo = useDuoVisible();
   const current = useSyncExternalStore(

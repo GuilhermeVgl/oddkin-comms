@@ -13,6 +13,7 @@ import { toast } from "../design/toast";
 import { csrfToken } from "../errors";
 import { useWorkspace } from "../workspace";
 import { useStats } from "./stats";
+import { localStore } from "../design/safeStorage";
 
 type Focus = {
   itemId: string;
@@ -28,30 +29,23 @@ const store = createStore<{ focus: Focus; now: number }>({
 });
 
 function restore(): Focus {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (raw === null) return null;
-    const value = JSON.parse(raw) as Partial<NonNullable<Focus>>;
-    if (
-      typeof value.itemId === "string" &&
-      typeof value.title === "string" &&
-      typeof value.minutes === "number" &&
-      typeof value.startedAt === "number"
-    )
-      return value as NonNullable<Focus>;
-  } catch {
-    // A broken record just means no focus block.
-  }
+  const value = localStore.getJSON(KEY) as Partial<NonNullable<Focus>> | null;
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    typeof value.itemId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.minutes === "number" &&
+    typeof value.startedAt === "number"
+  )
+    return value as NonNullable<Focus>;
+  // A broken record just means no focus block.
   return null;
 }
 
 function persist(focus: Focus) {
-  try {
-    if (focus === null) window.localStorage.removeItem(KEY);
-    else window.localStorage.setItem(KEY, JSON.stringify(focus));
-  } catch {
-    // Focus still runs; it just will not survive a reload.
-  }
+  if (focus === null) localStore.remove(KEY);
+  else localStore.setJSON(KEY, focus);
 }
 
 store.set({ focus: restore() });

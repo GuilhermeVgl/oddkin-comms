@@ -38,6 +38,7 @@ import {
 import type { ContentCrypto } from "./e2ee/projectCrypto";
 import { csrfToken, describeError } from "./errors";
 import { useEvents } from "./events";
+import { localStore } from "./design/safeStorage";
 
 type Client = ReturnType<typeof createApiClient>;
 
@@ -89,11 +90,7 @@ export function useWorkspace(): WorkspaceValue {
 const CURRENT_KEY = "crewstead.project";
 
 function storedProject(): string | null {
-  try {
-    return window.localStorage.getItem(CURRENT_KEY);
-  } catch {
-    return null;
-  }
+  return localStore.get(CURRENT_KEY);
 }
 
 function forbidden(error: unknown): boolean {
@@ -106,9 +103,7 @@ export function can(state: ProjectState, permission: string): boolean {
   return granted === undefined || granted.includes(permission);
 }
 
-export function isDone(columns: BoardColumn[], columnId: string): boolean {
-  return columns.find((column) => column.id === columnId)?.category === "done";
-}
+export { isDone } from "./columns";
 
 /**
  * Everything the screens share: projects with their boards, the sprints and
@@ -289,11 +284,7 @@ export function WorkspaceProvider({
 
   const setCurrentProjectId = useCallback((id: string) => {
     setCurrent(id);
-    try {
-      window.localStorage.setItem(CURRENT_KEY, id);
-    } catch {
-      // The selection then lasts for this session only.
-    }
+    localStore.set(CURRENT_KEY, id);
   }, []);
 
   const people = useMemo(() => {
