@@ -269,15 +269,16 @@ function routes(): Route[] {
         if (found === undefined) return empty(404);
         const input = body as Record<string, unknown>;
         if (input["version"] !== found.version) return empty(409);
-        const {
-          version: _version,
-          clearAssignee,
-          clearDueDate,
-          clearEpic,
-          clearSprint,
-          completeSubtasks: _c,
-          ...rest
-        } = input;
+        const rest: Record<string, unknown> = { ...input };
+        for (const key of ["version", "completeSubtasks"]) delete rest[key];
+        const { clearAssignee, clearDueDate, clearEpic, clearSprint } = input;
+        for (const key of [
+          "clearAssignee",
+          "clearDueDate",
+          "clearEpic",
+          "clearSprint",
+        ])
+          delete rest[key];
         Object.assign(found, rest, { version: found.version + 1 });
         if (clearAssignee === true) delete found.assigneeId;
         if (clearDueDate === true) delete found.dueDate;
@@ -343,6 +344,88 @@ function routes(): Route[] {
       ({ world, match }) => world.conversations[match[1] ?? ""] ?? [],
     ],
     ["GET", /^\/api\/v1\/sprints$/, ({ world }) => world.sprints],
+    [
+      "POST",
+      /^\/api\/v1\/sprints$/,
+      ({ world, body }) => {
+        const input = body as {
+          name: string;
+          goal?: string;
+          startsOn: string;
+          endsOn: string;
+        };
+        const sprint: Sprint = {
+          id: `s${world.sprints.length + 1}`,
+          name: input.name,
+          goal: input.goal ?? "",
+          startsOn: input.startsOn,
+          endsOn: input.endsOn,
+          state: "planned",
+          version: 1,
+          encrypted: false,
+          contentRevision: 0,
+        };
+        world.sprints.push(sprint);
+        return sprint;
+      },
+      201,
+    ],
+    [
+      "POST",
+      /^\/api\/v1\/sprints\/([^/]+)\/start$/,
+      ({ world, match }) => {
+        const sprint = world.sprints.find((entry) => entry.id === match[1]);
+        if (sprint === undefined) return empty(404);
+        sprint.state = "active";
+        return sprint;
+      },
+    ],
+    [
+      "GET",
+      /^\/api\/v1\/sprints\/([^/]+)\/close-preview$/,
+      ({ world, match }) => {
+        const inSprint = world.items.filter(
+          (entry) => entry.sprintId === match[1],
+        );
+        const done = new Set(
+          Object.values(world.columns)
+            .flat()
+            .filter((column) => column.category === "done")
+            .map((column) => column.id),
+        );
+        return {
+          completed: inSprint.filter((entry) => done.has(entry.columnId)),
+          pending: inSprint.filter((entry) => !done.has(entry.columnId)),
+          blocked: false,
+        };
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/v1\/sprints\/([^/]+)\/close$/,
+      ({ world, match, body }) => {
+        const sprint = world.sprints.find((entry) => entry.id === match[1]);
+        if (sprint === undefined) return empty(404);
+        const input = body as {
+          destinationSprintId?: string;
+          decisions: { workItemId: string; destination: string }[];
+        };
+        for (const decision of input.decisions) {
+          const item = world.items.find(
+            (entry) => entry.id === decision.workItemId,
+          );
+          if (item === undefined) continue;
+          if (
+            decision.destination === "next" &&
+            input.destinationSprintId !== undefined
+          )
+            item.sprintId = input.destinationSprintId;
+          else delete item.sprintId;
+        }
+        sprint.state = "closed";
+        return empty();
+      },
+    ],
     ["GET", /^\/api\/v1\/e2ee\/sprint-domain$/, () => empty(404)],
     [
       "GET",
@@ -439,7 +522,11 @@ export function createFakeApi(world: World = defaultWorld()) {
     unhandled,
     /** Answers a route differently from the default (checked before the defaults). */
     route(method: string, pattern: RegExp, handler: Handler, status?: number) {
-      extra.unshift([method, pattern, handler, status]);
+      extra.unshift(
+        status === undefined
+          ? [method, pattern, handler]
+          : [method, pattern, handler, status],
+      );
     },
     /** How many times this request was made. */
     count(method: string, pathPattern: RegExp) {
