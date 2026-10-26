@@ -49,7 +49,7 @@ func (c Config) JoinToken(room, identity, displayName string, screenShare bool, 
 	yes, no := true, false
 	sources := []string{"microphone", "camera"}
 	if screenShare {
-		sources = append(sources, "screen_share")
+		sources = append(sources, "screen_share", "screen_share_audio")
 	}
 	grant := &auth.VideoGrant{
 		RoomJoin: true, Room: room, CanPublish: &yes, CanSubscribe: &yes, CanPublishData: &no,
@@ -150,7 +150,11 @@ func (r *remoteRooms) SetScreenShare(ctx context.Context, name, identity string,
 	_, err = r.client.UpdateParticipant(ctx, &livekit.UpdateParticipantRequest{
 		Room: name, Identity: identity, Permission: screenSharePermission(allowed),
 	})
-	return ignoreMissing(err)
+	if err != nil {
+		// Unlike removing someone, a person who is not in the room is a real failure here.
+		return fmt.Errorf("livekit update participant: %w", err)
+	}
+	return nil
 }
 
 // screenSharePermission is exactly what a join token grants, plus or minus the
@@ -158,7 +162,7 @@ func (r *remoteRooms) SetScreenShare(ctx context.Context, name, identity string,
 func screenSharePermission(allowed bool) *livekit.ParticipantPermission {
 	sources := []livekit.TrackSource{livekit.TrackSource_MICROPHONE, livekit.TrackSource_CAMERA}
 	if allowed {
-		sources = append(sources, livekit.TrackSource_SCREEN_SHARE)
+		sources = append(sources, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO)
 	}
 	return &livekit.ParticipantPermission{CanSubscribe: true, CanPublish: true, CanPublishData: false, CanPublishSources: sources}
 }
