@@ -214,6 +214,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/account/avatar": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set the caller's profile photo (JPEG, PNG or WebP up to 256 KiB, already resized) */
+    put: operations["putAvatar"];
+    post?: never;
+    /** Remove the caller's profile photo */
+    delete: operations["deleteAvatar"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/avatars": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Which people the caller can see a photo of, and its version */
+    get: operations["listAvatars"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/accounts/{accountId}/avatar": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    /** A person's photo, for the caller and for people who share a project with them */
+    get: operations["getAvatar"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/me": {
     parameters: {
       query?: never;
@@ -2026,6 +2080,12 @@ export interface components {
     SetMemberRoleRequest: {
       isManager: boolean;
     };
+    AvatarVersion: {
+      /** Format: uuid */
+      accountId: string;
+      /** Format: int64 */
+      version: number;
+    };
     BoardColumn: {
       /** Format: uuid */
       id: string;
@@ -3283,6 +3343,155 @@ export interface operations {
       };
       /** @description Origin or CSRF token rejected */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  putAvatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "image/jpeg": string;
+        "image/png": string;
+        "image/webp": string;
+      };
+    };
+    responses: {
+      /** @description Updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an image of the declared type */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Larger than 256 KiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  deleteAvatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listAvatars: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Photos */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarVersion"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getAvatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The image */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/jpeg": string;
+          "image/png": string;
+          "image/webp": string;
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No photo, or not visible to the caller */
+      404: {
         headers: {
           [name: string]: unknown;
         };

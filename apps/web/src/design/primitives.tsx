@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { avatarUrl, useAvatarVersion } from "./avatars";
 import { Icon, type IconName } from "./icons";
 import { colorOf, nameOf } from "./people";
 
@@ -16,13 +17,25 @@ export function Avatar({
   presence?: Presence;
 }) {
   const full = nameOf(email);
+  const version = useAvatarVersion(id);
+  const [broken, setBroken] = useState(false);
   return (
     <span
       className={`av${size === undefined ? "" : ` ${size}`}`}
       data-c={colorOf(id)}
       title={full}
     >
-      {full.charAt(0)}
+      {version === undefined || broken ? (
+        full.charAt(0)
+      ) : (
+        <img
+          alt=""
+          decoding="async"
+          loading="lazy"
+          onError={() => setBroken(true)}
+          src={avatarUrl(id, version)}
+        />
+      )}
       {presence === undefined ? null : (
         <i
           className={`pr${presence === "on" ? "" : ` ${presence}`}`}

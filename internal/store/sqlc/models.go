@@ -16,6 +16,14 @@ type Account struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
+type AccountAvatar struct {
+	AccountID   pgtype.UUID
+	ContentType string
+	Data        []byte
+	Version     int64
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Attachment struct {
 	ID                    pgtype.UUID
 	OrganizationID        pgtype.UUID

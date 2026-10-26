@@ -1,9 +1,12 @@
 import {
   createApiClient,
+  listAvatars,
   logout,
   type CurrentAccount,
 } from "@crewstead/api-client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { setAvatarVersions } from "../design/avatars";
+import { useEvents } from "../events";
 import { go, useRoute } from "../design/router";
 import { useOptionalE2EE } from "../e2ee/E2EE";
 import { csrfToken } from "../errors";
@@ -55,6 +58,21 @@ function useOffline(): boolean {
     };
   }, []);
   return offline;
+}
+
+/** Keeps the list of visible profile photos fresh, here and when someone changes theirs. */
+function AvatarSync() {
+  const client = useMemo(() => createApiClient(""), []);
+  const load = useCallback(() => {
+    listAvatars(client)
+      .then(setAvatarVersions)
+      .catch(() => undefined);
+  }, [client]);
+  useEffect(load, [load]);
+  useEvents((event) => {
+    if (event === "resync" || event.eventType === "avatar.changed") load();
+  });
+  return null;
 }
 
 function Frame({
@@ -123,6 +141,7 @@ function Frame({
 
   return (
     <ShellContext.Provider value={api}>
+      <AvatarSync />
       <div className="has-shell" id="app">
         <Sidebar account={account} onLogout={onLogout} />
         <div className="main" key={route.name}>

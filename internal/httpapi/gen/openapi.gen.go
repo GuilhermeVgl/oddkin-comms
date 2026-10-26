@@ -944,6 +944,12 @@ type AuthorizeDeviceRequest struct {
 	Certificate Base64Url `json:"certificate"`
 }
 
+// AvatarVersion defines model for AvatarVersion.
+type AvatarVersion struct {
+	AccountId openapi_types.UUID `json:"accountId"`
+	Version   int64              `json:"version"`
+}
+
 // Base64Url Unpadded base64url (RFC 4648 section 5) of binary data
 type Base64Url = string
 
@@ -2122,9 +2128,18 @@ type CreateWorkItemCommentJSONRequestBody = CreateCommentRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// DeleteAvatar Remove the caller's profile photo
+	// (DELETE /api/v1/account/avatar)
+	DeleteAvatar(w http.ResponseWriter, r *http.Request)
+	// PutAvatar Set the caller's profile photo (JPEG, PNG or WebP up to 256 KiB, already resized)
+	// (PUT /api/v1/account/avatar)
+	PutAvatar(w http.ResponseWriter, r *http.Request)
 	// SetHistoryMode Choose whether this account is asked to set up access to encrypted history (ask or none)
 	// (PUT /api/v1/account/history-mode)
 	SetHistoryMode(w http.ResponseWriter, r *http.Request)
+	// GetAvatar A person's photo, for the caller and for people who share a project with them
+	// (GET /api/v1/accounts/{accountId}/avatar)
+	GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID)
 	// DeleteAttachment Remove an attachment (uploader or project manager)
 	// (DELETE /api/v1/attachments/{attachmentId})
 	DeleteAttachment(w http.ResponseWriter, r *http.Request, attachmentId openapi_types.UUID)
@@ -2149,6 +2164,9 @@ type ServerInterface interface {
 	// ConfirmPasswordReset Set a new password with a single-use token; ends every earlier session and restores no encrypted history
 	// (POST /api/v1/auth/password-reset/confirm)
 	ConfirmPasswordReset(w http.ResponseWriter, r *http.Request)
+	// ListAvatars Which people the caller can see a photo of, and its version
+	// (GET /api/v1/avatars)
+	ListAvatars(w http.ResponseWriter, r *http.Request)
 	// ListCallInvitations Pending invitations to active calls
 	// (GET /api/v1/call-invitations)
 	ListCallInvitations(w http.ResponseWriter, r *http.Request)
@@ -2499,11 +2517,65 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// DeleteAvatar operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAvatar(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAvatar operation middleware
+func (siw *ServerInterfaceWrapper) PutAvatar(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAvatar(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetHistoryMode operation middleware
 func (siw *ServerInterfaceWrapper) SetHistoryMode(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetHistoryMode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAvatar operation middleware
+func (siw *ServerInterfaceWrapper) GetAvatar(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", r.PathValue("accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAvatar(w, r, accountId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2640,6 +2712,20 @@ func (siw *ServerInterfaceWrapper) ConfirmPasswordReset(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConfirmPasswordReset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAvatars operation middleware
+func (siw *ServerInterfaceWrapper) ListAvatars(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAvatars(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5457,6 +5543,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/people", wrapper.ListOrganizationPeople)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/organization/people/{accountId}/active", wrapper.SetPersonActive)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/account/history-mode", wrapper.SetHistoryMode)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/account/avatar", wrapper.DeleteAvatar)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/account/avatar", wrapper.PutAvatar)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/avatars", wrapper.ListAvatars)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounts/{accountId}/avatar", wrapper.GetAvatar)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)

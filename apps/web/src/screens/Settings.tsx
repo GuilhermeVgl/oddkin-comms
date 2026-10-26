@@ -1,5 +1,7 @@
 import {
   createBoardColumn,
+  deleteAvatar,
+  putAvatar,
   deleteBoardColumn,
   ApiStatusError,
   getStorageUsage,
@@ -17,7 +19,13 @@ import {
   type RecoveryAuditEntry,
   type RecoveryGap,
 } from "@crewstead/api-client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getAvatarVersions,
+  resizeToAvatar,
+  setAvatarVersions,
+  useAvatarVersion,
+} from "../design/avatars";
 import { confirmDialog } from "../design/confirm";
 import { bytes, rel } from "../design/format";
 import { Icon, type IconName } from "../design/icons";
@@ -90,6 +98,50 @@ function Switch({
 function Profile({ account }: { account: CurrentAccount }) {
   const prefs = usePrefs();
   const { branding } = useOrganization();
+  const { client } = useWorkspace();
+  const version = useAvatarVersion(account.id);
+  const [busyPhoto, setBusyPhoto] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+
+  // The photo list also refreshes on its own when the change event arrives;
+  // updating it here means this person does not wait for that.
+  const others = () =>
+    Object.entries(getAvatarVersions())
+      .filter(([id]) => id !== account.id)
+      .map(([id, value]) => ({ accountId: id, version: value }));
+
+  async function choose(file: File | undefined) {
+    if (file === undefined) return;
+    setBusyPhoto(true);
+    try {
+      await putAvatar(csrfToken(), await resizeToAvatar(file));
+      setAvatarVersions([
+        ...others(),
+        { accountId: account.id, version: (version ?? 0) + 1 },
+      ]);
+      toast("Foto atualizada.", { icon: "check" });
+    } catch {
+      toast("Não foi possível usar essa foto. Tente outra imagem.", {
+        kind: "err",
+      });
+    } finally {
+      setBusyPhoto(false);
+    }
+  }
+
+  async function removePhoto() {
+    setBusyPhoto(true);
+    try {
+      await deleteAvatar(client, csrfToken());
+      setAvatarVersions(others());
+      toast("Foto removida.", { icon: "check" });
+    } catch {
+      toast("Não foi possível remover a foto.", { kind: "err" });
+    } finally {
+      setBusyPhoto(false);
+    }
+  }
+
   return (
     <div className="stack">
       <section className="card pad col gap16">
@@ -101,6 +153,37 @@ function Profile({ account }: { account: CurrentAccount }) {
             <span className="tag mute" style={{ width: "fit-content" }}>
               {roleOf(account)}
             </span>
+            <div className="row gap8" style={{ marginTop: 6 }}>
+              <button
+                className={`btn sm${busyPhoto ? " loading" : ""}`}
+                onClick={() => picker.current?.click()}
+                type="button"
+              >
+                <Icon name="clip" size="sm" />
+                {version === undefined ? "Enviar foto" : "Trocar foto"}
+              </button>
+              {version === undefined ? null : (
+                <button
+                  className="btn sm ghost"
+                  disabled={busyPhoto}
+                  onClick={() => void removePhoto()}
+                  type="button"
+                >
+                  Remover
+                </button>
+              )}
+              <input
+                accept="image/png,image/jpeg,image/webp,image/gif,image/heic"
+                aria-label="Escolher foto de perfil"
+                hidden
+                onChange={(event) => {
+                  void choose(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+                ref={picker}
+                type="file"
+              />
+            </div>
           </div>
         </div>
         <p className="xs muted">

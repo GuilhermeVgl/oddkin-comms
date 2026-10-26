@@ -586,3 +586,12 @@ textarea.inp {
 [data-theme="carvao"] .stepbar i.on {
   background: var(--limao);
 }
+
+/* A profile photo fills the circle; the initial shows when there is none. */
+.av img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}

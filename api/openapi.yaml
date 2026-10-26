@@ -300,6 +300,80 @@ paths:
           description: No active session
         "403":
           description: Origin or CSRF token rejected
+  /api/v1/account/avatar:
+    put:
+      operationId: putAvatar
+      summary: Set the caller's profile photo (JPEG, PNG or WebP up to 256 KiB, already resized)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Not an image of the declared type
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+        "413":
+          description: Larger than 256 KiB
+    delete:
+      operationId: deleteAvatar
+      summary: Remove the caller's profile photo
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
+  /api/v1/avatars:
+    get:
+      operationId: listAvatars
+      summary: Which people the caller can see a photo of, and its version
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Photos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvatarVersion"
+        "401":
+          description: No active session
+  /api/v1/accounts/{accountId}/avatar:
+    parameters:
+      - name: accountId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAvatar
+      summary: A person's photo, for the caller and for people who share a project with them
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The image
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "401":
+          description: No active session
+        "404":
+          description: No photo, or not visible to the caller
   /api/v1/auth/me:
     get:
       operationId: getCurrentAccount
@@ -3209,6 +3283,13 @@ components:
       additionalProperties: false
       properties:
         isManager: { type: boolean }
+    AvatarVersion:
+      type: object
+      required: [accountId, version]
+      additionalProperties: false
+      properties:
+        accountId: { type: string, format: uuid }
+        version: { type: integer, format: int64 }
     BoardColumn:
       type: object
       required: [id, name, position, category]
