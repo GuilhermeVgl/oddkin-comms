@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+node "$(dirname "$0")/require-docker.mjs"
+
 project="crewstead-smoke-$$"
 compose_file="infra/compose.smoke.yaml"
 

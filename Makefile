@@ -1,4 +1,4 @@
-.PHONY: doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web build-migrate build-email-smoke setup start
+.PHONY: test-scripts doctor generate check-generated fmt-check lint test-unit test-integration test-e2e coverage-check security-check build container-check commit-check gate-docs gate test-commitcheck generate-go generate-ts generate-sqlc check-generated-go check-generated-contracts fmt-go-check fmt-ts-check lint-ts test-go test-ts build-api build-web build-migrate build-email-smoke setup start
 
 COMMIT_BASE ?=
 COMMIT_HEAD ?=
@@ -66,7 +66,10 @@ test-go:
 test-ts:
 	corepack pnpm test:unit
 
-test-unit: test-go test-ts
+test-scripts:
+	node --test scripts/*.test.mjs
+
+test-unit: test-go test-ts test-scripts
 
 test-integration:
 	./scripts/test-integration.sh

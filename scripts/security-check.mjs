@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DOCKER_STEP_MS, ensureDockerResponds } from "./docker-preflight.mjs";
 
 const gitleaks =
   "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f";
@@ -12,6 +13,10 @@ function run(name, args, options = {}) {
   const output = execFileSync(name, args, {
     encoding: "utf8",
     stdio: ["inherit", "pipe", "inherit"],
+    // Docker steps must never hang the gate forever.
+    ...(name === "docker"
+      ? { timeout: DOCKER_STEP_MS, killSignal: "SIGKILL" }
+      : {}),
     ...options,
   });
   return typeof output === "string" ? output.trim() : output;
@@ -28,6 +33,8 @@ if (!secretsOnly) {
     stdio: "inherit",
   });
 }
+
+ensureDockerResponds();
 
 const scanDir = mkdtempSync(path.join(os.tmpdir(), "crewstead-secret-scan-"));
 try {

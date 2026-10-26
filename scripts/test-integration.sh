@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+node "$(dirname "$0")/require-docker.mjs"
+
 project="crewstead-it-$$"
 compose_file="infra/compose.test.yaml"
 
