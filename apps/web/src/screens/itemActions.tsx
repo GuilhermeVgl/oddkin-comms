@@ -2,6 +2,7 @@ import { updateWorkItem, type WorkItem } from "@crewstead/api-client";
 import { useCallback } from "react";
 import { confirmDialog } from "../design/confirm";
 import { celebrate } from "../design/celebrate";
+import { celebrationSize } from "../design/gamify";
 import { csrfToken } from "../errors";
 import { isDone, useWorkspace, type ProjectState } from "../workspace";
 
@@ -62,8 +63,16 @@ export function useItemActions() {
       const result = await patch(item, { columnId, completeSubtasks: true });
       if (result === undefined) return false;
       if (target.category === "done" && !wasDone) {
+        const size = celebrationSize(
+          item.priority,
+          subtasksOf(state, item).length,
+        );
         window.setTimeout(
-          () => celebrate(document.querySelector(`.wi[data-id="${item.id}"]`)),
+          () =>
+            celebrate(
+              document.querySelector(`.wi[data-id="${item.id}"]`),
+              size === "big",
+            ),
           60,
         );
       }

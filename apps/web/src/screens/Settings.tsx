@@ -32,6 +32,7 @@ import { Modal } from "../design/Modal";
 import { nameOf } from "../design/people";
 import { getPrefs, setPrefs, usePrefs } from "../design/prefs";
 import { Avatar, Banner, Pbar } from "../design/primitives";
+import { Achievements } from "./Achievements";
 import { PhotoEditor } from "./PhotoEditor";
 import { go } from "../design/router";
 import { blip } from "../design/sound";
@@ -191,6 +192,7 @@ function Profile({ account }: { account: CurrentAccount }) {
           trabalho, não.
         </p>
       </section>
+      <Achievements />
       <section className="card pad col gap16">
         <h2 className="h2">Aparência e movimento</h2>
         <div className="row">

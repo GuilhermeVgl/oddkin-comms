@@ -24,6 +24,8 @@ import {
   NewProjectDialog,
 } from "./WorkExtras";
 import { Drawer } from "./Drawer";
+import { isReduced } from "../design/prefs";
+import { stepSpring, tiltFor, type SpringState } from "../design/spring";
 import { PRIORITY_ICON, PRIORITY_LABEL } from "./Home";
 import { subtasksOf, useItemActions } from "./itemActions";
 import { useQuickCreate } from "./quickCreate";
@@ -237,6 +239,10 @@ type DragState = {
   offsetY?: number;
   col?: string | undefined;
   index?: number;
+  spring?: SpringState;
+  targetX?: number;
+  targetY?: number;
+  raf?: number;
 };
 
 function Board({
@@ -268,14 +274,36 @@ function Board({
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       if (current === null || !current.moved) return;
-      current.ghost?.remove();
+      if (current.raf !== undefined) cancelAnimationFrame(current.raf);
+      const ghost = current.ghost;
+      if (ghost !== undefined) {
+        if (cancel || current.col === undefined) ghost.remove();
+        else {
+          // A quick shrink-into-place, then the real card settles with a pop.
+          ghost.classList.add("ghost-drop");
+          window.setTimeout(() => ghost.remove(), 160);
+        }
+      }
       setDragging(null);
       setOver(null);
       justDragged.current = true;
       window.setTimeout(() => (justDragged.current = false), 0);
       if (cancel || current.col === undefined) return;
       void move(state, current.entry.item, current.col).then((moved) => {
-        if (moved) blip("ok");
+        if (!moved) return;
+        blip("ok");
+        window.setTimeout(() => {
+          const landed = document.querySelector<HTMLElement>(
+            `.wi[data-id="${current.entry.item.id}"]`,
+          );
+          if (landed === null) return;
+          landed.classList.add("settle");
+          landed.addEventListener(
+            "animationend",
+            () => landed.classList.remove("settle"),
+            { once: true },
+          );
+        }, 30);
       });
     },
     [move, state],
@@ -297,10 +325,31 @@ function Board({
         const ghost = current.card.cloneNode(true) as HTMLElement;
         ghost.classList.add("ghost-card");
         ghost.style.width = `${rect.width}px`;
-        ghost.style.left = `${rect.left}px`;
-        ghost.style.top = `${rect.top}px`;
+        ghost.style.left = "0";
+        ghost.style.top = "0";
+        ghost.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
         document.body.appendChild(ghost);
         current.ghost = ghost;
+        current.spring = { x: rect.left, y: rect.top, vx: 0, vy: 0 };
+        current.targetX = rect.left;
+        current.targetY = rect.top;
+        const reduced = isReduced();
+        const tick = () => {
+          const live = drag.current;
+          if (
+            live === null ||
+            live.ghost === undefined ||
+            live.spring === undefined
+          )
+            return;
+          live.spring = reduced
+            ? { x: live.targetX ?? 0, y: live.targetY ?? 0, vx: 0, vy: 0 }
+            : stepSpring(live.spring, live.targetX ?? 0, live.targetY ?? 0);
+          const lean = reduced ? 0 : tiltFor(live.spring.vx);
+          live.ghost.style.transform = `translate3d(${live.spring.x}px, ${live.spring.y}px, 0) rotate(${lean}deg) scale(1.04)`;
+          live.raf = requestAnimationFrame(tick);
+        };
+        current.raf = requestAnimationFrame(tick);
         current.offsetX = event.clientX - rect.left;
         current.offsetY = event.clientY - rect.top;
         current.moved = true;
@@ -308,10 +357,8 @@ function Board({
         document.body.style.userSelect = "none";
         document.body.style.cursor = "grabbing";
       }
-      if (current.ghost !== undefined) {
-        current.ghost.style.left = `${event.clientX - (current.offsetX ?? 0)}px`;
-        current.ghost.style.top = `${event.clientY - (current.offsetY ?? 0)}px`;
-      }
+      current.targetX = event.clientX - (current.offsetX ?? 0);
+      current.targetY = event.clientY - (current.offsetY ?? 0);
       const container = host.current;
       if (container === null) return;
       const bounds = container.getBoundingClientRect();
@@ -379,7 +426,7 @@ function Board({
         return (
           <section
             aria-label={`${column.name}, ${cards.length} atividades`}
-            className={`colm${dropping ? " over" : ""}`}
+            className={`colm${dropping ? " over" : ""}${dropping && column.category === "done" ? " win" : ""}`}
             data-col={column.id}
             key={column.id}
             role="listitem"
@@ -1149,7 +1196,7 @@ export function Work({
         </Menu>
       )}
       {target === null ? null : (
-        <Drawer entry={target} onClose={() => go("work")} />
+        <Drawer entry={target} meId={account.id} onClose={() => go("work")} />
       )}
       {epicsOpen && current !== null ? (
         <EpicsDialog onClose={() => setEpicsOpen(false)} state={current} />

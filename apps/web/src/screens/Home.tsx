@@ -14,6 +14,9 @@ import { firstNameOf } from "../design/people";
 import { Avatar, Empty, NoAvatar, Pbar } from "../design/primitives";
 import { go } from "../design/router";
 import { Duo, Sprite } from "../design/Sprite";
+import { MissionBar } from "../design/Mission";
+import { dayLine, streakLabel } from "../design/gamify";
+import { useStats } from "../shell/stats";
 import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
 import { useShell } from "../shell/context";
@@ -52,8 +55,6 @@ function SprintHero({
   done: number;
   projectNames: string[];
 }) {
-  const blocks = 20;
-  const on = total > 0 ? Math.round((done / total) * blocks) : 0;
   const left = Math.max(0, daysTo(sprint.endsOn));
   return (
     <section aria-label="Sprint atual" className="sprint-hero">
@@ -61,25 +62,17 @@ function SprintHero({
         <span className="tag lime" style={{ width: "fit-content" }}>
           Sprint ativa
         </span>
-        <h2>
-          {sprint.name}
-          {sprint.goal === "" ? "" : `: ${sprint.goal}`}
-        </h2>
+        <h2>{sprint.name}</h2>
+        {sprint.goal === "" ? null : (
+          <p className="mission-goal">
+            <b>Missão:</b> {sprint.goal}
+          </p>
+        )}
         <p className="muted sm">
           {fmtD(sprint.startsOn)} a {fmtD(sprint.endsOn)} ·{" "}
           {left === 0 ? "último dia" : `${left} dias restantes`}
         </p>
-        <div className="row" style={{ marginTop: 6 }}>
-          <Pbar
-            label={`${done} de ${total} concluídas`}
-            on={on}
-            stagger={30}
-            total={blocks}
-          />
-          <span className="num sm">
-            <b>{done}</b> de {total} concluídas
-          </span>
-        </div>
+        <MissionBar done={done} total={total} />
         <div className="row" style={{ marginTop: 6 }}>
           <a className="btn accent sm" href="#/sprints">
             Ver sprint
@@ -97,6 +90,48 @@ function SprintHero({
         style={{ alignSelf: "flex-end", marginBottom: -24, marginRight: -4 }}
       >
         <Duo pose="wave" scale={4} />
+      </div>
+    </section>
+  );
+}
+
+/** The person's own day: what is still open today, what is done, and the streak. */
+function DayCard({ open, quiet }: { open: number; quiet: boolean }) {
+  const { stats } = useStats();
+  const finished = stats?.completedToday ?? 0;
+  const streak = stats?.currentStreak ?? 0;
+  return (
+    <section aria-label="Seu dia" className="card dayc">
+      <span aria-hidden="true" className="dayc-sp">
+        <Sprite
+          pose={open === 0 && finished > 0 ? "cheer" : "idle"}
+          scale={3}
+          who="capuz"
+        />
+      </span>
+      <div className="col grow">
+        <span className="dayc-line">
+          {quiet && finished === 0
+            ? "Nada com prazo para hoje. Pegue a próxima da fila."
+            : dayLine(open, finished)}
+        </span>
+        <div className="dayc-chips">
+          {streak > 0 ? (
+            <span className="tag lime">
+              <Icon name="bell" size="sm" />
+              {streakLabel(streak)}
+            </span>
+          ) : null}
+          {stats !== null && stats.bestStreak > streak ? (
+            <span className="tag mute">Recorde: {stats.bestStreak} dias</span>
+          ) : null}
+          {stats !== null && stats.completedTotal > 0 ? (
+            <span className="tag mute">
+              {stats.completedTotal}{" "}
+              {stats.completedTotal === 1 ? "entrega" : "entregas"} no total
+            </span>
+          ) : null}
+        </div>
       </div>
     </section>
   );
@@ -128,6 +163,13 @@ export function Home({ account }: { account: CurrentAccount }) {
       : items.filter(({ item }) => item.sprintId === active.id);
   const finished = inSprint.filter(({ item, state }) =>
     isDone(state.columns, item.columnId),
+  ).length;
+  const today = todayIso();
+  const todayOpen = mine.filter(
+    ({ item, state }) =>
+      (item.dueDate !== undefined && item.dueDate <= today) ||
+      state.columns.find((column) => column.id === item.columnId)?.category ===
+        "in_progress",
   ).length;
   const upcoming = mine.filter(
     ({ item }) => item.dueDate !== undefined && daysTo(item.dueDate) <= 3,
@@ -170,6 +212,12 @@ export function Home({ account }: { account: CurrentAccount }) {
     >
       <div className="grid2">
         <div className="stack">
+          {loading ? null : (
+            <DayCard
+              open={todayOpen}
+              quiet={mine.length > 0 && todayOpen === 0}
+            />
+          )}
           {active === undefined ? (
             <section aria-label="Sprint atual" className="sprint-hero">
               <div className="col gap12 grow">

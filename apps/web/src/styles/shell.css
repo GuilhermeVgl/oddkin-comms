@@ -401,3 +401,56 @@
     transform: translateY(-4px);
   }
 }
+
+/* Focus mode: a small floating timer. */
+.focuspill {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px 14px;
+  background: var(--carvao, #202321);
+  color: #fff;
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+  animation: ringin var(--t-slow) var(--ease);
+}
+.focuspill .muted {
+  color: rgba(255, 255, 255, 0.65);
+}
+.focuspill .btn {
+  flex: none;
+}
+.focus-sp {
+  flex: none;
+  display: inline-grid;
+}
+.focus-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.focus-bar {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.focus-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focuspill {
+    animation: none;
+  }
+}

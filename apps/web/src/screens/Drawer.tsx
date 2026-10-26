@@ -1,7 +1,10 @@
 import {
   getFollowing,
+  getWorkItemEngagement,
   listComments,
   setFollowing,
+  setKudos,
+  type WorkItemEngagement,
   type WorkItem,
   type WorkItemComment,
 } from "@crewstead/api-client";
@@ -25,6 +28,8 @@ import {
   type ContentStatus,
 } from "../e2ee/content";
 import { csrfToken } from "../errors";
+import { startFocus, useFocus } from "../shell/focus";
+import { useStats } from "../shell/stats";
 import { can, isDone, useWorkspace, type ProjectState } from "../workspace";
 import { projectColor } from "../shell/Sidebar";
 import { PRIORITY_ICON, PRIORITY_LABEL } from "./Home";
@@ -40,9 +45,11 @@ type Conflict = {
 /** The detail of one activity: every field, subtasks, files and comments. */
 export function Drawer({
   entry,
+  meId,
   onClose,
 }: {
   entry: { item: WorkItem; state: ProjectState };
+  meId: string;
   onClose: () => void;
 }) {
   const { item, state } = entry;
@@ -57,6 +64,10 @@ export function Drawer({
   const [comment, setComment] = useState("");
   const [subtask, setSubtask] = useState("");
   const [following, setFollowingState] = useState(false);
+  const [engagement, setEngagement] = useState<WorkItemEngagement | null>(null);
+  const [focusMinutes, setFocusMinutes] = useState(25);
+  const focusing = useFocus();
+  const { refresh: refreshStats } = useStats();
   const more = useMenu();
   const status = state.status.get(item.id) ?? "plain";
   const readable = status === "plain" || status === "ok";
@@ -87,6 +98,45 @@ export function Drawer({
       alive = false;
     };
   }, [client, item.id]);
+
+  const loadEngagement = useCallback(async () => {
+    try {
+      setEngagement(await getWorkItemEngagement(client, item.id));
+    } catch {
+      setEngagement(null);
+    }
+  }, [client, item.id]);
+
+  useEffect(() => {
+    void loadEngagement();
+  }, [loadEngagement, item.columnId]);
+
+  // Time recorded by a focus block that just ended shows up here too.
+  const focusActive = focusing?.itemId === item.id;
+  useEffect(() => {
+    if (!focusActive) void loadEngagement();
+  }, [focusActive, loadEngagement]);
+
+  async function thank() {
+    if (engagement === null) return;
+    const next = !engagement.kudosMine;
+    setEngagement({
+      ...engagement,
+      kudosMine: next,
+      kudosCount: engagement.kudosCount + (next ? 1 : -1),
+    });
+    try {
+      await setKudos(client, csrfToken(), item.id, next);
+      if (next) {
+        blip("ok");
+        toast("Agradecimento enviado.", { icon: "smile" });
+      }
+      void refreshStats();
+    } catch {
+      toast("Não foi possível agradecer agora.", { kind: "err" });
+    }
+    await loadEngagement();
+  }
 
   const load = useCallback(async () => {
     try {
@@ -844,6 +894,67 @@ export function Drawer({
             </span>
           ) : null}
           <span className="xs muted grow mono">v{item.version}</span>
+          {engagement !== null && engagement.focusMinutes > 0 ? (
+            <span
+              className="tag mute"
+              title="Tempo em modo foco nesta atividade"
+            >
+              <Icon name="clock" size="sm" />
+              {engagement.focusMinutes} min de foco
+            </span>
+          ) : null}
+          {done && item.assigneeId !== undefined && item.assigneeId !== meId ? (
+            <button
+              aria-pressed={engagement?.kudosMine ?? false}
+              className={`btn kudos${engagement?.kudosMine ? " on" : ""}`}
+              disabled={engagement === null}
+              onClick={() => void thank()}
+              type="button"
+            >
+              <span aria-hidden="true">👏</span>
+              {engagement?.kudosMine ? "Você agradeceu" : "Valeu"}
+              {engagement !== null && engagement.kudosCount > 0
+                ? ` · ${engagement.kudosCount}`
+                : ""}
+            </button>
+          ) : done && engagement !== null && engagement.kudosCount > 0 ? (
+            <span className="tag lime">
+              <span aria-hidden="true">👏</span> {engagement.kudosCount}
+            </span>
+          ) : null}
+          {!done && canMove ? (
+            <span className="row gap8 focus-start">
+              <select
+                aria-label="Duração do foco"
+                className="inp"
+                onChange={(event) =>
+                  setFocusMinutes(Number(event.target.value))
+                }
+                value={focusMinutes}
+              >
+                {[15, 25, 50].map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} min
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                disabled={focusActive}
+                onClick={() => {
+                  startFocus(item.id, item.title, focusMinutes);
+                  blip("ok");
+                  toast("Modo foco ligado. Boa concentração.", {
+                    icon: "clock",
+                  });
+                }}
+                type="button"
+              >
+                <Icon name="clock" size="sm" />
+                {focusActive ? "Em foco" : "Foco"}
+              </button>
+            </span>
+          ) : null}
           {done ? (
             canMove ? (
               <button

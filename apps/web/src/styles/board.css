@@ -237,10 +237,23 @@
   position: fixed;
   z-index: 90;
   pointer-events: none;
-  transform: rotate(2deg) scale(1.03);
   box-shadow: var(--sh-3);
   opacity: 0.96;
   cursor: grabbing;
+  will-change: transform;
+}
+.ghost-card.ghost-drop {
+  transition:
+    opacity 160ms var(--ease),
+    filter 160ms var(--ease);
+  opacity: 0;
+  filter: blur(1px);
+}
+/* The done column glows while a card hovers over it: that is where wins happen. */
+.colm.over.win {
+  background: color-mix(in srgb, var(--accent) 28%, var(--surface));
+  outline-color: var(--accent-ink);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .ph {
   height: 64px;

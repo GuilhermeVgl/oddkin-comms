@@ -190,3 +190,70 @@
   font-family: var(--f-pixel);
   font-size: 22px;
 }
+
+/* Sprint mission bar with milestone markers. */
+.mission {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.mission-bar {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(127, 127, 127, 0.22);
+  overflow: visible;
+}
+.mission-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 7px;
+  background: var(--accent);
+  transition: width 600ms var(--ease);
+}
+.mission-bar b {
+  position: absolute;
+  top: -3px;
+  width: 4px;
+  height: 20px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  transition: background var(--t-base);
+}
+.mission-bar b.hit {
+  background: var(--accent-ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mission-bar i {
+    transition: none;
+  }
+}
+
+/* "Seu dia": the person's own progress today. */
+.dayc {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.dayc-sp {
+  flex: none;
+  display: inline-grid;
+}
+.dayc-line {
+  font-size: 16px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+.dayc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mission-goal {
+  font-size: 15px;
+}

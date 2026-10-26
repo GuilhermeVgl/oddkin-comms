@@ -17,6 +17,7 @@ const LABEL: Record<Notification["kind"], string> = {
   invitation_accepted: "Alguém aceitou seu convite e já pode entrar",
   device_request: "Um dispositivo pediu acesso ao histórico cifrado",
   direct_message: "Nova mensagem direta",
+  kudos: "Alguém agradeceu pela sua entrega",
 };
 
 const ICON: Record<Notification["kind"], IconName> = {
@@ -28,6 +29,7 @@ const ICON: Record<Notification["kind"], IconName> = {
   invitation_accepted: "team",
   device_request: "key",
   direct_message: "chat",
+  kudos: "smile",
 };
 
 export function NotificationsMenu({
@@ -50,6 +52,7 @@ export function NotificationsMenu({
     if (item.projectId !== undefined) setCurrentProjectId(item.projectId);
     switch (item.kind) {
       case "assignment":
+      case "kudos":
       case "followed_update":
         go(`work/${item.resourceId}`);
         break;

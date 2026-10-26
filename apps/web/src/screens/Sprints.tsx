@@ -14,13 +14,15 @@ import { addDays, daysTo, fmtD, todayIso } from "../design/format";
 import { Icon } from "../design/icons";
 import { Menu, useMenu } from "../design/Menu";
 import { Modal } from "../design/Modal";
-import { Avatar, Banner, NoAvatar, Pbar } from "../design/primitives";
+import { Avatar, Banner, NoAvatar } from "../design/primitives";
 import { go } from "../design/router";
 import { blip } from "../design/sound";
 import { Duo } from "../design/Sprite";
+import { useStats } from "../shell/stats";
 import { toast } from "../design/toast";
 import { useOptionalE2EE } from "../e2ee/E2EE";
 import { createSprintContent, encryptSprint } from "../e2ee/content";
+import { MissionBar } from "../design/Mission";
 import { csrfToken, describeError } from "../errors";
 import { Page } from "../shell/Page";
 import { projectColor } from "../shell/Sidebar";
@@ -32,16 +34,9 @@ function Progress({ rows }: { rows: Row[] }) {
   const done = rows.filter(({ item, state }) =>
     isDone(state.columns, item.columnId),
   ).length;
-  const blocks = 20;
-  const on = rows.length > 0 ? Math.round((done / rows.length) * blocks) : 0;
   return (
     <div className="row">
-      <Pbar
-        label={`${done} de ${rows.length} concluídas`}
-        on={on}
-        stagger={25}
-        total={blocks}
-      />
+      <MissionBar done={done} total={rows.length} />
       <span className="num sm muted">
         <b style={{ color: "var(--ink)" }}>{done}</b>/{rows.length}
       </span>
@@ -189,7 +184,9 @@ export function Sprints({ account }: { account: CurrentAccount }) {
               <div className="row wrap">
                 <span className="tag lime">Ativa</span>
                 <h2 className="h2">{active.name}</h2>
-                <span className="muted">{active.goal}</span>
+                {active.goal === "" ? null : (
+                  <span className="muted">Missão: {active.goal}</span>
+                )}
                 <span className="grow" />
                 <span className="sm muted">
                   {fmtD(active.startsOn)} a {fmtD(active.endsOn)} · {left} dias
@@ -602,6 +599,7 @@ function CloseWizard({
   onClose: () => void;
 }) {
   const { client, projects, people } = useWorkspace();
+  const { stats } = useStats();
   const [step, setStep] = useState(1);
   const [preview, setPreview] = useState<SprintClosePreview | null>(null);
   const [failed, setFailed] = useState(false);
@@ -661,10 +659,24 @@ function CloseWizard({
         (value) => value === "next",
       ).length;
       onClose();
+      const started = new Date(`${sprint.startsOn}T12:00:00`).getTime();
+      const ended = new Date(`${sprint.endsOn}T12:00:00`).getTime();
       showFinale({
         name: sprint.name,
+        goal: sprint.goal,
         delivered,
         carried: pending.length === 0 ? 0 : carried,
+        urgent: preview.completed.filter((item) => item.priority === "urgent")
+          .length,
+        days: Math.max(1, Math.round((ended - started) / 864e5) + 1),
+        projects: [
+          ...new Set(
+            preview.completed
+              .map((item) => projectOf(item)?.project.name)
+              .filter((value): value is string => value !== undefined),
+          ),
+        ],
+        streak: stats?.currentStreak ?? 0,
       });
     } catch (error) {
       setBusy(false);

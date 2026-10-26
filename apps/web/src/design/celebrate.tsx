@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Duo, type DuoRef } from "./Sprite";
 import { blip } from "./sound";
 import { burst } from "./sprites";
+import { recapText, streakLabel, type SprintRecap } from "./gamify";
 import { toast } from "./toast";
 import { getDuoVisible, useDuoVisible } from "./duoVisibility";
 
@@ -11,6 +12,12 @@ const LINES = [
   "Entregue. Respira.",
   "Isso aí. Próximo.",
   "Pequenos passos, grandes entregas.",
+];
+
+const BIG_LINES = [
+  "Entrega pesada! Merece respirar.",
+  "Isso era grande. E foi.",
+  "Peso pesado entregue. Palmas.",
 ];
 
 /**
@@ -25,18 +32,26 @@ export function celebrate(anchor: Element | null, big = false) {
   const y =
     rect === undefined ? window.innerHeight / 2 : rect.top + rect.height / 2;
   burst(x, y, { count: big ? 70 : 34, power: big ? 10 : 7 });
+  if (big)
+    window.setTimeout(
+      () => burst(x, y - 30, { count: 40, power: 12, up: true }),
+      220,
+    );
   blip("win");
-  if (!big) {
-    toast(LINES[Math.floor(Math.random() * LINES.length)] ?? LINES[0] ?? "", {
-      ...(getDuoVisible()
-        ? { mascot: "capuz" as const, pose: "cheer" as const }
-        : { icon: "check" as const }),
-      ms: 2600,
-    });
-  }
+  const lines = big ? BIG_LINES : LINES;
+  const line = lines[Math.floor(Math.random() * lines.length)] ?? "";
+  toast(line, {
+    ...(getDuoVisible()
+      ? {
+          mascot: "capuz" as const,
+          pose: big ? ("highfive" as const) : ("cheer" as const),
+        }
+      : { icon: "check" as const }),
+    ms: big ? 3600 : 2600,
+  });
 }
 
-type Finale = { name: string; delivered: number; carried: number };
+type Finale = SprintRecap;
 
 let finale: Finale | null = null;
 const listeners = new Set<() => void>();
@@ -82,7 +97,7 @@ export function FinaleHost() {
   }, [current]);
 
   if (current === null) return null;
-  const { name, delivered, carried } = current;
+  const { name, delivered, carried, urgent, days, streak, goal } = current;
   return (
     <div
       aria-label="Sprint encerrada"
@@ -110,14 +125,53 @@ export function FinaleHost() {
           {carried === 1 ? "pendência seguiu" : "pendências seguiram"} com
           destino. <b>Bom trabalho.</b>
         </div>
-        <button
-          className="btn accent lg"
-          onClick={() => set(null)}
-          ref={ok}
-          type="button"
-        >
-          Continuar
-        </button>
+        {goal === "" ? null : (
+          <div className="pdlg" style={{ fontSize: 16 }}>
+            Missão: {goal}
+          </div>
+        )}
+        <div className="row gap8 wrap" style={{ justifyContent: "center" }}>
+          <span className="tag lime">
+            {days} {days === 1 ? "dia" : "dias"} de sprint
+          </span>
+          {urgent > 0 ? (
+            <span className="tag lime">
+              {urgent} {urgent === 1 ? "urgente" : "urgentes"} entregue
+              {urgent === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          {streak > 1 ? (
+            <span className="tag lime">{streakLabel(streak)}</span>
+          ) : null}
+        </div>
+        <div className="row gap8">
+          <button
+            className="btn lg"
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(recapText(current))
+                .then(() =>
+                  toast("Resumo copiado. Cole no canal da equipe.", {
+                    icon: "link",
+                  }),
+                )
+                .catch(() =>
+                  toast("Não foi possível copiar o resumo.", { kind: "err" }),
+                );
+            }}
+            type="button"
+          >
+            Copiar resumo
+          </button>
+          <button
+            className="btn accent lg"
+            onClick={() => set(null)}
+            ref={ok}
+            type="button"
+          >
+            Continuar
+          </button>
+        </div>
       </div>
     </div>
   );

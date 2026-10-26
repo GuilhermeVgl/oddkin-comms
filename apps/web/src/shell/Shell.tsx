@@ -23,6 +23,9 @@ import { Work } from "../screens/Work";
 import { InboxProvider } from "../inbox";
 import { WorkspaceProvider } from "../workspace";
 import { CallsProvider } from "./calls";
+import { FocusHost } from "./focus";
+import { SprintMilestones } from "./SprintMilestones";
+import { StatsProvider } from "./stats";
 import { ShellContext, type ShellApi } from "./context";
 import { Palette } from "./Palette";
 import { MobileNav, Sidebar } from "./Sidebar";
@@ -176,6 +179,8 @@ function Frame({
   return (
     <ShellContext.Provider value={api}>
       <AvatarSync />
+      <SprintMilestones />
+      <FocusHost />
       <div className="has-shell" id="app">
         <Sidebar account={account} onLogout={onLogout} />
         <div className="main" key={route.name}>
@@ -239,7 +244,9 @@ export function Workspace({
     <WorkspaceProvider account={account}>
       <InboxProvider>
         <CallsProvider>
-          <Frame account={account} onLogout={() => void leave()} />
+          <StatsProvider accountId={account.id}>
+            <Frame account={account} onLogout={() => void leave()} />
+          </StatsProvider>
         </CallsProvider>
       </InboxProvider>
     </WorkspaceProvider>
