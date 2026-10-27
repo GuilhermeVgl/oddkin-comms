@@ -9,7 +9,7 @@ Projetos, conversas e chamadas em um só lugar para equipes que constroem vário
 ![Go](https://img.shields.io/badge/backend-Go-00ADD8?style=flat-square&logo=go&logoColor=white)
 ![React](https://img.shields.io/badge/frontend-React-202321?style=flat-square&logo=react&logoColor=61DAFB)
 ![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
-![Status](https://img.shields.io/badge/status-em_desenvolvimento-63745A?style=flat-square)
+![Status](https://img.shields.io/badge/0.1.0-white?style=flat-square)
 
 </div>
 
