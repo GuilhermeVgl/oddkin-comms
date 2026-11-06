@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDevices } from "./callView";
 import { previewConstraints } from "./media";
 import { useMicLevels } from "./useMicLevels";
@@ -21,6 +21,17 @@ export function usePrejoin(
   const [stream, setStream] = useState<MediaStream | null>(null);
   const preview = useRef<HTMLVideoElement>(null);
   const levels = useMicLevels(withMic ? stream : null, METER_BARS);
+  const refreshDevices = useCallback(async () => {
+    const available = await navigator.mediaDevices.enumerateDevices();
+    setDevices(available);
+  }, []);
+
+  useEffect(() => {
+    const media = navigator.mediaDevices;
+    const changed = () => void refreshDevices().catch(() => undefined);
+    media.addEventListener("devicechange", changed);
+    return () => media.removeEventListener("devicechange", changed);
+  }, [refreshDevices]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -36,7 +47,7 @@ export function usePrejoin(
         opened = value;
         setStream(value);
         if (preview.current !== null) preview.current.srcObject = value;
-        setDevices(await navigator.mediaDevices.enumerateDevices());
+        await refreshDevices();
       })
       .catch(() =>
         onError(
@@ -48,7 +59,7 @@ export function usePrejoin(
       opened?.getTracks().forEach((track) => track.stop());
       setStream(null);
     };
-  }, [active, withCamera, microphoneId, cameraId]);
+  }, [active, withCamera, microphoneId, cameraId, refreshDevices]);
 
   const { microphones, cameras } = useMemo(
     () => splitDevices(devices),

@@ -33,6 +33,18 @@ export function cameraOptions(cameraId: string) {
     : { deviceId: cameraId, resolution: CAMERA_RESOLUTION };
 }
 
+/** The native share picker decides whether its chosen surface can include audio. */
+export function screenCaptureOptions() {
+  return {
+    audio: true,
+    systemAudio: "include" as const,
+    video: { displaySurface: "monitor" as const },
+    selfBrowserSurface: "exclude" as const,
+    surfaceSwitching: "exclude" as const,
+    resolution: { width: 1920, height: 1080, frameRate: 15 },
+  };
+}
+
 /** Level meter bars at rest, before any audio arrives. */
 export function restingLevels(bars: number): number[] {
   return Array.from({ length: bars }, () => 0.1);

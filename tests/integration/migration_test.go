@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +38,13 @@ func TestMigrationsCanRunTwiceAndInstallRiver(t *testing.T) {
 		if err != nil || !exists {
 			t.Errorf("expected migrated table %s: exists=%t error=%v", table, exists, err)
 		}
+	}
+	var attachmentNameConstraint string
+	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'attachment_name_length'`).Scan(&attachmentNameConstraint); err != nil {
+		t.Fatal("read attachment name constraint:", err)
+	}
+	if !strings.Contains(attachmentNameConstraint, "encrypted") {
+		t.Fatalf("encrypted attachments must allow their plaintext name to be empty: %s", attachmentNameConstraint)
 	}
 }
 

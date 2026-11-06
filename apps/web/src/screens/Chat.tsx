@@ -11,9 +11,10 @@ import { Sprite } from "../design/Sprite";
 import { toast } from "../design/toast";
 import { useInbox } from "../inbox";
 import { Page } from "../shell/Page";
-import { can, useWorkspace } from "../workspace";
+import { useWorkspace } from "../workspace";
 import { ChannelList } from "./ChannelList";
 import { Thread, type ThreadTarget } from "./Thread";
+import { threadTargetFor } from "./thread/target";
 
 const last = createStore({ id: "" });
 
@@ -55,44 +56,18 @@ export function Chat({
 
   const channel = channels.find((entry) => entry.id === selectedId);
   const dm = dms.find((entry) => entry.id === selectedId);
-  const state =
-    channel === undefined
-      ? undefined
-      : projects?.find((entry) => entry.project.id === channel.projectId);
-
   useEffect(() => {
     if (channel !== undefined && channel.projectId !== current?.project.id)
       setCurrentProjectId(channel.projectId);
   }, [channel, current, setCurrentProjectId]);
 
-  const target: ThreadTarget | null = useMemo(() => {
-    if (channel !== undefined && state !== undefined) {
-      return {
-        kind: "chat",
-        id: channel.id,
-        title: `#${channel.name}`,
-        subtitle: `${state.project.name} · ${state.members.length} pessoas`,
-        members: state.members,
-        crypto: state.crypto,
-        moderator: state.project.isManager,
-        canSend: can(state, "chat.send") && !channel.archived,
-        canCall: can(state, "calls.start"),
-        canReact: can(state, "chat.send"),
-        canUpload: can(state, "files.upload"),
-      };
-    }
-    if (dm !== undefined) {
-      return {
-        kind: "dm",
-        id: dm.id,
-        title: nameOf(dm.peerEmail),
-        subtitle: "Conversa direta",
-        peerEmail: dm.peerEmail,
-        peerId: dm.peerId,
-      };
-    }
-    return null;
-  }, [channel, state, dm]);
+  const target: ThreadTarget | null = useMemo(
+    () =>
+      selectedId === null
+        ? null
+        : threadTargetFor(selectedId, { channels, dms, projects }),
+    [selectedId, channels, dms, projects],
+  );
 
   const pane = conversationId !== null ? "thread" : narrow ? "list" : "thread";
   const [mobilePane, setMobilePane] = useState<"list" | "thread">(pane);

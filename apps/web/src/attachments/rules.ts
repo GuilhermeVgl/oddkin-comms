@@ -1,5 +1,6 @@
 import {
   ApiStatusError,
+  EncryptionError,
   type Attachment,
   type UploadContext,
   type UploadNameEncryption,
@@ -10,18 +11,41 @@ import type { ContentCrypto, EncryptedField } from "../e2ee/projectCrypto";
 
 export const MAX_BYTES = 500_000_000;
 
+export type AttachmentCryptoScope =
+  { type: "project"; id: string } | { type: "conversation"; id: string };
+
+/** Channels share their project's chat/files domains; only DMs own a conversation domain. */
+export function attachmentCryptoScope(
+  context: UploadContext,
+): AttachmentCryptoScope {
+  if (context.projectId !== undefined) {
+    return { type: "project", id: context.projectId };
+  }
+  return { type: "conversation", id: context.contextId };
+}
+
 /** Files must be non-empty and at most 500 MB. */
 export function isUploadSizeAllowed(size: number): boolean {
   return size !== 0 && size <= MAX_BYTES;
 }
 
 export function describeUploadError(error: unknown): string {
+  if (error instanceof EncryptionError) {
+    if (error.code === "rotation_required")
+      return "A chave dos arquivos está sendo renovada. Tente novamente em instantes.";
+    if (error.code === "encryption_required")
+      return "Este canal exige arquivos cifrados. Desbloqueie este navegador e tente novamente.";
+    if (error.code === "stale_generation")
+      return "A chave dos arquivos mudou. Tente enviar novamente.";
+    if (error.code === "domain_unavailable")
+      return "A criptografia dos arquivos ainda está sendo preparada. Tente novamente em instantes.";
+  }
   if (error instanceof ApiStatusError) {
     if (error.status === 503)
       return "O armazenamento de arquivos não está configurado.";
     if (error.status === 507) return "A cota de armazenamento acabou.";
     if (error.status === 409)
-      return "Já existe um envio em andamento. Aguarde terminar.";
+      return "O canal ou projeto mudou e não aceita este envio. Atualize a página e tente novamente.";
     if (error.status === 403) return "Seu perfil não permite enviar arquivos.";
   }
   return "Não foi possível enviar o arquivo. Tente novamente.";

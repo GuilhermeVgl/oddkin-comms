@@ -5,6 +5,7 @@ export type ThreadTarget =
   | {
       kind: "chat";
       id: string;
+      projectId: string;
       title: string;
       subtitle: string;
       members: ProjectMember[];

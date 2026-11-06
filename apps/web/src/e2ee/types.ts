@@ -67,18 +67,19 @@ export type E2EEApi = {
   resetThisBrowser(): Promise<void>;
   openScope(
     scope: Scope,
-    options?: { maintain?: boolean },
+    options?: { maintain?: boolean; refresh?: boolean },
   ): Promise<ContentCrypto | null>;
   openProject(
     projectId: string,
-    options?: { maintain?: boolean },
+    options?: { maintain?: boolean; refresh?: boolean },
   ): Promise<ContentCrypto | null>;
   openConversation(
     conversationId: string,
-    options?: { maintain?: boolean },
+    options?: { maintain?: boolean; refresh?: boolean },
   ): Promise<ContentCrypto | null>;
   openOrganization(options?: {
     maintain?: boolean;
+    refresh?: boolean;
   }): Promise<ContentCrypto | null>;
   openCall(callId: string): Promise<CallCrypto | null>;
   hasRecoveryIdentity: boolean;

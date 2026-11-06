@@ -3,6 +3,7 @@ import { Icon, Logo } from "../../design/icons";
 import { Banner } from "../../design/primitives";
 import { Sprite } from "../../design/Sprite";
 import { prejoinSubtitle } from "./callView";
+import { DeviceSelect } from "./DeviceSelect";
 import type { Prejoin } from "./usePrejoin";
 
 /** Camera preview with the microphone and camera switches and the level meter. */
@@ -61,44 +62,6 @@ function CameraPreview({ prejoin }: { prejoin: Prejoin }) {
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function DeviceSelect({
-  id,
-  label,
-  fallback,
-  devices,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  fallback: string;
-  devices: readonly MediaDeviceInfo[];
-  value: string;
-  disabled?: boolean;
-  onChange: (deviceId: string) => void;
-}) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select
-        className="inp"
-        disabled={disabled}
-        id={id}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      >
-        <option value="">Padrão</option>
-        {devices.map((device) => (
-          <option key={device.deviceId} value={device.deviceId}>
-            {device.label || fallback}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

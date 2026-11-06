@@ -25,7 +25,7 @@ import {
 import { blip } from "../../design/sound";
 import type { E2EEApi } from "../../e2ee/E2EE";
 import { e2eeWorker, keyBuffer, type Client } from "./environment";
-import { publishLocalMedia } from "./localMedia";
+import { publishLocalMedia, switchActiveMedia } from "./localMedia";
 import { describeJoinError, isOtherDeviceConflict } from "./messages";
 
 export type RoomPhase = "preview" | "joining" | "connected" | "error";
@@ -53,6 +53,8 @@ export function useRoomConnection(input: {
   e2ee: E2EEApi | null;
   encryptionReady: boolean;
   media: MediaChoice;
+  setMicrophoneId: (deviceId: string) => void;
+  setCameraId: (deviceId: string) => void;
   room: MutableRefObject<Room | null>;
   onLocalUnpublished: (publication: LocalTrackPublication) => void;
   resetScreenShare: () => void;
@@ -69,6 +71,8 @@ export function useRoomConnection(input: {
     e2ee,
     encryptionReady,
     media,
+    setMicrophoneId: rememberMicrophone,
+    setCameraId: rememberCamera,
     room,
     onLocalUnpublished,
     resetScreenShare,
@@ -77,6 +81,9 @@ export function useRoomConnection(input: {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
+  const [microphoneId, setActiveMicrophoneId] = useState(media.microphoneId);
+  const [cameraId, setActiveCameraId] = useState(media.cameraId);
+  const [deviceBusy, setDeviceBusy] = useState(false);
   const [needsTransfer, setNeedsTransfer] = useState(false);
   const [since, setSince] = useState(0);
   const mediaKey = useRef<Uint8Array | null>(null);
@@ -132,10 +139,13 @@ export function useRoomConnection(input: {
         setPhase((value) => (value === "connected" ? "error" : value)),
       );
     await next.connect(ticket.url, ticket.token);
+    await next.startAudio().catch(() => undefined);
     await next.setE2EEEnabled(true);
     await publishLocalMedia(next.localParticipant, media);
     setMuted(!media.withMic);
     setCameraOn(media.withCamera);
+    setActiveMicrophoneId(media.microphoneId);
+    setActiveCameraId(media.cameraId);
     resetScreenShare();
     syncParticipants();
   }
@@ -213,15 +223,56 @@ export function useRoomConnection(input: {
       .then(() => setCameraOn(next));
   }
 
+  async function switchMicrophone(deviceId: string) {
+    const current = room.current;
+    if (current === null) return;
+    setDeviceBusy(true);
+    setMessage("");
+    try {
+      await switchActiveMedia(current, "audioinput", deviceId);
+      setActiveMicrophoneId(deviceId);
+      rememberMicrophone(deviceId);
+    } catch {
+      setMessage(
+        "Não foi possível trocar o microfone. Verifique se ele está conectado e permitido no navegador.",
+      );
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
+  async function switchCamera(deviceId: string) {
+    const current = room.current;
+    if (current === null) return;
+    setDeviceBusy(true);
+    setMessage("");
+    try {
+      await switchActiveMedia(current, "videoinput", deviceId);
+      setActiveCameraId(deviceId);
+      rememberCamera(deviceId);
+    } catch {
+      setMessage(
+        "Não foi possível trocar a câmera. Verifique se ela está conectada e permitida no navegador.",
+      );
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
   return {
     participants,
     muted,
     cameraOn,
+    microphoneId,
+    cameraId,
+    deviceBusy,
     needsTransfer,
     since,
     join,
     leave,
     toggleMicrophone,
     toggleCamera,
+    switchMicrophone,
+    switchCamera,
   };
 }

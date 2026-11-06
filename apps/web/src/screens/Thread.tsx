@@ -57,7 +57,12 @@ export function Thread({
   const canReact = !chat || target.canReact;
   const canCall = !chat || target.canCall;
 
-  const { messages, loaded, refresh } = useMessages(target.id, crypto, kind);
+  const { messages, loaded, refresh } = useMessages(
+    target.id,
+    crypto,
+    kind,
+    chat || dm.ready,
+  );
   const act = useAct(refresh);
   const scroll = useStickToBottom();
   const composer = useComposer({
@@ -151,7 +156,11 @@ export function Thread({
           <Attachments
             canUpload={!chat || target.canUpload}
             client={client}
-            context={{ contextType: "conversation", contextId: target.id }}
+            context={{
+              contextType: "conversation",
+              contextId: target.id,
+              ...(chat ? { projectId: target.projectId } : {}),
+            }}
           />
         </div>
       ) : null}

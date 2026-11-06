@@ -15,6 +15,29 @@ export type LocalMedia = {
   ): Promise<unknown>;
 };
 
+export type ActiveMediaRoom = {
+  switchActiveDevice(
+    kind: "audioinput" | "videoinput",
+    deviceId: string,
+    exact: boolean,
+  ): Promise<boolean>;
+};
+
+/** Changes a live input in place; an empty selection means the browser default. */
+export async function switchActiveMedia(
+  room: ActiveMediaRoom,
+  kind: "audioinput" | "videoinput",
+  deviceId: string,
+): Promise<void> {
+  const selected = deviceId === "" ? "default" : deviceId;
+  const switched = await room.switchActiveDevice(
+    kind,
+    selected,
+    deviceId !== "",
+  );
+  if (!switched) throw new Error("device switch failed");
+}
+
 /** Publishes the microphone, then the camera when it was on in the preview. */
 export async function publishLocalMedia(
   local: LocalMedia,
@@ -25,10 +48,12 @@ export async function publishLocalMedia(
     cameraId: string;
   },
 ): Promise<void> {
-  await local.setMicrophoneEnabled(
+  const microphone = await local.setMicrophoneEnabled(
     choice.withMic,
     microphoneOptions(choice.microphoneId),
   );
+  if (choice.withMic && microphone === undefined)
+    throw new Error("microphone publication failed");
   if (choice.withCamera) {
     await local.setCameraEnabled(true, cameraOptions(choice.cameraId));
   }

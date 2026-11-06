@@ -2,6 +2,7 @@ import { ApiStatusError } from "@crewstead/api-client";
 import { describe, expect, it } from "vitest";
 import {
   attachmentDetail,
+  attachmentCryptoScope,
   describeDownloadError,
   describeUploadError,
   isUploadSizeAllowed,
@@ -21,6 +22,27 @@ describe("isUploadSizeAllowed", () => {
   });
 });
 
+describe("attachmentCryptoScope", () => {
+  it("uses the project domains for attachments in a project channel", () => {
+    expect(
+      attachmentCryptoScope({
+        contextType: "conversation",
+        contextId: "channel-1",
+        projectId: "project-1",
+      }),
+    ).toEqual({ type: "project", id: "project-1" });
+  });
+
+  it("uses the conversation domain only for direct conversations", () => {
+    expect(
+      attachmentCryptoScope({
+        contextType: "conversation",
+        contextId: "dm-1",
+      }),
+    ).toEqual({ type: "conversation", id: "dm-1" });
+  });
+});
+
 describe("describeUploadError", () => {
   it("explains each status the upload can end with", () => {
     expect(describeUploadError(new ApiStatusError(503, "u"))).toContain(
@@ -28,7 +50,7 @@ describe("describeUploadError", () => {
     );
     expect(describeUploadError(new ApiStatusError(507, "u"))).toContain("cota");
     expect(describeUploadError(new ApiStatusError(409, "u"))).toContain(
-      "em andamento",
+      "Atualize",
     );
     expect(describeUploadError(new ApiStatusError(403, "u"))).toContain(
       "perfil",

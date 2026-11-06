@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "./index";
-import { uploadFile } from "./uploads";
+import { EncryptionError } from "./e2ee";
+import { createUpload, uploadFile } from "./uploads";
 
 function apiFetcher(log: string[], failPart?: number): typeof fetch {
   return async (input, init) => {
@@ -41,6 +42,19 @@ function apiFetcher(log: string[], failPart?: number): typeof fetch {
 const file = new File(["0123456789"], "f.txt", { type: "text/plain" });
 
 describe("uploadFile", () => {
+  it("preserves an encryption refusal instead of reducing it to a generic conflict", async () => {
+    const client = createApiClient("http://localhost", async () =>
+      Response.json({ code: "encryption_required" }, { status: 409 }),
+    );
+    const failure = await createUpload(
+      client,
+      { contextType: "conversation", contextId: "c1" },
+      file,
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(EncryptionError);
+    expect((failure as EncryptionError).code).toBe("encryption_required");
+  });
+
   it("sends every part and completes with the ETags in part order", async () => {
     const log: string[] = [];
     const sent: string[] = [];

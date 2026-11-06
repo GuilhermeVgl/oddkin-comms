@@ -7,6 +7,7 @@ import {
   participantsCount,
   prejoinSubtitle,
   rotationNotice,
+  stageLayout,
   splitDevices,
   tileLabel,
 } from "./callView";
@@ -46,6 +47,28 @@ describe("orderParticipants", () => {
     const list = ["a", "b"];
     orderParticipants(list, "b");
     expect(list).toEqual(["a", "b"]);
+  });
+});
+
+describe("stageLayout", () => {
+  it("keeps every camera visible while a screen is featured", () => {
+    expect(stageLayout(["ana", "bruno"], "ana", "screen")).toEqual({
+      main: [{ kind: "screen", participant: "ana" }],
+      rail: [
+        { kind: "camera", participant: "ana" },
+        { kind: "camera", participant: "bruno" },
+      ],
+    });
+  });
+
+  it("swaps the people and shared screen without losing either", () => {
+    expect(stageLayout(["ana", "bruno"], "ana", "people")).toEqual({
+      main: [
+        { kind: "camera", participant: "ana" },
+        { kind: "camera", participant: "bruno" },
+      ],
+      rail: [{ kind: "screen", participant: "ana" }],
+    });
   });
 });
 

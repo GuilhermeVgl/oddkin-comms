@@ -6,6 +6,28 @@
   padding: 6px 32px 14px;
   flex-wrap: wrap;
 }
+.wk-project-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.wk-project-picker .inp {
+  min-width: 180px;
+  height: 38px;
+  color: var(--ink);
+}
+.wk-consolidated {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 650;
+}
 .board {
   display: grid;
   grid-auto-flow: column;

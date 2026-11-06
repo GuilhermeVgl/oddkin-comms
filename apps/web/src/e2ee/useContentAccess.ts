@@ -26,6 +26,7 @@ export function useContentAccess(session: Session): ContentAccess {
       if (current === null || ring === null || !vault.unlocked) return null;
       const cacheKey = scopeCacheKey(scope);
       let opened = scopes.current.get(cacheKey);
+      const created = opened === undefined;
       if (opened === undefined) {
         opened = new ContentCrypto(
           scope,
@@ -38,7 +39,8 @@ export function useContentAccess(session: Session): ContentAccess {
         );
         scopes.current.set(cacheKey, opened);
       }
-      await opened.refresh(options?.maintain ?? false);
+      if (created || options?.refresh !== false)
+        await opened.refresh(options?.maintain ?? false);
       return opened;
     };
 

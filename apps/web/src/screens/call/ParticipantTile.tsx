@@ -41,6 +41,8 @@ export function ParticipantTile({
   external: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const microphoneAudio = useRef<HTMLAudioElement>(null);
+  const screenAudio = useRef<HTMLAudioElement>(null);
   const { speaking, version } = useParticipantActivity(participant);
 
   useEffect(() => {
@@ -57,6 +59,30 @@ export function ParticipantTile({
     };
   }, [participant, version, shared]);
 
+  useEffect(() => {
+    if (participant.isLocal) return undefined;
+    const attached: Array<{
+      element: HTMLAudioElement;
+      track: {
+        attach(element: HTMLMediaElement): unknown;
+        detach(element: HTMLMediaElement): unknown;
+      };
+    }> = [];
+    for (const [source, ref] of [
+      [Track.Source.Microphone, microphoneAudio],
+      [Track.Source.ScreenShareAudio, screenAudio],
+    ] as const) {
+      const element = ref.current;
+      const track = participant.getTrackPublication(source)?.track;
+      if (element === null || track === undefined) continue;
+      track.attach(element);
+      attached.push({ element, track });
+    }
+    return () => {
+      for (const { element, track } of attached) track.detach(element);
+    };
+  }, [participant, version]);
+
   const microphone = participant.getTrackPublication(Track.Source.Microphone);
   const muted = microphone === undefined || microphone.isMuted;
   const hasVideo =
@@ -70,6 +96,8 @@ export function ParticipantTile({
       aria-label={tileLabel(name, { muted, speaking: lit })}
       className={`tile${lit ? " speaking" : ""}${shared ? " shared" : ""}`}
     >
+      <audio autoPlay ref={microphoneAudio} />
+      <audio autoPlay ref={screenAudio} />
       <video
         autoPlay
         className={`fill-video${shared ? " contain" : ""}${hasVideo ? "" : " is-off"}`}

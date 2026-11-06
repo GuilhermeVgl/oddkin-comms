@@ -6,6 +6,7 @@ import {
   microphoneOptions,
   previewConstraints,
   restingLevels,
+  screenCaptureOptions,
 } from "./media";
 
 describe("previewConstraints", () => {
@@ -76,5 +77,14 @@ describe("canPublishScreen", () => {
 
   it("refuses a list without it", () => {
     expect(canPublishScreen([1, 2])).toBe(false);
+  });
+});
+
+describe("screenCaptureOptions", () => {
+  it("always lets the native browser picker offer screen audio", () => {
+    expect(screenCaptureOptions()).toMatchObject({
+      audio: true,
+      systemAudio: "include",
+    });
   });
 });

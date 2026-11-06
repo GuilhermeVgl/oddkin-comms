@@ -1,6 +1,8 @@
 import type { Call } from "@crewstead/api-client";
 import { confirmDialog } from "../../design/confirm";
 import { Icon } from "../../design/icons";
+import { Menu, useMenu } from "../../design/Menu";
+import { DeviceSelect } from "./DeviceSelect";
 
 /** Asks before ending the call for everyone, then calls `onEnd`. */
 function confirmEndForAll(onEnd: () => void) {
@@ -22,27 +24,38 @@ export function CallControls({
   muted,
   cameraOn,
   sharing,
-  shareAudio,
   canEnd,
+  microphones,
+  cameras,
+  microphoneId,
+  cameraId,
+  deviceBusy,
   onToggleMicrophone,
   onToggleCamera,
+  onMicrophoneChange,
+  onCameraChange,
   onToggleScreen,
   onSwitchScreen,
-  onToggleShareAudio,
   onLeave,
 }: {
   muted: boolean;
   cameraOn: boolean;
   sharing: boolean;
-  shareAudio: boolean;
   canEnd: Call["canEnd"] | undefined;
+  microphones: readonly MediaDeviceInfo[];
+  cameras: readonly MediaDeviceInfo[];
+  microphoneId: string;
+  cameraId: string;
+  deviceBusy: boolean;
   onToggleMicrophone: () => void;
   onToggleCamera: () => void;
+  onMicrophoneChange: (deviceId: string) => void;
+  onCameraChange: (deviceId: string) => void;
   onToggleScreen: () => void;
   onSwitchScreen: () => void;
-  onToggleShareAudio: () => void;
   onLeave: (everyone: boolean) => void;
 }) {
+  const devices = useMenu();
   return (
     <div aria-label="Controles da chamada" className="ctrl" role="toolbar">
       <button
@@ -64,6 +77,51 @@ export function CallControls({
         <Icon name={cameraOn ? "video" : "videoOff"} />
       </button>
       <button
+        aria-expanded={devices.state !== null}
+        aria-haspopup="menu"
+        aria-label="Escolher microfone e câmera"
+        className="cbtn"
+        onClick={(event) => devices.toggle(event.currentTarget, undefined)}
+        type="button"
+      >
+        <Icon name="gear" />
+      </button>
+      {devices.state === null ? null : (
+        <Menu
+          anchor={devices.state.anchor}
+          className="call-device-menu"
+          focusFirst={false}
+          label="Dispositivos da chamada"
+          onClose={devices.close}
+          right
+          up
+        >
+          <DeviceSelect
+            devices={microphones}
+            disabled={deviceBusy}
+            fallback="Microfone"
+            id="call-microphone"
+            label="Microfone da chamada"
+            onChange={onMicrophoneChange}
+            value={microphoneId}
+          />
+          <DeviceSelect
+            devices={cameras}
+            disabled={deviceBusy}
+            fallback="Câmera"
+            id="call-camera"
+            label="Câmera da chamada"
+            onChange={onCameraChange}
+            value={cameraId}
+          />
+          <p aria-live="polite" className="xs muted call-device-status">
+            {deviceBusy
+              ? "Trocando dispositivo…"
+              : "A alteração vale imediatamente para esta chamada."}
+          </p>
+        </Menu>
+      )}
+      <button
         aria-label={sharing ? "Parar de compartilhar" : "Compartilhar tela"}
         aria-pressed={sharing}
         className="cbtn"
@@ -81,18 +139,7 @@ export function CallControls({
         >
           Trocar tela
         </button>
-      ) : (
-        <button
-          aria-label="Compartilhar com som"
-          aria-pressed={shareAudio}
-          className={`cbtn${shareAudio ? "" : " off"}`}
-          onClick={onToggleShareAudio}
-          title="Incluir o som da tela escolhida (depende do navegador)"
-          type="button"
-        >
-          {shareAudio ? "Com som" : "Sem som"}
-        </button>
-      )}
+      ) : null}
       <button className="cbtn end" onClick={() => onLeave(false)} type="button">
         <Icon name="phone" size="sm" />
         Sair

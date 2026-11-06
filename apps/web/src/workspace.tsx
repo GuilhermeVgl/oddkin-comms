@@ -39,6 +39,10 @@ import type { ContentCrypto } from "./e2ee/projectCrypto";
 import { describeError } from "./errors";
 import { useEvents } from "./events";
 import { localStore } from "./design/safeStorage";
+import {
+  preserveReadableProjects,
+  preserveReadableSprints,
+} from "./workspaceMerge";
 
 type Client = ReturnType<typeof createApiClient>;
 
@@ -130,27 +134,48 @@ export function WorkspaceProvider({
   const [currentProjectId, setCurrent] = useState<string | null>(storedProject);
   const running = useRef(false);
   const dirty = useRef(false);
+  // Content events reuse the already opened key scopes. Only a key event (or a
+  // newly unlocked runtime) makes the next pass reload domains and envelopes.
+  const cryptoVersion = useRef(0);
+  const openedCryptoVersion = useRef(-1);
 
   const load = useCallback(async () => {
     const e2ee = e2eeRef.current;
+    const requestedCryptoVersion = cryptoVersion.current;
+    const refreshCrypto =
+      openedCryptoVersion.current !== requestedCryptoVersion;
     const raw = await listProjects(client);
     const organization =
       unlocked && e2ee !== null
-        ? await e2ee.openOrganization({ maintain: true }).catch(() => null)
+        ? await e2ee
+            .openOrganization({ maintain: false, refresh: refreshCrypto })
+            .catch(() => null)
         : null;
     const states = await Promise.all(
       raw.map(async (entry): Promise<ProjectState> => {
         const crypto =
           unlocked && e2ee !== null
             ? await e2ee
-                .openProject(entry.id, { maintain: true })
+                .openProject(entry.id, {
+                  maintain: false,
+                  refresh: refreshCrypto,
+                })
                 .catch(() => null)
             : null;
         const project = entry.encrypted
           ? await decryptProject(crypto, entry)
           : entry;
-        const [domains, columns, work, epics, members] = await Promise.all([
-          listKeyDomains(client, entry.id).catch(() => []),
+        const [keyed, columns, work, epics, members] = await Promise.all([
+          crypto !== null
+            ? Promise.resolve(crypto.isEncrypted("work"))
+            : listKeyDomains(client, entry.id)
+                .then((domains) =>
+                  domains.some(
+                    (domain) =>
+                      domain.kind === "work" && domain.currentGeneration > 0,
+                  ),
+                )
+                .catch(() => false),
           listBoardColumns(client, entry.id).catch(() => []),
           listWorkItems(client, entry.id).then(
             (value) => ({ ok: true as const, value }),
@@ -172,9 +197,7 @@ export function WorkspaceProvider({
           members,
           crypto,
           status: new Map([...decoded.status, ...decodedEpics.status]),
-          keyed: domains.some(
-            (domain) => domain.kind === "work" && domain.currentGeneration > 0,
-          ),
+          keyed,
           canRead: work.ok,
         };
       }),
@@ -184,10 +207,21 @@ export function WorkspaceProvider({
       getSprintKeyDomain(client).catch(() => null),
     ]);
     const decoded = await decryptSprints(organization, rawSprints);
-    setProjects(states);
-    setSprints(decoded);
-    setOrgCrypto(organization);
+    setProjects((current) =>
+      unlocked ? preserveReadableProjects(current, states) : states,
+    );
+    setSprints((current) =>
+      unlocked
+        ? preserveReadableSprints(current, decoded, organization !== null)
+        : decoded,
+    );
+    setOrgCrypto((current) => organization ?? (unlocked ? current : null));
     setOrgKeyed((sprintDomain?.currentGeneration ?? 0) > 0);
+    if (
+      !unlocked ||
+      (organization !== null && states.every((state) => state.crypto !== null))
+    )
+      openedCryptoVersion.current = requestedCryptoVersion;
     setCurrent((value) =>
       value !== null && states.some((state) => state.project.id === value)
         ? value
@@ -217,11 +251,13 @@ export function WorkspaceProvider({
   }, [load]);
 
   useEffect(() => {
+    cryptoVersion.current += 1;
     void reload();
   }, [reload]);
 
   useEvents((event) => {
     if (event === "resync") {
+      cryptoVersion.current += 1;
       void reload();
       return;
     }
@@ -234,6 +270,7 @@ export function WorkspaceProvider({
         "project.changed",
       ].includes(event.eventType)
     ) {
+      if (event.eventType === "key-domain.changed") cryptoVersion.current += 1;
       void reload();
     }
   });

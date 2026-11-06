@@ -5,11 +5,10 @@ import { Menu } from "../design/Menu";
 import { nameOf } from "../design/people";
 import { Avatar } from "../design/primitives";
 import { getPrefs, setPrefs } from "../design/prefs";
-import { go, useRoute, type RouteName } from "../design/router";
+import { useRoute, type RouteName } from "../design/router";
 import { Duo, type DuoRef } from "../design/Sprite";
 import { toast } from "../design/toast";
 import { useInbox } from "../inbox";
-import { useWorkspace } from "../workspace";
 import { TeamLogo, useOrganization } from "../organization";
 import { useDuoVisible } from "../design/duoVisibility";
 import { APP_NAME } from "../brand";
@@ -41,10 +40,9 @@ export function Sidebar({
   onLogout: () => void;
 }) {
   const route = useRoute();
-  const { projects, current, setCurrentProjectId } = useWorkspace();
   const { branding } = useOrganization();
   const showDuo = useDuoVisible();
-  const { unread, channels } = useInbox();
+  const { unread } = useInbox();
   const dock = useRef<DuoRef>(null);
   const [menu, setMenu] = useState<{
     kind: MenuKind;
@@ -72,9 +70,6 @@ export function Sidebar({
     </a>
   );
 
-  const projectChannels = channels.filter(
-    (entry) => entry.projectId === current?.project.id,
-  );
   const toggle =
     (kind: MenuKind) => (event: React.MouseEvent<HTMLButtonElement>) => {
       const anchor = event.currentTarget;
@@ -99,67 +94,6 @@ export function Sidebar({
         {link("chat", "chat", "Mensagens", unread)}
         {external ? null : link("team", "team", "Equipe")}
         {link("settings", "gear", "Configurações")}
-        <div className="glabel row" style={{ gap: 0 }}>
-          <span className="grow">Projetos</span>
-          {account.isAdmin ? (
-            <button
-              aria-label="Novo projeto"
-              className="iconbtn mini"
-              onClick={() => {
-                go("work");
-                window.setTimeout(
-                  () =>
-                    window.dispatchEvent(new Event("crewstead:new-project")),
-                  50,
-                );
-              }}
-              style={{ color: "var(--side-muted)", width: 24, height: 24 }}
-              type="button"
-            >
-              <Icon name="plus" size="sm" />
-            </button>
-          ) : null}
-        </div>
-        {(projects ?? []).map(({ project }) => (
-          <button
-            className="navi proj"
-            key={project.id}
-            onClick={() => {
-              setCurrentProjectId(project.id);
-              go(route.name === "chat" ? "chat" : "work");
-            }}
-            type="button"
-          >
-            <i
-              className="dot"
-              style={{ background: projectColor(project.color) }}
-            />
-            {project.name}
-          </button>
-        ))}
-        {projectChannels.length > 0 && current !== null ? (
-          <>
-            <div className="glabel">Canais · {current.project.name}</div>
-            {projectChannels.map((channel) => (
-              <a
-                aria-current={
-                  route.name === "chat" && route.arg === channel.id
-                    ? "page"
-                    : undefined
-                }
-                className="chan"
-                href={`#/chat/${channel.id}`}
-                key={channel.id}
-              >
-                <Icon name="hash" size="sm" />
-                {channel.name}
-                {channel.unread > 0 ? (
-                  <span className="badge">{channel.unread}</span>
-                ) : null}
-              </a>
-            ))}
-          </>
-        ) : null}
       </nav>
       <div className="spacer" />
       {showDuo ? (

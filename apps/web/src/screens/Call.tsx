@@ -69,6 +69,8 @@ export function CallRoom({
       withCamera: prejoin.withCamera,
       cameraId: prejoin.cameraId,
     },
+    setMicrophoneId: prejoin.setMicrophoneId,
+    setCameraId: prejoin.setCameraId,
     room,
     onLocalUnpublished: screen.handleLocalUnpublished,
     resetScreenShare: () => screen.setSharing(false),
@@ -117,14 +119,21 @@ export function CallRoom({
           controls={{
             muted: connection.muted,
             cameraOn: connection.cameraOn,
+            microphones: prejoin.microphones,
+            cameras: prejoin.cameras,
+            microphoneId: connection.microphoneId,
+            cameraId: connection.cameraId,
+            deviceBusy: connection.deviceBusy,
             sharing: screen.sharing,
-            shareAudio: screen.shareAudio,
             canEnd: call?.canEnd,
             onToggleMicrophone: connection.toggleMicrophone,
             onToggleCamera: connection.toggleCamera,
+            onMicrophoneChange: (deviceId) =>
+              void connection.switchMicrophone(deviceId),
+            onCameraChange: (deviceId) =>
+              void connection.switchCamera(deviceId),
             onToggleScreen: () => void screen.toggleScreen(),
             onSwitchScreen: () => void screen.toggleScreen(true),
-            onToggleShareAudio: screen.toggleShareAudio,
             onLeave: (everyone) => void connection.leave(everyone),
           }}
           isExternal={isExternal}

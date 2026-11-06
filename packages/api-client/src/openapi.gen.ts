@@ -3073,7 +3073,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
       /** @description No active session */
       401: {
@@ -6526,7 +6528,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
       /** @description File larger than 500000000 bytes */
       413: {

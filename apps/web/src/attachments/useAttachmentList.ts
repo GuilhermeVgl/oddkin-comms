@@ -9,7 +9,7 @@ import { useOptionalE2EE } from "../e2ee/E2EE";
 import { resources, type ContentCrypto } from "../e2ee/projectCrypto";
 import { useReloadOn } from "../events";
 import type { Client } from "../e2ee/runtime";
-import { nameDomainKind, nameSource } from "./rules";
+import { attachmentCryptoScope, nameDomainKind, nameSource } from "./rules";
 
 /**
  * The attachments of a work item or conversation, with their readable names
@@ -25,12 +25,10 @@ export function useAttachmentList(client: Client, context: UploadContext) {
   const cryptoFor = useCallback(
     async (maintain: boolean): Promise<ContentCrypto | null> => {
       if (e2ee === null) return null;
-      if (contextType === "work_item") {
-        return context.projectId === undefined
-          ? null
-          : e2ee.openProject(context.projectId, { maintain });
-      }
-      return e2ee.openConversation(contextId, { maintain });
+      const scope = attachmentCryptoScope(context);
+      return scope.type === "project"
+        ? e2ee.openProject(scope.id, { maintain })
+        : e2ee.openConversation(scope.id, { maintain });
     },
     [context.projectId, contextId, contextType, e2ee],
   );

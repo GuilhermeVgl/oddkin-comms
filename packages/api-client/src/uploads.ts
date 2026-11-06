@@ -1,11 +1,12 @@
 import { ApiStatusError, ensure, type Client, type Schemas } from "./internal";
+import { encryptionErrorFrom } from "./e2ee";
 
 export type Attachment = Schemas["Attachment"];
 export type UploadSession = Schemas["Upload"];
 export type UploadContext = {
   contextType: "work_item" | "conversation";
   contextId: string;
-  /** Required for a work-item attachment whose name is encrypted. */
+  /** Required for project work items and channels so their project key domains are used. */
   projectId?: string;
 };
 
@@ -23,7 +24,7 @@ export async function createUpload(
   /** For an encrypted body: the client-chosen id and the signing device; `file.size` is then the encrypted size. */
   body?: { id: string; signerDeviceId: string },
 ): Promise<UploadSession> {
-  const { data, response } = await client.POST("/api/v1/uploads", {
+  const { data, error, response } = await client.POST("/api/v1/uploads", {
     body: {
       ...context,
       ...(encryption === undefined
@@ -44,7 +45,13 @@ export async function createUpload(
       ...(file.type === "" ? {} : { contentType: file.type }),
     },
   });
-  return ensure("createUpload", response, data, 201);
+  if (response.status !== 201 || data === undefined) {
+    if (response.status === 400 || response.status === 409) {
+      throw encryptionErrorFrom(response.status, error);
+    }
+    throw new ApiStatusError(response.status, "createUpload");
+  }
+  return data;
 }
 
 export async function presignUploadPart(

@@ -24,6 +24,26 @@ export function orderParticipants<T>(
     : [sharer, ...participants.filter((participant) => participant !== sharer)];
 }
 
+export type StageFocus = "screen" | "people";
+export type StageTile<T> = { kind: "camera" | "screen"; participant: T };
+
+/** Keeps camera and screen share as independent tiles so neither disappears. */
+export function stageLayout<T>(
+  participants: readonly T[],
+  sharer: T | undefined,
+  focus: StageFocus,
+): { main: StageTile<T>[]; rail: StageTile<T>[] } {
+  const cameras = participants.map((participant) => ({
+    kind: "camera" as const,
+    participant,
+  }));
+  if (sharer === undefined) return { main: cameras, rail: [] };
+  const screen = { kind: "screen" as const, participant: sharer };
+  return focus === "screen"
+    ? { main: [screen], rail: cameras }
+    : { main: cameras, rail: [screen] };
+}
+
 /** mm:ss for the call timer. */
 export function formatClock(seconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;

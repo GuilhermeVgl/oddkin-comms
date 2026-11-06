@@ -23,6 +23,7 @@ export function useMessages(
   conversationId: string,
   crypto: ContentCrypto | null,
   kind: "chat" | "dm",
+  ready = true,
 ) {
   const { client } = useWorkspace();
   const { clearUnread } = useInbox();
@@ -50,6 +51,7 @@ export function useMessages(
   // Fetches what is new and re-reads the recent window so edits, deletions and
   // reactions on loaded messages show up.
   const refresh = useCallback(async () => {
+    if (!ready) return;
     try {
       let after = Math.max(0, lastSeq.current - PAGE);
       for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -64,25 +66,24 @@ export function useMessages(
     } catch {
       setLoaded(true);
     }
-  }, [client, conversationId, crypto, kind, merge, markRead]);
+  }, [client, conversationId, crypto, kind, merge, markRead, ready]);
 
   useEffect(() => {
     lastSeq.current = 0;
     readSeq.current = 0;
     setMessages([]);
     setLoaded(false);
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
-    // refresh changes with the keys; a key change re-reads without wiping the thread.
   }, [conversationId]);
 
   useEffect(() => {
+    if (!ready) return undefined;
     void refresh();
-  }, [refresh]);
+    const timer = window.setInterval(() => void refresh(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [ready, refresh]);
 
   useEvents((event) => {
-    if (event === "resync" || event.contextId === conversationId)
+    if (ready && (event === "resync" || event.contextId === conversationId))
       void refresh();
   });
 

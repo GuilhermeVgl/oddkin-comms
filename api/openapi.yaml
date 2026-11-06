@@ -107,6 +107,10 @@ paths:
                 $ref: "#/components/schemas/Invitation"
         "400":
           description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: No active session
         "403":
@@ -1831,6 +1835,10 @@ paths:
           description: Unknown or inaccessible context
         "409":
           description: Another upload is in progress, or the context is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "413":
           description: File larger than 500000000 bytes
         "503":
@@ -3323,7 +3331,11 @@ components:
       properties:
         kudosCount: { type: integer }
         kudosMine: { type: boolean }
-        focusMinutes: { type: integer, description: Focus time of everyone on this activity }
+        focusMinutes:
+          {
+            type: integer,
+            description: Focus time of everyone on this activity,
+          }
     FocusSessionRequest:
       type: object
       required: [minutes]
@@ -4007,12 +4019,25 @@ components:
     CallRecord:
       type: object
       required:
-        [id, state, startedBy, startedAt, participants, answered, durationSeconds]
+        [
+          id,
+          state,
+          startedBy,
+          startedAt,
+          participants,
+          answered,
+          durationSeconds,
+        ]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         state: { type: string, enum: [active, ended] }
-        startedBy: { type: string, description: E-mail of who started it, empty when that account is gone }
+        startedBy:
+          {
+            type: string,
+            description: E-mail of who started it,
+            empty when that account is gone,
+          }
         startedById: { type: string, format: uuid }
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }

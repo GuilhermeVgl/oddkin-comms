@@ -12,6 +12,10 @@ const invitation: CallInvitation = {
 describe("incoming call ringing", () => {
   const start = new Date(invitation.createdAt).getTime();
 
+  it("uses the same 30-second limit as the incoming call UI", () => {
+    expect(RING_MS).toBe(30_000);
+  });
+
   it("rings for a fresh call", () => {
     expect(isRinging(invitation, start + 1000)).toBe(true);
   });

@@ -8,8 +8,8 @@ import { filterEntries, findItemTarget, taskEntries } from "./workRules";
 export function useWorkView(account: CurrentAccount, itemId: string | null) {
   const { projects, current, setCurrentProjectId } = useWorkspace();
   const prefs = board.use();
-  const list = prefs.view === "lista";
-  const all = list && prefs.allProjects;
+  const all = prefs.allProjects;
+  const list = all || prefs.view === "lista";
   const states = useMemo(
     () => (all ? (projects ?? []) : current === null ? [] : [current]),
     [all, projects, current],

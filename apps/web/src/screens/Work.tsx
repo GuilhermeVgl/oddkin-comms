@@ -80,7 +80,7 @@ export function Work({
         <button
           className="btn primary"
           disabled={everyProject.length === 0}
-          onClick={() => openNewItem(current?.project.id)}
+          onClick={() => openNewItem(all ? undefined : current?.project.id)}
           type="button"
         >
           <Icon name="plus" /> Nova atividade
@@ -143,7 +143,7 @@ export function Work({
         <FilterMenu
           anchor={filters.state.anchor}
           canManageEpics={
-            current?.project.isManager === true || account.isAdmin
+            !all && (current?.project.isManager === true || account.isAdmin)
           }
           members={members}
           onClose={filters.close}

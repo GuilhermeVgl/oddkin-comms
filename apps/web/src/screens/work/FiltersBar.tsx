@@ -4,7 +4,6 @@ import type { ProjectState } from "../../workspace";
 import { PRIORITY_LABEL } from "../priority";
 import { board } from "./boardStore";
 import { extraFilterCount, type Scope } from "./workRules";
-import { ProjectDot } from "../ProjectDot";
 
 const SCOPES: readonly (readonly [Scope, string])[] = [
   ["todas", "Todas"],
@@ -47,33 +46,32 @@ export function FiltersBar({
         ))}
       </div>
       <span className="sep wk-vsep" />
-      <div aria-label="Projeto" className="pill-tabs" role="group">
-        {list && projects.length > 1 ? (
-          <button
-            aria-pressed={all}
-            className="pill"
-            onClick={() => board.set({ allProjects: true, epic: "" })}
-            type="button"
-          >
-            Todos
-          </button>
-        ) : null}
-        {projects.map((state) => (
-          <button
-            aria-pressed={!all && current?.project.id === state.project.id}
-            className="pill"
-            key={state.project.id}
-            onClick={() => {
-              board.set({ allProjects: false, epic: "" });
-              onPickProject(state.project.id);
-            }}
-            type="button"
-          >
-            <ProjectDot color={state.project.color} />
-            {state.project.name}
-          </button>
-        ))}
-      </div>
+      <label className="wk-project-picker" htmlFor="wk-project">
+        <span>Projeto do quadro</span>
+        <select
+          className="inp"
+          id="wk-project"
+          onChange={(event) => {
+            const projectId = event.target.value;
+            if (projectId === "all") {
+              board.set({ allProjects: true, view: "lista", epic: "" });
+              return;
+            }
+            board.set({ allProjects: false, epic: "" });
+            onPickProject(projectId);
+          }}
+          value={all ? "all" : (current?.project.id ?? "")}
+        >
+          {projects.length > 1 ? (
+            <option value="all">Todos os projetos</option>
+          ) : null}
+          {projects.map((state) => (
+            <option key={state.project.id} value={state.project.id}>
+              {state.project.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="sr" htmlFor="fe">
         Épico
       </label>
@@ -118,24 +116,30 @@ export function FiltersBar({
         Filtros{extraFilters > 0 ? ` · ${extraFilters}` : ""}
       </button>
       <div className="grow" />
-      <div aria-label="Visualização" className="seg" role="group">
-        <button
-          aria-pressed={!list}
-          onClick={() => board.set({ view: "quadro", allProjects: false })}
-          type="button"
-        >
-          <Icon name="board" size="sm" />
-          Quadro
-        </button>
-        <button
-          aria-pressed={list}
-          onClick={() => board.set({ view: "lista" })}
-          type="button"
-        >
-          <Icon name="list" size="sm" />
-          Lista
-        </button>
-      </div>
+      {all ? (
+        <span className="wk-consolidated">
+          <Icon name="list" size="sm" /> Visão consolidada
+        </span>
+      ) : (
+        <div aria-label="Visualização" className="seg" role="group">
+          <button
+            aria-pressed={!list}
+            onClick={() => board.set({ view: "quadro" })}
+            type="button"
+          >
+            <Icon name="board" size="sm" />
+            Quadro
+          </button>
+          <button
+            aria-pressed={list}
+            onClick={() => board.set({ view: "lista" })}
+            type="button"
+          >
+            <Icon name="list" size="sm" />
+            Lista
+          </button>
+        </div>
+      )}
     </div>
   );
 }

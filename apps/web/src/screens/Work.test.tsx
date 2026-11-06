@@ -3,11 +3,12 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderApp } from "../testing/AppHarness";
 import { ME, defaultWorld } from "../testing/fakeApi";
-import { Work } from "./Work";
+import { board as boardStore, Work } from "./Work";
 
 beforeEach(() => {
   window.location.hash = "#/work";
   window.localStorage.clear();
+  boardStore.set({ allProjects: false, view: "quadro" });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -58,6 +59,33 @@ describe("Work board", () => {
     const row = await screen.findByText("Escrever o plano");
     fireEvent.click(row);
     await waitFor(() => expect(window.location.hash).toBe("#/work/w2"));
+  });
+
+  it("switches clearly between every project and one project", async () => {
+    const world = defaultWorld();
+    const first = world.projects[0]!;
+    world.projects.push({ ...first, id: "p2", name: "Beta" });
+    world.columns.p2 = [
+      { id: "p2-todo", name: "Fila", position: 0, category: "todo" },
+      { id: "p2-done", name: "Feito", position: 1, category: "done" },
+    ];
+    world.members.p2 = [];
+    world.conversations.p2 = [];
+    world.items.push({
+      ...world.items[0]!,
+      id: "w-beta",
+      projectId: "p2",
+      columnId: "p2-todo",
+      title: "Preparar lançamento Beta",
+    });
+
+    await renderApp(<Work account={ME} itemId={null} />, { world });
+    const scope = await screen.findByLabelText("Projeto do quadro");
+    fireEvent.change(scope, { target: { value: "all" } });
+
+    expect(await screen.findByText("Preparar lançamento Beta")).toBeTruthy();
+    expect(screen.getByText("Revisar contratos")).toBeTruthy();
+    expect(screen.getByText("Visão consolidada")).toBeTruthy();
   });
 
   it("invites the first project when there is none", async () => {

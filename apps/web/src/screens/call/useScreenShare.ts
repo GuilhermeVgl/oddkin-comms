@@ -8,7 +8,7 @@ import {
 import { useRef, useState, type MutableRefObject } from "react";
 import { blip } from "../../design/sound";
 import type { Client } from "./environment";
-import { canPublishScreen } from "./media";
+import { canPublishScreen, screenCaptureOptions } from "./media";
 import { describeShareError } from "./messages";
 
 /**
@@ -42,15 +42,11 @@ function waitForScreenPermission(room: Room, timeoutMs = 6000): Promise<void> {
  * screens, and a window or tab is refused afterwards because browsers cannot
  * hide those from the list.
  */
-async function publishScreen(active: Room, withSound: boolean) {
-  await active.localParticipant.setScreenShareEnabled(true, {
-    audio: withSound,
-    systemAudio: withSound ? "include" : "exclude",
-    video: { displaySurface: "monitor" },
-    selfBrowserSurface: "exclude",
-    surfaceSwitching: "exclude",
-    resolution: { width: 1920, height: 1080, frameRate: 15 },
-  });
+async function publishScreen(active: Room) {
+  await active.localParticipant.setScreenShareEnabled(
+    true,
+    screenCaptureOptions(),
+  );
   const track = active.localParticipant.getTrackPublication(
     Track.Source.ScreenShare,
   )?.track;
@@ -70,7 +66,6 @@ export function useScreenShare(input: {
 }) {
   const { client, callId, room, setMessage } = input;
   const [sharing, setSharing] = useState(false);
-  const [shareAudio, setShareAudio] = useState(false);
   // Changing screens unpublishes the old capture on purpose; that must not give the slot away.
   const switching = useRef(false);
 
@@ -98,7 +93,7 @@ export function useScreenShare(input: {
         switching.current = true;
         try {
           await active.localParticipant.setScreenShareEnabled(false);
-          await publishScreen(active, shareAudio);
+          await publishScreen(active);
         } finally {
           switching.current = false;
         }
@@ -111,7 +106,7 @@ export function useScreenShare(input: {
       await startScreenShare(client, callId);
       try {
         await waitForScreenPermission(active);
-        await publishScreen(active, shareAudio);
+        await publishScreen(active);
       } catch (error) {
         // The picker was cancelled or the browser refused: free the slot again.
         await stopScreenShare(client, callId).catch(() => undefined);
@@ -133,8 +128,6 @@ export function useScreenShare(input: {
   return {
     sharing,
     setSharing,
-    shareAudio,
-    toggleShareAudio: () => setShareAudio((value) => !value),
     toggleScreen,
     handleLocalUnpublished,
   };
