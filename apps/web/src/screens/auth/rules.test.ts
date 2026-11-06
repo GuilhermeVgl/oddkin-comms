@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountMatchesInvitation,
   fingerprintCells,
+  invitationEmailFromParam,
   invitationRejection,
   LOGIN_LINES,
   loginFailure,
@@ -94,6 +95,20 @@ describe("parseInviteForm", () => {
     expect(parseInviteForm("short", "a@b.co")).toBeNull();
     expect(parseInviteForm(TOKEN, "not-an-email")).toBeNull();
     expect(parseInviteForm(TOKEN, "a b@c.co")).toBeNull();
+  });
+});
+
+describe("invitationEmailFromParam", () => {
+  it("recovers links sent with the legacy double-encoded e-mail", () => {
+    expect(invitationEmailFromParam("person%40example.test")).toBe(
+      "person@example.test",
+    );
+  });
+
+  it("leaves correctly decoded addresses unchanged", () => {
+    expect(invitationEmailFromParam("person@example.test")).toBe(
+      "person@example.test",
+    );
   });
 });
 

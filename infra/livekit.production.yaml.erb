@@ -1,0 +1,16 @@
+port: 7880
+log_level: warn
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: true
+
+keys:
+  <%= ENV.fetch("LIVEKIT_API_KEY") %>: <%= ENV.fetch("LIVEKIT_API_SECRET") %>
+
+webhook:
+  api_key: <%= ENV.fetch("LIVEKIT_API_KEY") %>
+  urls:
+    - http://kamal-proxy/api/v1/webhooks/livekit

@@ -1,0 +1,125 @@
+service: crewstead
+image: crewstead/app
+
+servers:
+  web:
+    - 5.253.232.59
+
+proxy:
+  ssl: true
+  host: crewstead.5-253-232-59.sslip.io
+  app_port: 8080
+  forward_headers: true
+  healthcheck:
+    path: /api/v1/health/ready
+    interval: 3
+    timeout: 5
+
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  context: .
+  dockerfile: infra/Dockerfile.production
+  args:
+    VITE_APP_NAME: Crewstead
+
+ssh:
+  user: root
+
+env:
+  secret:
+    - HTTP_ADDR
+    - AUTO_MIGRATE
+    - DATABASE_URL
+    - CREWSTEAD_ADMIN_EMAIL
+    - CREWSTEAD_ADMIN_PASSWORD
+    - CREWSTEAD_TIMEZONE
+    - CREWSTEAD_APP_NAME
+    - CREWSTEAD_PUBLIC_URL
+    - APP_DISPLAY_NAME
+    - APP_PUBLIC_URL
+    - INVITATION_DELIVERY_KEY
+    - RESEND_API_KEY
+    - RESEND_FROM_EMAIL
+    - LIVEKIT_URL
+    - LIVEKIT_API_URL
+    - LIVEKIT_API_KEY
+    - LIVEKIT_API_SECRET
+    - R2_ENDPOINT
+    - R2_PUBLIC_ENDPOINT
+    - R2_BUCKET
+    - R2_ACCESS_KEY_ID
+    - R2_SECRET_ACCESS_KEY
+    - R2_PATH_STYLE
+    - R2_CREATE_BUCKET
+
+aliases:
+  logs: app logs --follow
+  shell: app exec --interactive --reuse /bin/sh
+
+accessories:
+  postgres:
+    service: postgres
+    image: postgres:17.11-alpine3.24@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    host: 5.253.232.59
+    env:
+      secret:
+        - POSTGRES_USER
+        - POSTGRES_DB
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql/data
+
+  storage:
+    service: storage
+    image: cgr.dev/chainguard/minio@sha256:aea6c163749e1caca37f907976dcf337177ddf5f558808f2aa591618fd3a6eef
+    host: 5.253.232.59
+    cmd: server /data --console-address :9001
+    proxy:
+      ssl: true
+      host: storage.5-253-232-59.sslip.io
+      app_port: 9000
+      healthcheck:
+        path: /minio/health/live
+      buffering:
+        requests: false
+        responses: false
+    env:
+      secret:
+        - MINIO_ROOT_USER
+        - MINIO_ROOT_PASSWORD
+        - MINIO_API_CORS_ALLOW_ORIGIN
+    directories:
+      - local: data
+        remote: /data
+        mode: "0750"
+        owner: "65532:65532"
+
+  livekit:
+    service: livekit
+    image: livekit/livekit-server@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+    host: 5.253.232.59
+    cmd: --config /etc/livekit.yaml
+    proxy:
+      ssl: true
+      host: livekit.5-253-232-59.sslip.io
+      app_port: 7880
+      healthcheck:
+        path: /
+      buffering:
+        requests: false
+        responses: false
+    env:
+      secret:
+        - LIVEKIT_API_KEY
+        - LIVEKIT_API_SECRET
+    files:
+      - local: infra/livekit.production.yaml.erb
+        remote: /etc/livekit.yaml
+        mode: "0600"
+    options:
+      publish:
+        - 7881:7881
+        - 50000-50100:50000-50100/udp

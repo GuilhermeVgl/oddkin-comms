@@ -112,9 +112,12 @@ func invitationLink(publicURL, email, token, extra string) (string, error) {
 	}
 	base.Path = strings.TrimRight(base.Path, "/") + "/"
 	values := url.Values{"email": {email}, "token": {token}}
-	base.Fragment = "accept-invitation?" + values.Encode()
+	fragment := "accept-invitation?" + values.Encode()
 	if extra != "" {
-		base.Fragment += "&" + extra
+		fragment += "&" + extra
 	}
-	return base.String(), nil
+	// url.URL.String escapes Fragment because Fragment is normally stored in
+	// decoded form. values.Encode already produced the correct wire encoding,
+	// so append it after serializing the validated base URL.
+	return base.String() + "#" + fragment, nil
 }

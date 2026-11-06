@@ -90,6 +90,17 @@ export function parseInviteForm(
   return { email: email.trim(), token };
 }
 
+/** Recover invitation links generated before e-mail fragments stopped being double encoded. */
+export function invitationEmailFromParam(email: string): string {
+  if (email.includes("@") || !email.includes("%")) return email;
+  try {
+    const decoded = decodeURIComponent(email);
+    return /^\S+@\S+\.\S+$/.test(decoded) ? decoded : email;
+  } catch {
+    return email;
+  }
+}
+
 /** Why the server did not accept an invitation. */
 export function invitationRejection(result: "invalid" | "unavailable"): string {
   return result === "invalid"

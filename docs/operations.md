@@ -18,6 +18,23 @@ Tudo vem de variáveis de ambiente; o `.env.example` lista as principais. A API 
 | `LIVEKIT_*`                                                               | Chamadas                                              |
 | `RETENTION_SESSION_DAYS`, `RETENTION_CALL_DAYS`, `RETENTION_AUDIT_DAYS`   | Retenção (padrão 14, 30 e 180 dias)                   |
 
+## Deploy com Kamal
+
+O ambiente da Contabo usa `config/deploy.yml`. A imagem de produção contém a API e o frontend; PostgreSQL, LiveKit e MinIO rodam como acessórios persistentes na rede Docker `kamal`.
+
+- A API acessa o armazenamento S3 pelo endereço interno `http://storage:9000`.
+- O navegador usa `https://storage.5-253-232-59.sslip.io` apenas para transferências diretas por URLs pré-assinados.
+- Os dados ficam em diretórios persistentes gerenciados pelo Kamal, fora do ciclo de vida dos containers.
+- Todas as variáveis enviadas pelo Kamal vêm do `.env.production` local e ignorado pelo Git. A cópia `/root/.crewstead-secrets` na VPS preserva a origem das credenciais de infraestrutura geradas na primeira instalação.
+
+Para um novo deploy, com a chave SSH autorizada e o arquivo remoto de segredos já criado:
+
+```sh
+kamal deploy
+```
+
+O acesso usa HTTPS/WSS com nomes temporários do `sslip.io`: `crewstead`, `storage` e `livekit` sob `5-253-232-59.sslip.io`. Substitua-os por nomes DNS próprios antes de depender desta instalação em produção.
+
 ## Retenção
 
 Um job diário (`retention`) remove sessões e links de redefinição vencidos (14 dias), chamadas encerradas e seus webhooks (30 dias) e a auditoria de recuperação (180 dias). Arquivos apagados pelo usuário ficam no bucket por 30 dias e só então são eliminados, para que uma restauração do banco ainda encontre o objeto. Mensagens apagadas viram tombstone na base ativa, mas o texto cifrado antigo pode continuar nos backups até a retenção deles expirar.

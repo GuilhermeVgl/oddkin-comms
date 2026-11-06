@@ -21,6 +21,17 @@ func TestInvitationLinkKeepsTokenOutOfHTTPQuery(t *testing.T) {
 	}
 }
 
+func TestInvitationLinkEncodesEmailExactlyOnce(t *testing.T) {
+	t.Parallel()
+	link, err := invitationLink("https://crewstead.example", "person@example.test", "secret-token", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(link, "%2540") || !strings.Contains(link, "email=person%40example.test") {
+		t.Fatalf("email must be encoded exactly once: %s", link)
+	}
+}
+
 func TestInvitationLinkRejectsInvalidPublicURL(t *testing.T) {
 	t.Parallel()
 	for _, publicURL := range []string{"", "crewstead.example", "ftp://crewstead.example", "https://user@crewstead.example", "https://crewstead.example?x=1"} {

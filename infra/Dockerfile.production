@@ -1,0 +1,30 @@
+FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS api-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/crewstead ./cmd/api
+
+FROM node:24.10.0-alpine3.22@sha256:775ba24d35a13e74dedce1d2af4ad510337b68d8e22be89e0ce2ccc299329083 AS web-build
+WORKDIR /src
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/api-client/package.json packages/api-client/package.json
+COPY packages/crypto/package.json packages/crypto/package.json
+RUN corepack pnpm install --frozen-lockfile
+COPY apps/web apps/web
+COPY packages packages
+ARG VITE_APP_NAME=Crewstead
+RUN corepack pnpm --filter @crewstead/web build
+
+FROM caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+COPY --from=api-build /out/crewstead /usr/local/bin/crewstead
+COPY --from=web-build /src/apps/web/dist /srv
+COPY infra/Caddyfile.production /etc/caddy/Caddyfile
+COPY infra/entrypoint.production.sh /usr/local/bin/crewstead-entrypoint
+RUN chmod 0755 /usr/local/bin/crewstead-entrypoint \
+    && mkdir -p /config/caddy /data/caddy \
+    && chown -R 10001:10001 /config /data /srv
+USER 10001:10001
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/crewstead-entrypoint"]

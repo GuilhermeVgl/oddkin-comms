@@ -24,6 +24,7 @@ import { Workspace } from "./shell/Shell";
 import { OrganizationGate } from "./organization";
 import "./styles.css";
 import { APP_NAME } from "./brand";
+import { invitationEmailFromParam } from "./screens/auth/rules";
 
 type SessionState =
   | { status: "checking" }
@@ -60,8 +61,13 @@ function storedEntry(): Entry {
     if (
       value?.kind === "invitation" &&
       typeof value.invitation?.token === "string"
-    )
-      return value;
+    ) {
+      const email = invitationEmailFromParam(value.invitation.email);
+      return {
+        ...value,
+        invitation: { ...value.invitation, email },
+      };
+    }
     if (value?.kind === "reset" && typeof value.token === "string")
       return value;
   } catch {
@@ -84,7 +90,7 @@ function readEntry(): Entry {
       const entry: Entry = {
         kind: "invitation",
         invitation: {
-          email,
+          email: invitationEmailFromParam(email),
           token,
           ...(historyKey !== null && rootFingerprint !== null
             ? { historyKey, rootFingerprint }

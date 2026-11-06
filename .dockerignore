@@ -1,4 +1,5 @@
 .git
+.kamal
 .env
 .env.*
 !.env.example
