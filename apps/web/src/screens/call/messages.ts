@@ -39,6 +39,11 @@ export function describeJoinError(error: unknown): string {
     return "Libere a criptografia deste navegador antes de entrar.";
   if (error instanceof Error && error.message === "e2ee_unavailable")
     return "Este navegador não suporta criptografia de mídia obrigatória.";
+  if (
+    error instanceof Error &&
+    error.message === "microphone publication failed"
+  )
+    return "Não foi possível publicar o microfone. Verifique a permissão e o dispositivo selecionado.";
   return describeCallError(error);
 }
 

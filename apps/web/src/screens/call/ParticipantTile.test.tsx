@@ -28,7 +28,7 @@ describe("ParticipantTile audio", () => {
       <ParticipantTile
         external={false}
         participant={participant}
-        shared={false}
+        source="camera"
       />,
     );
 

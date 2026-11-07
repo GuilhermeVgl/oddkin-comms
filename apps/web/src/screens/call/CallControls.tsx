@@ -23,7 +23,12 @@ function confirmEndForAll(onEnd: () => void) {
 export function CallControls({
   muted,
   cameraOn,
+  audioBlocked,
   sharing,
+  sharedScreenActive = false,
+  chatAvailable,
+  chatOpen,
+  shareFocus,
   canEnd,
   microphones,
   cameras,
@@ -34,13 +39,21 @@ export function CallControls({
   onToggleCamera,
   onMicrophoneChange,
   onCameraChange,
+  onResumeAudio,
+  onToggleChat,
+  onToggleShareFocus,
   onToggleScreen,
   onSwitchScreen,
   onLeave,
 }: {
   muted: boolean;
   cameraOn: boolean;
+  audioBlocked: boolean;
   sharing: boolean;
+  sharedScreenActive?: boolean;
+  chatAvailable: boolean;
+  chatOpen: boolean;
+  shareFocus: "screen" | "people";
   canEnd: Call["canEnd"] | undefined;
   microphones: readonly MediaDeviceInfo[];
   cameras: readonly MediaDeviceInfo[];
@@ -51,6 +64,9 @@ export function CallControls({
   onToggleCamera: () => void;
   onMicrophoneChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
+  onResumeAudio: () => void;
+  onToggleChat: () => void;
+  onToggleShareFocus: () => void;
   onToggleScreen: () => void;
   onSwitchScreen: () => void;
   onLeave: (everyone: boolean) => void;
@@ -58,6 +74,17 @@ export function CallControls({
   const devices = useMenu();
   return (
     <div aria-label="Controles da chamada" className="ctrl" role="toolbar">
+      {audioBlocked ? (
+        <button
+          aria-label="Ativar áudio"
+          className="cbtn call-text-action"
+          onClick={onResumeAudio}
+          type="button"
+        >
+          <Icon name="volume" />
+          <span>Ativar áudio</span>
+        </button>
+      ) : null}
       <button
         aria-label={muted ? "Ativar microfone" : "Silenciar"}
         aria-pressed={!muted}
@@ -130,14 +157,45 @@ export function CallControls({
       >
         <Icon name="screen" />
       </button>
-      {sharing ? (
+      {sharing || sharedScreenActive ? (
+        <>
+          <button
+            aria-label={
+              shareFocus === "screen" ? "Destacar pessoas" : "Destacar tela"
+            }
+            className="cbtn"
+            onClick={onToggleShareFocus}
+            title={
+              shareFocus === "screen"
+                ? "Colocar as câmeras em evidência"
+                : "Colocar a tela em evidência"
+            }
+            type="button"
+          >
+            <Icon name={shareFocus === "screen" ? "team" : "screen"} />
+          </button>
+          {sharing ? (
+            <button
+              className="cbtn call-text-action"
+              onClick={onSwitchScreen}
+              title="Escolher outra tela"
+              type="button"
+            >
+              <Icon name="screen" />
+              <span>Trocar tela</span>
+            </button>
+          ) : null}
+        </>
+      ) : null}
+      {chatAvailable ? (
         <button
+          aria-label={chatOpen ? "Ocultar chat" : "Mostrar chat"}
+          aria-pressed={chatOpen}
           className="cbtn"
-          onClick={onSwitchScreen}
-          title="Escolher outra tela"
+          onClick={onToggleChat}
           type="button"
         >
-          Trocar tela
+          <Icon name="chat" />
         </button>
       ) : null}
       <button className="cbtn end" onClick={() => onLeave(false)} type="button">

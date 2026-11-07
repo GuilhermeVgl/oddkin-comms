@@ -33,25 +33,23 @@ function useParticipantActivity(participant: Participant) {
 /** One person on the stage: their video (or initial), name and microphone state. */
 export function ParticipantTile({
   participant,
-  shared,
+  source,
   external,
 }: {
   participant: Participant;
-  shared: boolean;
+  source: "camera" | "screen";
   external: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
-  const microphoneAudio = useRef<HTMLAudioElement>(null);
-  const screenAudio = useRef<HTMLAudioElement>(null);
+  const audio = useRef<HTMLAudioElement>(null);
   const { speaking, version } = useParticipantActivity(participant);
+  const shared = source === "screen";
 
   useEffect(() => {
     const element = video.current;
-    const screen = participant.getTrackPublication(
-      Track.Source.ScreenShare,
+    const track = participant.getTrackPublication(
+      shared ? Track.Source.ScreenShare : Track.Source.Camera,
     )?.track;
-    const camera = participant.getTrackPublication(Track.Source.Camera)?.track;
-    const track = shared ? (screen ?? camera) : (camera ?? screen);
     if (element === null || track === undefined) return undefined;
     track.attach(element);
     return () => {
@@ -61,43 +59,35 @@ export function ParticipantTile({
 
   useEffect(() => {
     if (participant.isLocal) return undefined;
-    const attached: Array<{
-      element: HTMLAudioElement;
-      track: {
-        attach(element: HTMLMediaElement): unknown;
-        detach(element: HTMLMediaElement): unknown;
-      };
-    }> = [];
-    for (const [source, ref] of [
-      [Track.Source.Microphone, microphoneAudio],
-      [Track.Source.ScreenShareAudio, screenAudio],
-    ] as const) {
-      const element = ref.current;
-      const track = participant.getTrackPublication(source)?.track;
-      if (element === null || track === undefined) continue;
-      track.attach(element);
-      attached.push({ element, track });
-    }
+    const element = audio.current;
+    const track = participant.getTrackPublication(
+      shared ? Track.Source.ScreenShareAudio : Track.Source.Microphone,
+    )?.track;
+    if (element === null || track === undefined) return undefined;
+    track.attach(element);
     return () => {
-      for (const { element, track } of attached) track.detach(element);
+      track.detach(element);
     };
-  }, [participant, version]);
+  }, [participant, version, shared]);
 
   const microphone = participant.getTrackPublication(Track.Source.Microphone);
   const muted = microphone === undefined || microphone.isMuted;
   const hasVideo =
-    participant.getTrackPublication(Track.Source.Camera)?.track !== undefined ||
-    participant.getTrackPublication(Track.Source.ScreenShare)?.track !==
-      undefined;
+    participant.getTrackPublication(
+      shared ? Track.Source.ScreenShare : Track.Source.Camera,
+    )?.track !== undefined;
   const name = participant.name ?? participant.identity;
-  const lit = speaking && !muted;
+  const lit = !shared && speaking && !muted;
   return (
     <div
-      aria-label={tileLabel(name, { muted, speaking: lit })}
+      aria-label={
+        shared
+          ? `${nameOf(name)}, compartilhando tela`
+          : tileLabel(name, { muted, speaking: lit })
+      }
       className={`tile${lit ? " speaking" : ""}${shared ? " shared" : ""}`}
     >
-      <audio autoPlay ref={microphoneAudio} />
-      <audio autoPlay ref={screenAudio} />
+      <audio autoPlay ref={audio} />
       <video
         autoPlay
         className={`fill-video${shared ? " contain" : ""}${hasVideo ? "" : " is-off"}`}
@@ -123,7 +113,7 @@ export function ParticipantTile({
         {external ? <span className="ext">externo</span> : null}
         {participant.isLocal ? " (você)" : ""}
       </div>
-      {muted ? (
+      {!shared && muted ? (
         <span aria-label="Microfone desligado" className="tag mute" role="img">
           <Icon name="micOff" size="sm" />
         </span>

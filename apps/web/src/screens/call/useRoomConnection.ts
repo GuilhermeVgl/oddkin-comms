@@ -8,8 +8,10 @@ import {
 } from "@crewstead/api-client";
 import {
   ExternalE2EEKeyProvider,
+  MediaDeviceFailure,
   Room,
   RoomEvent,
+  Track,
   type LocalTrackPublication,
   type Participant,
 } from "livekit-client";
@@ -26,6 +28,7 @@ import { blip } from "../../design/sound";
 import type { E2EEApi } from "../../e2ee/E2EE";
 import { e2eeWorker, keyBuffer, type Client } from "./environment";
 import { publishLocalMedia, switchActiveMedia } from "./localMedia";
+import { microphoneOptions } from "./media";
 import { describeJoinError, isOtherDeviceConflict } from "./messages";
 
 export type RoomPhase = "preview" | "joining" | "connected" | "error";
@@ -81,6 +84,7 @@ export function useRoomConnection(input: {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [microphoneId, setActiveMicrophoneId] = useState(media.microphoneId);
   const [cameraId, setActiveCameraId] = useState(media.cameraId);
   const [deviceBusy, setDeviceBusy] = useState(false);
@@ -88,6 +92,25 @@ export function useRoomConnection(input: {
   const [since, setSince] = useState(0);
   const mediaKey = useRef<Uint8Array | null>(null);
   const keyProvider = useRef<ExternalE2EEKeyProvider | null>(null);
+
+  function describeDeviceError(error: Error, kind?: MediaDeviceKind): string {
+    const device =
+      kind === "videoinput"
+        ? "a câmera"
+        : kind === "audioinput"
+          ? "o microfone"
+          : "o dispositivo de mídia";
+    switch (MediaDeviceFailure.getFailure(error)) {
+      case MediaDeviceFailure.PermissionDenied:
+        return `O navegador bloqueou ${device}. Libere a permissão e tente novamente.`;
+      case MediaDeviceFailure.NotFound:
+        return `Não foi possível encontrar ${device}. Escolha outro dispositivo.`;
+      case MediaDeviceFailure.DeviceInUse:
+        return `${device[0]?.toLocaleUpperCase("pt-BR")}${device.slice(1)} está sendo usado por outro aplicativo. Feche-o e tente novamente.`;
+      default:
+        return `Não foi possível usar ${device}. Verifique o dispositivo e a permissão do navegador.`;
+    }
+  }
 
   const syncParticipants = useCallback(() => {
     const current = room.current;
@@ -127,6 +150,31 @@ export function useRoomConnection(input: {
       .on(RoomEvent.ParticipantConnected, syncParticipants)
       .on(RoomEvent.ParticipantDisconnected, syncParticipants)
       .on(RoomEvent.TrackSubscribed, syncParticipants)
+      .on(RoomEvent.TrackMuted, (publication, participant) => {
+        if (
+          participant.isLocal &&
+          publication.source === Track.Source.Microphone
+        )
+          setMuted(true);
+      })
+      .on(RoomEvent.TrackUnmuted, (publication, participant) => {
+        if (
+          participant.isLocal &&
+          publication.source === Track.Source.Microphone
+        )
+          setMuted(false);
+      })
+      .on(RoomEvent.AudioPlaybackStatusChanged, (playing) =>
+        setAudioBlocked(!playing),
+      )
+      .on(RoomEvent.MediaDevicesError, (error, kind) =>
+        setMessage(describeDeviceError(error, kind)),
+      )
+      .on(RoomEvent.LocalAudioSilenceDetected, () =>
+        setMessage(
+          "O microfone está ativo, mas não detectamos áudio. Confira o dispositivo escolhido e o nível de entrada do sistema.",
+        ),
+      )
       .on(RoomEvent.EncryptionError, () => {
         next.disconnect();
         setMessage(
@@ -139,7 +187,12 @@ export function useRoomConnection(input: {
         setPhase((value) => (value === "connected" ? "error" : value)),
       );
     await next.connect(ticket.url, ticket.token);
-    await next.startAudio().catch(() => undefined);
+    try {
+      await next.startAudio();
+      setAudioBlocked(!next.canPlaybackAudio);
+    } catch {
+      setAudioBlocked(true);
+    }
     await next.setE2EEEnabled(true);
     await publishLocalMedia(next.localParticipant, media);
     setMuted(!media.withMic);
@@ -209,18 +262,61 @@ export function useRoomConnection(input: {
     onClose();
   }
 
-  function toggleMicrophone() {
-    const next = !muted;
-    void room.current?.localParticipant
-      .setMicrophoneEnabled(!next)
-      .then(() => setMuted(next));
+  async function resumeAudio() {
+    const current = room.current;
+    if (current === null) return;
+    setMessage("");
+    try {
+      await current.startAudio();
+      setAudioBlocked(!current.canPlaybackAudio);
+    } catch {
+      setAudioBlocked(true);
+      setMessage(
+        "O navegador ainda bloqueou o áudio da chamada. Verifique a permissão de som do site e tente novamente.",
+      );
+    }
   }
 
-  function toggleCamera() {
-    const next = !cameraOn;
-    void room.current?.localParticipant
-      .setCameraEnabled(next)
-      .then(() => setCameraOn(next));
+  async function toggleMicrophone() {
+    const current = room.current;
+    if (current === null) return;
+    const enabled = muted;
+    setMessage("");
+    try {
+      const publication = await current.localParticipant.setMicrophoneEnabled(
+        enabled,
+        microphoneOptions(microphoneId),
+      );
+      if (enabled && publication === undefined)
+        throw new Error("microphone publication failed");
+      const active = current.localParticipant.getTrackPublication(
+        Track.Source.Microphone,
+      );
+      setMuted(active === undefined || active.isMuted);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? describeDeviceError(error, "audioinput")
+          : "Não foi possível alterar o microfone.",
+      );
+    }
+  }
+
+  async function toggleCamera() {
+    const current = room.current;
+    if (current === null) return;
+    const enabled = !cameraOn;
+    setMessage("");
+    try {
+      await current.localParticipant.setCameraEnabled(enabled);
+      setCameraOn(enabled);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? describeDeviceError(error, "videoinput")
+          : "Não foi possível alterar a câmera.",
+      );
+    }
   }
 
   async function switchMicrophone(deviceId: string) {
@@ -229,7 +325,7 @@ export function useRoomConnection(input: {
     setDeviceBusy(true);
     setMessage("");
     try {
-      await switchActiveMedia(current, "audioinput", deviceId);
+      if (!muted) await switchActiveMedia(current, "audioinput", deviceId);
       setActiveMicrophoneId(deviceId);
       rememberMicrophone(deviceId);
     } catch {
@@ -247,7 +343,7 @@ export function useRoomConnection(input: {
     setDeviceBusy(true);
     setMessage("");
     try {
-      await switchActiveMedia(current, "videoinput", deviceId);
+      if (cameraOn) await switchActiveMedia(current, "videoinput", deviceId);
       setActiveCameraId(deviceId);
       rememberCamera(deviceId);
     } catch {
@@ -263,6 +359,7 @@ export function useRoomConnection(input: {
     participants,
     muted,
     cameraOn,
+    audioBlocked,
     microphoneId,
     cameraId,
     deviceBusy,
@@ -272,6 +369,7 @@ export function useRoomConnection(input: {
     leave,
     toggleMicrophone,
     toggleCamera,
+    resumeAudio,
     switchMicrophone,
     switchCamera,
   };

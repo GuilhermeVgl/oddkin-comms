@@ -13,6 +13,8 @@ import { useCallState } from "./call/useCallState";
 import { usePrejoin } from "./call/usePrejoin";
 import { useRoomConnection, type RoomPhase } from "./call/useRoomConnection";
 import { useScreenShare } from "./call/useScreenShare";
+import { Thread } from "./Thread";
+import { threadTargetFor } from "./thread/target";
 
 /** Closes the call screen on Escape while enabled and no menu or dialog is open. */
 function useEscapeToClose(enabled: boolean, onClose: () => void) {
@@ -42,7 +44,7 @@ export function CallRoom({
 }) {
   const e2ee = useOptionalE2EE();
   const { channels, dms } = useInbox();
-  const { people } = useWorkspace();
+  const { account, people, projects } = useWorkspace();
   const [phase, setPhase] = useState<RoomPhase>("preview");
   const [message, setMessage] = useState("");
   const room = useRef<Room | null>(null);
@@ -82,6 +84,13 @@ export function CallRoom({
     () => callTitle(call, channels, dms),
     [call, channels, dms],
   );
+  const chatTarget = useMemo(
+    () =>
+      call === null
+        ? null
+        : threadTargetFor(call.conversationId, { channels, dms, projects }),
+    [call, channels, dms, projects],
+  );
   const isExternal = (identity: string) => {
     for (const person of people.values()) {
       if (person.id === identity || person.email === identity)
@@ -116,7 +125,18 @@ export function CallRoom({
       {phase === "connected" ? (
         <ConnectedStage
           call={call}
+          chat={
+            chatTarget === null ? null : (
+              <Thread
+                embedded
+                key={chatTarget.id}
+                me={{ id: account.id, email: account.email }}
+                target={chatTarget}
+              />
+            )
+          }
           controls={{
+            audioBlocked: connection.audioBlocked,
             muted: connection.muted,
             cameraOn: connection.cameraOn,
             microphones: prejoin.microphones,
@@ -132,6 +152,7 @@ export function CallRoom({
               void connection.switchMicrophone(deviceId),
             onCameraChange: (deviceId) =>
               void connection.switchCamera(deviceId),
+            onResumeAudio: () => void connection.resumeAudio(),
             onToggleScreen: () => void screen.toggleScreen(),
             onSwitchScreen: () => void screen.toggleScreen(true),
             onLeave: (everyone) => void connection.leave(everyone),
