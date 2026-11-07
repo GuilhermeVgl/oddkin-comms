@@ -62,7 +62,12 @@ export type ProjectState = {
   canRead: boolean;
 };
 
-export type Person = { id: string; email: string; external: boolean };
+export type Person = {
+  id: string;
+  email: string;
+  displayName?: string | undefined;
+  external: boolean;
+};
 
 type WorkspaceValue = {
   account: CurrentAccount;
@@ -329,6 +334,7 @@ export function WorkspaceProvider({
     map.set(account.id, {
       id: account.id,
       email: account.email,
+      displayName: account.displayName,
       external: account.membershipKind === "external",
     });
     for (const state of projects ?? []) {
@@ -336,6 +342,7 @@ export function WorkspaceProvider({
         map.set(member.accountId, {
           id: member.accountId,
           email: member.email,
+          displayName: member.displayName,
           external: member.membershipKind === "external",
         });
       }

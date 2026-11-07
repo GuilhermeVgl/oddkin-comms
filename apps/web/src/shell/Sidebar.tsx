@@ -2,10 +2,10 @@ import type { CurrentAccount } from "@crewstead/api-client";
 import { useRef, useState } from "react";
 import { Icon, Logo, type IconName } from "../design/icons";
 import { Menu } from "../design/Menu";
-import { nameOf } from "../design/people";
+import { displayNameOf } from "../design/people";
 import { Avatar } from "../design/primitives";
 import { getPrefs, setPrefs } from "../design/prefs";
-import { useRoute, type RouteName } from "../design/router";
+import { go, useRoute, type RouteName } from "../design/router";
 import { Duo, type DuoRef } from "../design/Sprite";
 import { toast } from "../design/toast";
 import { useInbox } from "../inbox";
@@ -61,7 +61,7 @@ export function Sidebar({
       href={`#/${name}`}
     >
       <Icon name={icon} />
-      {label}
+      <span className="nav-label">{label}</span>
       {badge !== undefined && badge > 0 ? (
         <span aria-label={`${badge} não lidas`} className="badge">
           {badge}
@@ -117,9 +117,13 @@ export function Sidebar({
         </button>
       ) : null}
       <button className="me" onClick={toggle("me")} type="button">
-        <Avatar email={account.email} id={account.id} />
+        <Avatar
+          email={account.email}
+          id={account.id}
+          name={account.displayName}
+        />
         <span className="nm">
-          {nameOf(account.email)}
+          {displayNameOf(account.email, account.displayName)}
           <span className="rl">{roleOf(account)}</span>
         </span>
         <Icon name="down" size="sm" />

@@ -91,7 +91,7 @@ export function MembersCard({
               {member.email}
             </span>
           </div>
-          {current.project.isManager && member.membershipKind === "internal" ? (
+          {manager && member.membershipKind === "internal" ? (
             <button
               className="btn sm ghost"
               onClick={() =>

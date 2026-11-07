@@ -56,3 +56,52 @@
 .st-danger {
   color: var(--danger);
 }
+.st-person {
+  border-top: 1px solid var(--line);
+}
+.st-person:first-child {
+  border-top: 0;
+}
+.st-person-head {
+  min-height: 52px;
+  padding: 8px 0;
+}
+.st-person-projects {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px 36px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.st-project-list {
+  list-style: none;
+  padding: 0;
+}
+.st-project-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.st-project-row:first-child {
+  border-top: 0;
+}
+.st-danger-action {
+  color: var(--danger);
+}
+@media (max-width: 620px) {
+  .st-person-head,
+  .st-project-row {
+    flex-wrap: wrap;
+  }
+  .st-person-head .grow,
+  .st-project-row .grow {
+    min-width: calc(100% - 48px);
+  }
+  .st-person-projects {
+    margin-left: 0;
+  }
+}

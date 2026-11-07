@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { avatarUrl, useAvatarVersion } from "./avatars";
 import { Icon, type IconName } from "./icons";
-import { colorOf, nameOf } from "./people";
+import { colorOf, displayNameOf } from "./people";
 
 export type Presence = "on" | "away" | "off";
 
@@ -10,13 +10,15 @@ export function Avatar({
   email,
   size,
   presence,
+  name,
 }: {
   id: string;
   email: string;
   size?: "sm" | "lg" | "xl";
   presence?: Presence;
+  name?: string | undefined;
 }) {
-  const full = nameOf(email);
+  const full = displayNameOf(email, name);
   const version = useAvatarVersion(id);
   const [broken, setBroken] = useState(false);
   return (

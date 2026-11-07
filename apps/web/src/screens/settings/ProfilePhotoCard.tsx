@@ -1,6 +1,7 @@
 import {
   deleteAvatar,
   putAvatar,
+  updateProfile,
   type CurrentAccount,
 } from "@crewstead/api-client";
 import { useRef, useState } from "react";
@@ -10,7 +11,7 @@ import {
   useAvatarVersion,
 } from "../../design/avatars";
 import { Icon } from "../../design/icons";
-import { nameOf } from "../../design/people";
+import { displayNameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 import { toast, toastError } from "../../design/toast";
 import { roleOf } from "../../shell/Sidebar";
@@ -22,6 +23,9 @@ export function ProfilePhotoCard({ account }: { account: CurrentAccount }) {
   const version = useAvatarVersion(account.id);
   const [busyPhoto, setBusyPhoto] = useState(false);
   const [editing, setEditing] = useState<File | null>(null);
+  const initialName = displayNameOf(account.email, account.displayName);
+  const [name, setName] = useState(initialName);
+  const [savingName, setSavingName] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
 
   // The photo list also refreshes on its own when the change event arrives;
@@ -58,9 +62,9 @@ export function ProfilePhotoCard({ account }: { account: CurrentAccount }) {
   return (
     <section className="card pad col gap16">
       <div className="row gap16">
-        <Avatar email={account.email} id={account.id} size="xl" />
+        <Avatar email={account.email} id={account.id} name={name} size="xl" />
         <div className="col gap4">
-          <h2 className="h2">{nameOf(account.email)}</h2>
+          <h2 className="h2">{displayNameOf(account.email, name)}</h2>
           <span className="muted">{account.email}</span>
           <span className="tag mute st-fit">{roleOf(account)}</span>
           <div className="row gap8 st-mt6">
@@ -96,6 +100,45 @@ export function ProfilePhotoCard({ account }: { account: CurrentAccount }) {
           </div>
         </div>
       </div>
+      <form
+        className="profile-name"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const next = name.trim();
+          if (next === "" || next.length > 80) return;
+          setSavingName(true);
+          void updateProfile(client, next)
+            .then(() => {
+              setName(next);
+              toast("Nome de perfil atualizado.", { icon: "check" });
+              window.setTimeout(() => window.location.reload(), 350);
+            })
+            .catch(() => toastError("Não foi possível atualizar o nome."))
+            .finally(() => setSavingName(false));
+        }}
+      >
+        <label htmlFor="profile-display-name">Nome exibido</label>
+        <div className="row gap8">
+          <input
+            className="inp grow"
+            id="profile-display-name"
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+            required
+            value={name}
+          />
+          <button
+            className={`btn${savingName ? " loading" : ""}`}
+            disabled={name.trim() === "" || name.trim() === initialName}
+            type="submit"
+          >
+            Salvar nome
+          </button>
+        </div>
+        <span className="xs muted">
+          Este é o nome que sua equipe verá nas conversas e atividades.
+        </span>
+      </form>
       {editing === null ? null : (
         <PhotoEditor
           file={editing}

@@ -1,4 +1,10 @@
-/** A readable first name from an e-mail address (accounts carry no display name yet). */
+/** A readable name, preferring the person's chosen profile name. */
+export function displayNameOf(email: string, displayName?: string): string {
+  const chosen = displayName?.trim();
+  return chosen === undefined || chosen === "" ? nameOf(email) : chosen;
+}
+
+/** A readable fallback derived from an e-mail address. */
 export function nameOf(email: string): string {
   const local = email.split("@")[0]?.replace(/[._-]+/g, " ") ?? "equipe";
   return local.replace(/\b\p{L}/gu, (letter) =>
