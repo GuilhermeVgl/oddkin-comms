@@ -1,5 +1,39 @@
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
+  #app.has-shell {
+    grid-template-columns: 76px 276px minmax(0, 1fr);
+  }
+  .side {
+    padding-inline: 10px;
+  }
+  .brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .brand span,
+  .orgbtn .nm,
+  .orgbtn > svg,
+  .nav-label,
+  .me .nm,
+  .me > svg,
+  .mascot-dock {
+    display: none;
+  }
+  .orgbtn,
+  .nav a,
+  .me {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .nav .badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+  .th-h .avs,
+  .th-search {
+    display: none;
+  }
   .grid2 {
     grid-template-columns: 1fr;
   }
@@ -13,6 +47,17 @@
     grid-template-rows: minmax(0, 1fr) auto;
   }
   .side {
+    display: none;
+  }
+  .conversation-rail {
+    display: none;
+    grid-column: 1;
+    grid-row: 1;
+  }
+  #app[data-route="chat"][data-chat-open="false"] .conversation-rail {
+    display: flex;
+  }
+  #app[data-route="chat"][data-chat-open="false"] .main {
     display: none;
   }
   .mobnav {
@@ -80,15 +125,6 @@
   .colm {
     scroll-snap-align: start;
   }
-  .chatwrap {
-    grid-template-columns: 1fr;
-  }
-  .chatwrap[data-pane="thread"] .clist {
-    display: none;
-  }
-  .chatwrap[data-pane="list"] .thread {
-    display: none;
-  }
   .backbtn {
     display: inline-grid !important;
   }
@@ -107,6 +143,29 @@
   .prejoin {
     grid-template-columns: 1fr;
   }
+  .stage .sh {
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .stage .sh h2 {
+    min-width: 0;
+    max-width: 30vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stage .sh .lock {
+    flex: none;
+  }
+  .stage .sh .grow {
+    min-width: 0;
+  }
+  .stage .sh .call-wide {
+    display: none;
+  }
+  .stage .sh .call-compact {
+    display: inline;
+  }
   .tray {
     left: 12px;
     bottom: 76px;
@@ -116,15 +175,50 @@
     grid-template-rows: none !important;
     overflow: auto;
   }
+  .tiles[data-n="1"] {
+    grid-template-columns: 1fr !important;
+  }
   .tiles .tile {
     grid-column: auto !important;
     aspect-ratio: 4/3;
   }
-  .tiles.share {
-    grid-template-columns: 1fr !important;
+  .call-body.with-chat {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .tiles.share .shared {
-    grid-row: auto;
+  .call-body.with-chat .call-visual {
+    display: none;
+  }
+  .call-chat {
+    border-inline-start: 0;
+  }
+  .call-layout.has-rail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .call-rail {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-direction: row;
+  }
+  .call-rail .tile {
+    flex-basis: 180px;
+    min-height: 118px;
+  }
+  .ctrl {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+  .ctrl .cbtn {
+    flex: none;
+  }
+  .cbtn.call-text-action span {
+    display: none;
+  }
+  .cbtn.call-text-action {
+    width: 52px;
+    padding: 0;
   }
   .msg .tools {
     display: flex;

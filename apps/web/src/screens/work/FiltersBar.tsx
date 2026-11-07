@@ -4,6 +4,7 @@ import type { ProjectState } from "../../workspace";
 import { PRIORITY_LABEL } from "../priority";
 import { board } from "./boardStore";
 import { extraFilterCount, type Scope } from "./workRules";
+import { ProjectPicker } from "./ProjectPicker";
 
 const SCOPES: readonly (readonly [Scope, string])[] = [
   ["todas", "Todas"],
@@ -46,32 +47,15 @@ export function FiltersBar({
         ))}
       </div>
       <span className="sep wk-vsep" />
-      <label className="wk-project-picker" htmlFor="wk-project">
-        <span>Projeto do quadro</span>
-        <select
-          className="inp"
-          id="wk-project"
-          onChange={(event) => {
-            const projectId = event.target.value;
-            if (projectId === "all") {
-              board.set({ allProjects: true, view: "lista", epic: "" });
-              return;
-            }
-            board.set({ allProjects: false, epic: "" });
-            onPickProject(projectId);
-          }}
-          value={all ? "all" : (current?.project.id ?? "")}
-        >
-          {projects.length > 1 ? (
-            <option value="all">Todos os projetos</option>
-          ) : null}
-          {projects.map((state) => (
-            <option key={state.project.id} value={state.project.id}>
-              {state.project.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ProjectPicker
+        all={all}
+        current={current}
+        onPick={(projectId) => {
+          board.set({ allProjects: projectId === null, epic: "" });
+          if (projectId !== null) onPickProject(projectId);
+        }}
+        projects={projects}
+      />
       <label className="sr" htmlFor="fe">
         Épico
       </label>
@@ -116,30 +100,24 @@ export function FiltersBar({
         Filtros{extraFilters > 0 ? ` · ${extraFilters}` : ""}
       </button>
       <div className="grow" />
-      {all ? (
-        <span className="wk-consolidated">
-          <Icon name="list" size="sm" /> Visão consolidada
-        </span>
-      ) : (
-        <div aria-label="Visualização" className="seg" role="group">
-          <button
-            aria-pressed={!list}
-            onClick={() => board.set({ view: "quadro" })}
-            type="button"
-          >
-            <Icon name="board" size="sm" />
-            Quadro
-          </button>
-          <button
-            aria-pressed={list}
-            onClick={() => board.set({ view: "lista" })}
-            type="button"
-          >
-            <Icon name="list" size="sm" />
-            Lista
-          </button>
-        </div>
-      )}
+      <div aria-label="Visualização" className="seg" role="group">
+        <button
+          aria-pressed={!list}
+          onClick={() => board.set({ view: "quadro" })}
+          type="button"
+        >
+          <Icon name="board" size="sm" />
+          Quadro
+        </button>
+        <button
+          aria-pressed={list}
+          onClick={() => board.set({ view: "lista" })}
+          type="button"
+        >
+          <Icon name="list" size="sm" />
+          Lista
+        </button>
+      </div>
     </div>
   );
 }

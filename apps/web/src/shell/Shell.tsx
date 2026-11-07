@@ -29,6 +29,7 @@ import { ShellContext, type ShellApi } from "./context";
 import { Palette } from "./Palette";
 import { MobileNav, Sidebar } from "./Sidebar";
 import { APP_NAME } from "../brand";
+import { ConversationRail } from "./ConversationRail";
 
 const TITLES = {
   home: "Visão geral",
@@ -180,8 +181,16 @@ function Frame({
       <AvatarSync />
       <SprintMilestones />
       <FocusHost />
-      <div className="has-shell" id="app">
+      <div
+        className="has-shell"
+        data-chat-open={
+          route.name === "chat" && route.arg !== null ? "true" : "false"
+        }
+        data-route={route.name}
+        id="app"
+      >
         <Sidebar account={account} onLogout={onLogout} />
+        <ConversationRail />
         <div className="main" key={route.name}>
           <ApprovalNotice />
           {screen}

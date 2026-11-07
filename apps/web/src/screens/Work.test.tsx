@@ -80,12 +80,21 @@ describe("Work board", () => {
     });
 
     await renderApp(<Work account={ME} itemId={null} />, { world });
-    const scope = await screen.findByLabelText("Projeto do quadro");
-    fireEvent.change(scope, { target: { value: "all" } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Projeto do quadro/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Todos os projetos" }),
+    );
 
     expect(await screen.findByText("Preparar lançamento Beta")).toBeTruthy();
     expect(screen.getByText("Revisar contratos")).toBeTruthy();
-    expect(screen.getByText("Visão consolidada")).toBeTruthy();
+    expect(within(board()).getAllByRole("listitem")).toHaveLength(3);
+    expect(
+      screen
+        .getByRole("button", { name: /Quadro/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("invites the first project when there is none", async () => {

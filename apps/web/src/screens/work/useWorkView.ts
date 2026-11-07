@@ -9,7 +9,7 @@ export function useWorkView(account: CurrentAccount, itemId: string | null) {
   const { projects, current, setCurrentProjectId } = useWorkspace();
   const prefs = board.use();
   const all = prefs.allProjects;
-  const list = all || prefs.view === "lista";
+  const list = prefs.view === "lista";
   const states = useMemo(
     () => (all ? (projects ?? []) : current === null ? [] : [current]),
     [all, projects, current],

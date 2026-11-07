@@ -66,10 +66,15 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [bellPulse, setBellPulse] = useState(0);
   const seenUnread = useRef<number | null>(null);
+  const chatLoad = useRef(0);
 
   const reloadChat = useCallback(async () => {
+    // Workspace hydration owns the project list. Waiting for it prevents the
+    // initial DM-only request from racing a later request that includes channels.
+    if (projects === null) return;
+    const load = ++chatLoad.current;
     const lists = await Promise.all(
-      (projects ?? []).map(async (state) => {
+      projects.map(async (state) => {
         try {
           const entries = await listConversations(client, state.project.id);
           return await Promise.all(
@@ -91,17 +96,25 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
         }
       }),
     );
-    setChannels(lists.flat());
+    const nextChannels = lists.flat();
+    let nextContacts: DirectContact[] | null = null;
+    let nextDms: DirectConversation[] | null = null;
     try {
       const [people, existing] = await Promise.all([
         listDirectContacts(client),
         listDirectConversations(client),
       ]);
-      setContacts(people);
-      setDms(existing);
+      nextContacts = people;
+      nextDms = existing;
     } catch {
       // Keeps the last known list; the next event reloads.
     }
+    // A slower, older request must never replace a hydrated channel list with
+    // the empty snapshot produced during startup.
+    if (load !== chatLoad.current) return;
+    setChannels(nextChannels);
+    if (nextContacts !== null) setContacts(nextContacts);
+    if (nextDms !== null) setDms(nextDms);
   }, [client, projects]);
 
   const reloadNotifications = useCallback(async () => {

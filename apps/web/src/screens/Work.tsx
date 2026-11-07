@@ -10,6 +10,7 @@ import { useShell } from "../shell/context";
 import { useWorkspace } from "../workspace";
 import { Drawer } from "./Drawer";
 import { Board } from "./work/Board";
+import { ConsolidatedBoard } from "./work/ConsolidatedBoard";
 import { board } from "./work/boardStore";
 import { EncryptionBanner } from "./work/EncryptionBanner";
 import { EpicsDialog } from "./work/EpicsDialog";
@@ -128,6 +129,14 @@ export function Work({
                   go(`work/${entry.item.id}`);
                 }}
                 showProject={all}
+              />
+            ) : all ? (
+              <ConsolidatedBoard
+                entries={entries}
+                onOpen={(entry) => {
+                  setCurrentProjectId(entry.state.project.id);
+                  go(`work/${entry.item.id}`);
+                }}
               />
             ) : current === null ? null : (
               <Board

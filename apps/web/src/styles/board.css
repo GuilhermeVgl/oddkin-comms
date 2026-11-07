@@ -14,10 +14,41 @@
   font-size: 12px;
   font-weight: 650;
 }
-.wk-project-picker .inp {
-  min-width: 180px;
+.wk-project-button {
+  min-width: 190px;
   height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
   color: var(--ink);
+  font-weight: 650;
+  box-shadow: var(--sh-1);
+}
+.wk-project-button > span:nth-child(2) {
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-project-button:hover,
+.wk-project-button[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.wk-project-menu {
+  min-width: 230px;
+}
+.wk-project-menu button {
+  gap: 10px;
+}
+.wk-project-menu button span:nth-child(2) {
+  flex: 1;
+  text-align: left;
 }
 .wk-consolidated {
   min-height: 36px;

@@ -1,7 +1,7 @@
 import { isDone } from "../../columns";
 import { fmtD } from "../../design/format";
 import { Icon } from "../../design/icons";
-import { firstNameOf } from "../../design/people";
+import { displayNameOf } from "../../design/people";
 import { Avatar, NoAvatar } from "../../design/primitives";
 import { useWorkspace } from "../../workspace";
 import { subtasksOf } from "../itemActions";
@@ -114,12 +114,19 @@ export function WorkCard({
           {assignee === undefined ? (
             <NoAvatar size="sm" />
           ) : (
-            <Avatar email={assignee.email} id={assignee.id} size="sm" />
+            <Avatar
+              email={assignee.email}
+              id={assignee.id}
+              name={assignee.displayName}
+              size="sm"
+            />
           )}
           <span>
             {assignee === undefined
               ? "Sem responsável"
-              : firstNameOf(assignee.email)}
+              : displayNameOf(assignee.email, assignee.displayName).split(
+                  " ",
+                )[0]}
           </span>
         </span>
         {item.priority === "high" || item.priority === "urgent" ? (
