@@ -119,6 +119,18 @@ export async function fetchCurrentAccount(
   throw new Error(`Unexpected current account status: ${response.status}`);
 }
 
+export async function updateProfile(
+  client: ReturnType<typeof createApiClient>,
+  displayName: string,
+): Promise<void> {
+  const { response } = await client.PATCH("/api/v1/account/profile", {
+    body: { displayName },
+  });
+  if (response.status !== 204) {
+    throw new Error(`Unexpected profile update status: ${response.status}`);
+  }
+}
+
 export async function logout(
   client: ReturnType<typeof createApiClient>,
   allSessions = false,

@@ -17,10 +17,14 @@ export async function addMember(
   client: Client,
   projectId: string,
   email: string,
+  isManager = false,
 ): Promise<void> {
   const { response } = await client.POST(
     "/api/v1/projects/{projectId}/members",
-    { params: { path: { projectId } }, body: { email } },
+    {
+      params: { path: { projectId } },
+      body: { email, ...(isManager ? { isManager: true } : {}) },
+    },
   );
   if (response.status !== 204)
     throw new ApiStatusError(response.status, "addMember");

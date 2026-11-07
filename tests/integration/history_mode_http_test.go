@@ -309,8 +309,11 @@ func TestProjectInvitePolicyAndRoles(t *testing.T) {
 	if code := role(mgr, "pp-external-ext@example.test", true); code != http.StatusBadRequest {
 		t.Fatalf("an external manager: %d", code)
 	}
-	if code := role(mgr, "pp-mem@example.test", true); code != http.StatusNoContent {
-		t.Fatalf("promote: %d", code)
+	if code := role(mgr, "pp-admin@example.test", false); code != http.StatusNoContent {
+		t.Fatalf("manager demoting the organization admin: %d", code)
+	}
+	if code := role(admin, "pp-mem@example.test", true); code != http.StatusNoContent {
+		t.Fatalf("organization admin promoting without being a project manager: %d", code)
 	}
 	if code := role(mem, "pp-mgr@example.test", false); code != http.StatusNoContent {
 		t.Fatalf("the new manager steps another down: %d", code)

@@ -26,12 +26,15 @@ type S3Config struct {
 	SecretAccessKey string
 	Region          string
 	PathStyle       bool
+	// BrowserOrigin is allowed to PUT presigned parts and read their ETag.
+	BrowserOrigin string
 }
 
 type s3Store struct {
 	client  *s3.Client
 	presign *s3.PresignClient
 	bucket  string
+	origin  string
 }
 
 // NewS3 builds a Store without contacting the network.
@@ -58,23 +61,52 @@ func NewS3(config S3Config) (Store, error) {
 			UsePathStyle: config.PathStyle,
 		})
 	}
-	return &s3Store{client: client, presign: s3.NewPresignClient(presigner), bucket: config.Bucket}, nil
+	return &s3Store{client: client, presign: s3.NewPresignClient(presigner), bucket: config.Bucket, origin: config.BrowserOrigin}, nil
 }
 
 // EnsureBucket creates the bucket when it does not exist. Meant for the local
 // MinIO that stands in for R2.
 func (s *s3Store) EnsureBucket(ctx context.Context) error {
-	if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket}); err == nil {
+	if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket}); err != nil {
+		if _, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket}); err != nil {
+			var exists *types.BucketAlreadyOwnedByYou
+			if !errors.As(err, &exists) {
+				return fmt.Errorf("create bucket: %w", err)
+			}
+		}
+	}
+	_, err := s.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
+		Bucket:            &s.bucket,
+		CORSConfiguration: &types.CORSConfiguration{CORSRules: browserCORS(s.origin)},
+	})
+	if corsManagedByServer(err) {
 		return nil
 	}
-	if _, err := s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket}); err != nil {
-		var exists *types.BucketAlreadyOwnedByYou
-		if errors.As(err, &exists) {
-			return nil
-		}
-		return fmt.Errorf("create bucket: %w", err)
+	if err != nil {
+		return fmt.Errorf("configure bucket CORS: %w", err)
 	}
 	return nil
+}
+
+// Recent MinIO builds manage CORS through MINIO_API_CORS_ALLOW_ORIGIN and
+// deliberately do not implement PutBucketCors. That is a valid configuration,
+// not a reason to keep the whole API in a restart loop.
+func corsManagedByServer(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotImplemented"
+}
+
+func browserCORS(origin string) []types.CORSRule {
+	if origin == "" {
+		origin = "*"
+	}
+	return []types.CORSRule{{
+		AllowedHeaders: []string{"*"},
+		AllowedMethods: []string{"GET", "HEAD", "PUT"},
+		AllowedOrigins: []string{origin},
+		ExposeHeaders:  []string{"ETag"},
+		MaxAgeSeconds:  aws.Int32(3600),
+	}}
 }
 
 func (s *s3Store) CreateMultipart(ctx context.Context, key string) (string, error) {

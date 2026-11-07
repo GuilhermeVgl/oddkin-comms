@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiClient } from "./index";
 import { EncryptionError } from "./e2ee";
-import { createUpload, uploadFile } from "./uploads";
+import { completeUpload, createUpload, uploadFile } from "./uploads";
 
 function apiFetcher(log: string[], failPart?: number): typeof fetch {
   return async (input, init) => {
@@ -42,6 +42,32 @@ function apiFetcher(log: string[], failPart?: number): typeof fetch {
 const file = new File(["0123456789"], "f.txt", { type: "text/plain" });
 
 describe("uploadFile", () => {
+  it("does not send the client-only project hint in the upload request", async () => {
+    let body: Record<string, unknown> | null = null;
+    const client = createApiClient("http://localhost", async (input) => {
+      const request = input instanceof Request ? input : new Request(input);
+      body = (await request.json()) as Record<string, unknown>;
+      return Response.json(
+        { id: "u1", partSize: 4, partCount: 1 },
+        { status: 201 },
+      );
+    });
+    await createUpload(
+      client,
+      {
+        contextType: "conversation",
+        contextId: "00000000-0000-4000-8000-000000000001",
+        projectId: "00000000-0000-4000-8000-000000000002",
+      },
+      file,
+    );
+    expect(body).toMatchObject({
+      contextType: "conversation",
+      contextId: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(body).not.toHaveProperty("projectId");
+  });
+
   it("preserves an encryption refusal instead of reducing it to a generic conflict", async () => {
     const client = createApiClient("http://localhost", async () =>
       Response.json({ code: "encryption_required" }, { status: 409 }),
@@ -53,6 +79,17 @@ describe("uploadFile", () => {
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(EncryptionError);
     expect((failure as EncryptionError).code).toBe("encryption_required");
+  });
+
+  it("preserves a cryptographic rejection from upload completion", async () => {
+    const client = createApiClient("http://localhost", async () =>
+      Response.json({ code: "bad_envelope" }, { status: 400 }),
+    );
+    const failure = await completeUpload(client, "u1", [
+      { partNumber: 1, etag: '"e1"' },
+    ]).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(EncryptionError);
+    expect((failure as EncryptionError).code).toBe("bad_envelope");
   });
 
   it("sends every part and completes with the ETags in part order", async () => {

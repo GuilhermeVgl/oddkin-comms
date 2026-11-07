@@ -1424,18 +1424,19 @@ func (q *Queries) FirstColumnForReopen(ctx context.Context, projectID pgtype.UUI
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, email_normalized FROM account WHERE id = $1 AND active
+SELECT id, email_normalized, display_name FROM account WHERE id = $1 AND active
 `
 
 type GetAccountByIDRow struct {
 	ID              pgtype.UUID
 	EmailNormalized string
+	DisplayName     string
 }
 
 func (q *Queries) GetAccountByID(ctx context.Context, id pgtype.UUID) (GetAccountByIDRow, error) {
 	row := q.db.QueryRow(ctx, getAccountByID, id)
 	var i GetAccountByIDRow
-	err := row.Scan(&i.ID, &i.EmailNormalized)
+	err := row.Scan(&i.ID, &i.EmailNormalized, &i.DisplayName)
 	return i, err
 }
 
@@ -3031,7 +3032,7 @@ func (q *Queries) ListDevicesForAccount(ctx context.Context, accountID pgtype.UU
 }
 
 const listDirectContacts = `-- name: ListDirectContacts :many
-SELECT DISTINCT a.id AS account_id, a.email_normalized
+SELECT DISTINCT a.id AS account_id, a.email_normalized, a.display_name
 FROM project AS p
 JOIN project_member AS pa ON pa.project_id = p.id AND pa.account_id = $1
 JOIN project_member AS pb ON pb.project_id = p.id AND pb.account_id <> $1
@@ -3048,6 +3049,7 @@ ORDER BY a.email_normalized
 type ListDirectContactsRow struct {
 	AccountID       pgtype.UUID
 	EmailNormalized string
+	DisplayName     string
 }
 
 func (q *Queries) ListDirectContacts(ctx context.Context, accountID pgtype.UUID) ([]ListDirectContactsRow, error) {
@@ -3059,7 +3061,7 @@ func (q *Queries) ListDirectContacts(ctx context.Context, accountID pgtype.UUID)
 	var items []ListDirectContactsRow
 	for rows.Next() {
 		var i ListDirectContactsRow
-		if err := rows.Scan(&i.AccountID, &i.EmailNormalized); err != nil {
+		if err := rows.Scan(&i.AccountID, &i.EmailNormalized, &i.DisplayName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -3071,7 +3073,7 @@ func (q *Queries) ListDirectContacts(ctx context.Context, accountID pgtype.UUID)
 }
 
 const listDirectConversations = `-- name: ListDirectConversations :many
-SELECT c.id, peer.id AS peer_id, peer.email_normalized AS peer_email,
+SELECT c.id, peer.id AS peer_id, peer.email_normalized AS peer_email, peer.display_name AS peer_display_name,
        GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
 FROM conversation AS c
 LEFT JOIN conversation_read_cursor AS r ON r.conversation_id = c.id AND r.account_id = $1
@@ -3081,10 +3083,11 @@ ORDER BY peer.email_normalized
 `
 
 type ListDirectConversationsRow struct {
-	ID        pgtype.UUID
-	PeerID    pgtype.UUID
-	PeerEmail string
-	Unread    int64
+	ID              pgtype.UUID
+	PeerID          pgtype.UUID
+	PeerEmail       string
+	PeerDisplayName string
+	Unread          int64
 }
 
 func (q *Queries) ListDirectConversations(ctx context.Context, accountID pgtype.UUID) ([]ListDirectConversationsRow, error) {
@@ -3100,6 +3103,7 @@ func (q *Queries) ListDirectConversations(ctx context.Context, accountID pgtype.
 			&i.ID,
 			&i.PeerID,
 			&i.PeerEmail,
+			&i.PeerDisplayName,
 			&i.Unread,
 		); err != nil {
 			return nil, err
@@ -3644,7 +3648,7 @@ func (q *Queries) ListPendingRelease(ctx context.Context) ([]Attachment, error) 
 }
 
 const listProjectMembers = `-- name: ListProjectMembers :many
-SELECT pm.account_id, a.email_normalized, om.membership_kind, pm.is_manager
+SELECT pm.account_id, a.email_normalized, a.display_name, om.membership_kind, pm.is_manager
 FROM project_member AS pm
 JOIN account AS a ON a.id = pm.account_id
 JOIN project AS p ON p.id = pm.project_id
@@ -3656,6 +3660,7 @@ ORDER BY a.email_normalized
 type ListProjectMembersRow struct {
 	AccountID       pgtype.UUID
 	EmailNormalized string
+	DisplayName     string
 	MembershipKind  string
 	IsManager       bool
 }
@@ -3672,6 +3677,7 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 		if err := rows.Scan(
 			&i.AccountID,
 			&i.EmailNormalized,
+			&i.DisplayName,
 			&i.MembershipKind,
 			&i.IsManager,
 		); err != nil {
@@ -3886,6 +3892,79 @@ func (q *Queries) ListSeatDevices(ctx context.Context, callID pgtype.UUID) ([]pg
 	return items, nil
 }
 
+const listSprintSummaryItems = `-- name: ListSprintSummaryItems :many
+SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id, w.completed_at,
+       COALESCE(h.outcome, CASE WHEN c.category = 'done' THEN 'completed' ELSE 'current' END)::text AS outcome
+FROM work_item AS w
+JOIN project AS p ON p.id = w.project_id
+JOIN board_column AS c ON c.id = w.column_id
+JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = $1
+JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
+LEFT JOIN external_project_policy AS ep ON ep.project_id = w.project_id
+LEFT JOIN sprint_item_history AS h ON h.work_item_id = w.id AND h.sprint_id = $2
+WHERE (w.sprint_id = $2 OR h.id IS NOT NULL)
+  AND w.kind = 'task'
+  AND (om.membership_kind = 'internal' OR 'work.read' = ANY (COALESCE(ep.permissions, ARRAY[]::text[])))
+ORDER BY w.updated_at DESC, w.id
+`
+
+type ListSprintSummaryItemsParams struct {
+	AccountID pgtype.UUID
+	SprintID  pgtype.UUID
+}
+
+type ListSprintSummaryItemsRow struct {
+	WorkItem WorkItem
+	Outcome  string
+}
+
+func (q *Queries) ListSprintSummaryItems(ctx context.Context, arg ListSprintSummaryItemsParams) ([]ListSprintSummaryItemsRow, error) {
+	rows, err := q.db.Query(ctx, listSprintSummaryItems, arg.AccountID, arg.SprintID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSprintSummaryItemsRow
+	for rows.Next() {
+		var i ListSprintSummaryItemsRow
+		if err := rows.Scan(
+			&i.WorkItem.ID,
+			&i.WorkItem.ProjectID,
+			&i.WorkItem.Kind,
+			&i.WorkItem.ParentID,
+			&i.WorkItem.ParentKind,
+			&i.WorkItem.Title,
+			&i.WorkItem.Description,
+			&i.WorkItem.AssigneeID,
+			&i.WorkItem.DueDate,
+			&i.WorkItem.Priority,
+			&i.WorkItem.ColumnID,
+			&i.WorkItem.Archived,
+			&i.WorkItem.Version,
+			&i.WorkItem.CreatedBy,
+			&i.WorkItem.CreatedAt,
+			&i.WorkItem.UpdatedAt,
+			&i.WorkItem.EpicID,
+			&i.WorkItem.SprintID,
+			&i.WorkItem.Encrypted,
+			&i.WorkItem.TitleEnc,
+			&i.WorkItem.DescriptionEnc,
+			&i.WorkItem.ContentRevision,
+			&i.WorkItem.ContentAuthorID,
+			&i.WorkItem.ContentSignerDeviceID,
+			&i.WorkItem.CompletedAt,
+			&i.Outcome,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSprintTasksForAccount = `-- name: ListSprintTasksForAccount :many
 SELECT w.id, w.project_id, w.kind, w.parent_id, w.parent_kind, w.title, w.description, w.assignee_id, w.due_date, w.priority, w.column_id, w.archived, w.version, w.created_by, w.created_at, w.updated_at, w.epic_id, w.sprint_id, w.encrypted, w.title_enc, w.description_enc, w.content_revision, w.content_author_id, w.content_signer_device_id, w.completed_at
 FROM work_item AS w
@@ -4013,7 +4092,9 @@ WHERE om.membership_kind = 'internal'
         FROM work_item AS w
         JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = $1
         JOIN external_project_policy AS ep ON ep.project_id = w.project_id
-        WHERE w.sprint_id = s.id AND NOT w.archived AND 'work.read' = ANY (ep.permissions)
+        LEFT JOIN sprint_item_history AS h ON h.work_item_id = w.id AND h.sprint_id = s.id
+        WHERE (w.sprint_id = s.id OR h.id IS NOT NULL)
+          AND 'work.read' = ANY (ep.permissions)
    )
 ORDER BY (s.state = 'active') DESC, s.starts_on DESC, s.id
 `

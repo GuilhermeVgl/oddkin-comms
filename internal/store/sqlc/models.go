@@ -14,6 +14,7 @@ type Account struct {
 	PasswordHash    string
 	Active          bool
 	CreatedAt       pgtype.Timestamptz
+	DisplayName     string
 }
 
 type AccountAvatar struct {

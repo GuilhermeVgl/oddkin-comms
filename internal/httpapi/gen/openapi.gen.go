@@ -200,16 +200,16 @@ func (e CallRecordState) Valid() bool {
 
 // Defines values for CloseSprintRequestDecisionsDestination.
 const (
-	Backlog CloseSprintRequestDecisionsDestination = "backlog"
-	Next    CloseSprintRequestDecisionsDestination = "next"
+	CloseSprintRequestDecisionsDestinationBacklog CloseSprintRequestDecisionsDestination = "backlog"
+	CloseSprintRequestDecisionsDestinationNext    CloseSprintRequestDecisionsDestination = "next"
 )
 
 // Valid indicates whether the value is a known member of the CloseSprintRequestDecisionsDestination enum.
 func (e CloseSprintRequestDecisionsDestination) Valid() bool {
 	switch e {
-	case Backlog:
+	case CloseSprintRequestDecisionsDestinationBacklog:
 		return true
-	case Next:
+	case CloseSprintRequestDecisionsDestinationNext:
 		return true
 	default:
 		return false
@@ -792,6 +792,30 @@ func (e SprintState) Valid() bool {
 	}
 }
 
+// Defines values for SprintSummaryItemOutcome.
+const (
+	SprintSummaryItemOutcomeBacklog   SprintSummaryItemOutcome = "backlog"
+	SprintSummaryItemOutcomeCarried   SprintSummaryItemOutcome = "carried"
+	SprintSummaryItemOutcomeCompleted SprintSummaryItemOutcome = "completed"
+	SprintSummaryItemOutcomeCurrent   SprintSummaryItemOutcome = "current"
+)
+
+// Valid indicates whether the value is a known member of the SprintSummaryItemOutcome enum.
+func (e SprintSummaryItemOutcome) Valid() bool {
+	switch e {
+	case SprintSummaryItemOutcomeBacklog:
+		return true
+	case SprintSummaryItemOutcomeCarried:
+		return true
+	case SprintSummaryItemOutcomeCompleted:
+		return true
+	case SprintSummaryItemOutcomeCurrent:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateBoardColumnRequestCategory.
 const (
 	UpdateBoardColumnRequestCategoryDone       UpdateBoardColumnRequestCategory = "done"
@@ -1261,7 +1285,8 @@ type CreateWorkItemRequestPriority string
 
 // CurrentAccount defines model for CurrentAccount.
 type CurrentAccount struct {
-	Email openapi_types.Email `json:"email"`
+	DisplayName string              `json:"displayName"`
+	Email       openapi_types.Email `json:"email"`
 
 	// HistoryMode ask = the person sets a key up; auto = the invitation carries it; none = the person is never asked
 	HistoryMode    HistoryMode                  `json:"historyMode"`
@@ -1298,16 +1323,18 @@ type DeviceState string
 
 // DirectContact defines model for DirectContact.
 type DirectContact struct {
-	AccountId openapi_types.UUID `json:"accountId"`
-	Email     string             `json:"email"`
+	AccountId   openapi_types.UUID `json:"accountId"`
+	DisplayName *string            `json:"displayName,omitempty"`
+	Email       string             `json:"email"`
 }
 
 // DirectConversation defines model for DirectConversation.
 type DirectConversation struct {
-	Id        openapi_types.UUID `json:"id"`
-	PeerEmail string             `json:"peerEmail"`
-	PeerId    openapi_types.UUID `json:"peerId"`
-	Unread    int64              `json:"unread"`
+	Id              openapi_types.UUID `json:"id"`
+	PeerDisplayName *string            `json:"peerDisplayName,omitempty"`
+	PeerEmail       string             `json:"peerEmail"`
+	PeerId          openapi_types.UUID `json:"peerId"`
+	Unread          int64              `json:"unread"`
 }
 
 // DirectoryDevice defines model for DirectoryDevice.
@@ -1577,6 +1604,7 @@ type OrganizationBranding struct {
 // OrganizationPerson defines model for OrganizationPerson.
 type OrganizationPerson struct {
 	Active         bool                             `json:"active"`
+	DisplayName    *string                          `json:"displayName,omitempty"`
 	Email          openapi_types.Email              `json:"email"`
 	Id             openapi_types.UUID               `json:"id"`
 	IsAdmin        bool                             `json:"isAdmin"`
@@ -1646,6 +1674,7 @@ type ProjectAppearanceRequest struct {
 // ProjectMember defines model for ProjectMember.
 type ProjectMember struct {
 	AccountId      openapi_types.UUID          `json:"accountId"`
+	DisplayName    *string                     `json:"displayName,omitempty"`
 	Email          openapi_types.Email         `json:"email"`
 	IsManager      bool                        `json:"isManager"`
 	MembershipKind ProjectMemberMembershipKind `json:"membershipKind"`
@@ -1804,6 +1833,22 @@ type SprintClosePreview struct {
 	Pending   []WorkItem `json:"pending"`
 }
 
+// SprintSummary defines model for SprintSummary.
+type SprintSummary struct {
+	Items []SprintSummaryItem `json:"items"`
+}
+
+// SprintSummaryItem defines model for SprintSummaryItem.
+type SprintSummaryItem struct {
+	Item WorkItem `json:"item"`
+
+	// Outcome Current state for an open sprint or the recorded close outcome
+	Outcome SprintSummaryItemOutcome `json:"outcome"`
+}
+
+// SprintSummaryItemOutcome Current state for an open sprint or the recorded close outcome
+type SprintSummaryItemOutcome string
+
 // StartCallRequest defines model for StartCallRequest.
 type StartCallRequest struct {
 	ConversationId openapi_types.UUID    `json:"conversationId"`
@@ -1884,6 +1929,11 @@ type UpdateOrganizationBrandingRequest struct {
 
 // UpdateOrganizationBrandingRequestLogoMime defines model for UpdateOrganizationBrandingRequest.LogoMime.
 type UpdateOrganizationBrandingRequestLogoMime string
+
+// UpdateProfileRequest defines model for UpdateProfileRequest.
+type UpdateProfileRequest struct {
+	DisplayName string `json:"displayName"`
+}
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
@@ -2065,6 +2115,9 @@ type DeleteBoardColumnParams struct {
 // SetHistoryModeJSONRequestBody defines body for SetHistoryMode for application/json ContentType.
 type SetHistoryModeJSONRequestBody = SetHistoryModeRequest
 
+// UpdateProfileJSONRequestBody defines body for UpdateProfile for application/json ContentType.
+type UpdateProfileJSONRequestBody = UpdateProfileRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -2223,6 +2276,9 @@ type ServerInterface interface {
 	// SetHistoryMode Choose whether this account is asked to set up access to encrypted history (ask or none)
 	// (PUT /api/v1/account/history-mode)
 	SetHistoryMode(w http.ResponseWriter, r *http.Request)
+	// UpdateProfile Change the current account display name
+	// (PATCH /api/v1/account/profile)
+	UpdateProfile(w http.ResponseWriter, r *http.Request)
 	// GetAvatar A person's photo, for the caller and for people who share a project with them
 	// (GET /api/v1/accounts/{accountId}/avatar)
 	GetAvatar(w http.ResponseWriter, r *http.Request, accountId openapi_types.UUID)
@@ -2556,6 +2612,9 @@ type ServerInterface interface {
 	// StartSprint Start a planned sprint; only one may be active
 	// (POST /api/v1/sprints/{sprintId}/start)
 	StartSprint(w http.ResponseWriter, r *http.Request, sprintId SprintId)
+	// GetSprintSummary Activities and close outcomes visible to the account for one sprint
+	// (GET /api/v1/sprints/{sprintId}/summary)
+	GetSprintSummary(w http.ResponseWriter, r *http.Request, sprintId SprintId)
 	// ListSprintWorkItems Tasks of the sprint the account is authorized to read
 	// (GET /api/v1/sprints/{sprintId}/work-items)
 	ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sprintId SprintId)
@@ -2654,6 +2713,20 @@ func (siw *ServerInterfaceWrapper) SetHistoryMode(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetHistoryMode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProfile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5236,6 +5309,32 @@ func (siw *ServerInterfaceWrapper) StartSprint(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetSprintSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetSprintSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sprintId" -------------
+	var sprintId SprintId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sprintId", r.PathValue("sprintId"), &sprintId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sprintId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSprintSummary(w, r, sprintId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSprintWorkItems operation middleware
 func (siw *ServerInterfaceWrapper) ListSprintWorkItems(w http.ResponseWriter, r *http.Request) {
 
@@ -5811,6 +5910,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/organization/people", wrapper.ListOrganizationPeople)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/organization/people/{accountId}/active", wrapper.SetPersonActive)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/account/history-mode", wrapper.SetHistoryMode)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/account/profile", wrapper.UpdateProfile)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/account/avatar", wrapper.DeleteAvatar)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/account/avatar", wrapper.PutAvatar)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/avatars", wrapper.ListAvatars)
@@ -5861,6 +5961,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints", wrapper.ListSprints)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints", wrapper.CreateSprint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/work-items", wrapper.ListSprintWorkItems)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/summary", wrapper.GetSprintSummary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/start", wrapper.StartSprint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/close-preview", wrapper.GetSprintClosePreview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sprints/{sprintId}/close", wrapper.CloseSprint)

@@ -46,7 +46,7 @@ func (q *Queries) CreateAuthSession(ctx context.Context, arg CreateAuthSessionPa
 }
 
 const findActiveSessionByTokenHash = `-- name: FindActiveSessionByTokenHash :one
-SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized,
+SELECT s.id, s.account_id, s.csrf_hash, s.expires_at, a.email_normalized, a.display_name,
        m.membership_kind, m.is_admin, m.history_mode
 FROM auth_session AS s
 JOIN account AS a ON a.id = s.account_id
@@ -64,6 +64,7 @@ type FindActiveSessionByTokenHashRow struct {
 	CsrfHash        []byte
 	ExpiresAt       pgtype.Timestamptz
 	EmailNormalized string
+	DisplayName     string
 	MembershipKind  string
 	IsAdmin         bool
 	HistoryMode     string
@@ -78,6 +79,7 @@ func (q *Queries) FindActiveSessionByTokenHash(ctx context.Context, tokenHash []
 		&i.CsrfHash,
 		&i.ExpiresAt,
 		&i.EmailNormalized,
+		&i.DisplayName,
 		&i.MembershipKind,
 		&i.IsAdmin,
 		&i.HistoryMode,

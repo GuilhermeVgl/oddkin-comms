@@ -26,7 +26,10 @@ export async function createUpload(
 ): Promise<UploadSession> {
   const { data, error, response } = await client.POST("/api/v1/uploads", {
     body: {
-      ...context,
+      // projectId only tells the browser which E2EE domain protects a channel;
+      // it is not part of the API request (whose schema rejects extra fields).
+      contextType: context.contextType,
+      contextId: context.contextId,
       ...(encryption === undefined
         ? { name: file.name }
         : {
@@ -71,14 +74,20 @@ export async function completeUpload(
   uploadId: string,
   parts: { partNumber: number; etag: string }[],
 ): Promise<Attachment> {
-  const { data, response } = await client.POST(
+  const { data, error, response } = await client.POST(
     "/api/v1/uploads/{uploadId}/complete",
     {
       params: { path: { uploadId } },
       body: { parts },
     },
   );
-  return ensure("completeUpload", response, data, 200);
+  if (response.status !== 200 || data === undefined) {
+    if (response.status === 400 || response.status === 409) {
+      throw encryptionErrorFrom(response.status, error);
+    }
+    throw new ApiStatusError(response.status, "completeUpload");
+  }
+  return data;
 }
 
 export async function abortUpload(

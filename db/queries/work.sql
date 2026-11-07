@@ -83,7 +83,7 @@ DELETE FROM project_member WHERE project_id = $1 AND account_id = $2;
 SELECT count(*)::integer FROM project_member WHERE project_id = $1 AND is_manager;
 
 -- name: ListProjectMembers :many
-SELECT pm.account_id, a.email_normalized, om.membership_kind, pm.is_manager
+SELECT pm.account_id, a.email_normalized, a.display_name, om.membership_kind, pm.is_manager
 FROM project_member AS pm
 JOIN account AS a ON a.id = pm.account_id
 JOIN project AS p ON p.id = pm.project_id
@@ -293,7 +293,9 @@ WHERE om.membership_kind = 'internal'
         FROM work_item AS w
         JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = $1
         JOIN external_project_policy AS ep ON ep.project_id = w.project_id
-        WHERE w.sprint_id = s.id AND NOT w.archived AND 'work.read' = ANY (ep.permissions)
+        LEFT JOIN sprint_item_history AS h ON h.work_item_id = w.id AND h.sprint_id = s.id
+        WHERE (w.sprint_id = s.id OR h.id IS NOT NULL)
+          AND 'work.read' = ANY (ep.permissions)
    )
 ORDER BY (s.state = 'active') DESC, s.starts_on DESC, s.id;
 
@@ -321,6 +323,21 @@ LEFT JOIN external_project_policy AS ep ON ep.project_id = w.project_id
 WHERE w.sprint_id = $1 AND NOT w.archived
   AND (om.membership_kind = 'internal' OR 'work.read' = ANY (COALESCE(ep.permissions, ARRAY[]::text[])))
 ORDER BY w.created_at, w.id;
+
+-- name: ListSprintSummaryItems :many
+SELECT sqlc.embed(w),
+       COALESCE(h.outcome, CASE WHEN c.category = 'done' THEN 'completed' ELSE 'current' END)::text AS outcome
+FROM work_item AS w
+JOIN project AS p ON p.id = w.project_id
+JOIN board_column AS c ON c.id = w.column_id
+JOIN project_member AS pm ON pm.project_id = w.project_id AND pm.account_id = sqlc.arg('account_id')
+JOIN organization_membership AS om ON om.organization_id = p.organization_id AND om.account_id = pm.account_id
+LEFT JOIN external_project_policy AS ep ON ep.project_id = w.project_id
+LEFT JOIN sprint_item_history AS h ON h.work_item_id = w.id AND h.sprint_id = sqlc.arg('sprint_id')
+WHERE (w.sprint_id = sqlc.arg('sprint_id') OR h.id IS NOT NULL)
+  AND w.kind = 'task'
+  AND (om.membership_kind = 'internal' OR 'work.read' = ANY (COALESCE(ep.permissions, ARRAY[]::text[])))
+ORDER BY w.updated_at DESC, w.id;
 
 -- name: ListSprintTasksForClose :many
 SELECT w.id, w.project_id, w.version, (c.category = 'done')::boolean AS finished,
@@ -360,7 +377,7 @@ SELECT EXISTS (
 )::boolean AS allowed;
 
 -- name: ListDirectContacts :many
-SELECT DISTINCT a.id AS account_id, a.email_normalized
+SELECT DISTINCT a.id AS account_id, a.email_normalized, a.display_name
 FROM project AS p
 JOIN project_member AS pa ON pa.project_id = p.id AND pa.account_id = $1
 JOIN project_member AS pb ON pb.project_id = p.id AND pb.account_id <> $1
@@ -380,7 +397,7 @@ ON CONFLICT (dm_low, dm_high) WHERE kind = 'dm' DO UPDATE SET name = conversatio
 RETURNING id, (xmax = 0)::boolean AS created;
 
 -- name: ListDirectConversations :many
-SELECT c.id, peer.id AS peer_id, peer.email_normalized AS peer_email,
+SELECT c.id, peer.id AS peer_id, peer.email_normalized AS peer_email, peer.display_name AS peer_display_name,
        GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
 FROM conversation AS c
 LEFT JOIN conversation_read_cursor AS r ON r.conversation_id = c.id AND r.account_id = $1
@@ -416,7 +433,7 @@ GROUP BY message_id, emoji
 ORDER BY message_id, min(created_at);
 
 -- name: GetAccountByID :one
-SELECT id, email_normalized FROM account WHERE id = $1 AND active;
+SELECT id, email_normalized, display_name FROM account WHERE id = $1 AND active;
 
 -- name: NextUserEventSeq :one
 INSERT INTO user_event_cursor (account_id, last_seq) VALUES ($1, 1)

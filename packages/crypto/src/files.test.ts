@@ -5,6 +5,7 @@ import {
   createFileSealer,
   encryptedFileSize,
   FILE_HEADER_LENGTH,
+  FILE_MAGIC,
   FILE_RECORD_SIZE,
   MAX_FILE_BYTES,
   openFile,
@@ -85,6 +86,10 @@ describe("size arithmetic", () => {
 });
 
 describe("encrypted file objects", () => {
+  it("uses the server protocol magic in every encrypted object", () => {
+    expect(new TextDecoder().decode(FILE_MAGIC)).toBe("CSKF");
+  });
+
   it("round-trips a multi-record file and the object has the computed size", () => {
     const fixture = setup(SIZE);
     const total =

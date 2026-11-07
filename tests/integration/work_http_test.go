@@ -363,6 +363,22 @@ func TestWorkProjectsAuthorizationAndRules(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sprint_item_history WHERE sprint_id = $1`, sprintOne.Id).Scan(&history); err != nil || history != 2 {
 		t.Fatalf("history rows: %d %v", history, err)
 	}
+	var sprintSummary struct {
+		Items []struct {
+			Item    struct{ Id string }
+			Outcome string
+		}
+	}
+	if code := member.do(http.MethodGet, "/api/v1/sprints/"+sprintOne.Id+"/summary", "", &sprintSummary); code != http.StatusOK || len(sprintSummary.Items) != 2 {
+		t.Fatalf("closed sprint summary: %d %+v", code, sprintSummary)
+	}
+	outcomes := map[string]string{}
+	for _, entry := range sprintSummary.Items {
+		outcomes[entry.Item.Id] = entry.Outcome
+	}
+	if outcomes[task.Id] != "carried" || outcomes[extra.Id] != "completed" {
+		t.Fatalf("closed sprint outcomes: %+v", outcomes)
+	}
 	if code := admin.do(http.MethodPost, closePath, good, nil); code != http.StatusConflict {
 		t.Fatalf("closing twice: %d", code)
 	}

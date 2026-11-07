@@ -25,6 +25,7 @@ func FromEnv() (Store, error) {
 		return NewS3(S3Config{
 			Endpoint: endpoint, Bucket: bucket, AccessKeyID: keyID, SecretAccessKey: secret,
 			PublicEndpoint: os.Getenv("R2_PUBLIC_ENDPOINT"), PathStyle: os.Getenv("R2_PATH_STYLE") == "true",
+			BrowserOrigin: os.Getenv("APP_PUBLIC_URL"),
 		})
 	default:
 		return nil, errors.New("R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required together")

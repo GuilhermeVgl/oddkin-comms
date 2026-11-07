@@ -2,10 +2,20 @@ package objectstore
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/aws/smithy-go"
 )
+
+type fakeAPIError struct{ code string }
+
+func (e fakeAPIError) Error() string                 { return e.code }
+func (e fakeAPIError) ErrorCode() string             { return e.code }
+func (e fakeAPIError) ErrorMessage() string          { return e.code }
+func (e fakeAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
 
 func TestS3PresignedURLsAreShortLivedAndScopedToTheObject(t *testing.T) {
 	store, err := NewS3(S3Config{
@@ -40,6 +50,25 @@ func TestS3PresignedURLsAreShortLivedAndScopedToTheObject(t *testing.T) {
 func TestS3RequiresCompleteConfiguration(t *testing.T) {
 	if _, err := NewS3(S3Config{Endpoint: "https://x.example.test"}); err == nil {
 		t.Fatal("incomplete configuration must be rejected")
+	}
+}
+
+func TestBrowserCORSExposesMultipartETag(t *testing.T) {
+	rules := browserCORS("https://app.example.test")
+	if len(rules) != 1 || len(rules[0].AllowedOrigins) != 1 || rules[0].AllowedOrigins[0] != "https://app.example.test" {
+		t.Fatalf("unexpected allowed origins: %#v", rules)
+	}
+	if len(rules[0].ExposeHeaders) != 1 || rules[0].ExposeHeaders[0] != "ETag" {
+		t.Fatalf("the browser must be able to read multipart ETags: %#v", rules)
+	}
+}
+
+func TestMinIOManagedCORSIsAccepted(t *testing.T) {
+	if !corsManagedByServer(fakeAPIError{code: "NotImplemented"}) {
+		t.Fatal("MinIO's environment-managed CORS must not stop startup")
+	}
+	if corsManagedByServer(errors.New("network")) {
+		t.Fatal("real bucket failures must still stop startup")
 	}
 }
 

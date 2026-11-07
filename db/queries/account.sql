@@ -1,10 +1,10 @@
 -- name: CreateAccount :one
 INSERT INTO account (email_normalized, password_hash)
 VALUES ($1, $2)
-RETURNING id, email_normalized, password_hash, active, created_at;
+RETURNING id, email_normalized, password_hash, active, created_at, display_name;
 
 -- name: GetAccountByEmail :one
-SELECT id, email_normalized, password_hash, active, created_at
+SELECT id, email_normalized, password_hash, active, created_at, display_name
 FROM account
 WHERE email_normalized = $1;
 
@@ -30,7 +30,7 @@ WHERE organization_membership.membership_kind = EXCLUDED.membership_kind
 RETURNING organization_id, account_id, membership_kind, is_admin, created_at, history_mode;
 
 -- name: ListOrganizationPeople :many
-SELECT a.id, a.email_normalized, a.active, m.membership_kind, m.is_admin
+SELECT a.id, a.email_normalized, a.display_name, a.active, m.membership_kind, m.is_admin
 FROM organization_membership AS m
 JOIN account AS a ON a.id = m.account_id
 WHERE m.organization_id = $1
@@ -44,6 +44,9 @@ WHERE m.organization_id = $1 AND a.id = $2;
 
 -- name: SetAccountActive :exec
 UPDATE account SET active = $2 WHERE id = $1;
+
+-- name: SetAccountDisplayName :exec
+UPDATE account SET display_name = $2 WHERE id = $1;
 
 -- name: CountActiveAdmins :one
 SELECT count(*)::integer

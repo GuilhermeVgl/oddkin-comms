@@ -214,6 +214,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/account/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Change the current account display name */
+    patch: operations["updateProfile"];
+    trace?: never;
+  };
   "/api/v1/account/avatar": {
     parameters: {
       query?: never;
@@ -836,6 +853,25 @@ export interface paths {
     };
     /** Tasks of the sprint the account is authorized to read */
     get: operations["listSprintWorkItems"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/sprints/{sprintId}/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sprintId: components["parameters"]["SprintId"];
+      };
+      cookie?: never;
+    };
+    /** Activities and close outcomes visible to the account for one sprint */
+    get: operations["getSprintSummary"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2030,6 +2066,7 @@ export interface components {
       id: string;
       /** Format: email */
       email: string;
+      displayName: string;
       /** @enum {string} */
       membershipKind: "internal" | "external";
       isAdmin: boolean;
@@ -2067,6 +2104,7 @@ export interface components {
       accountId: string;
       /** Format: email */
       email: string;
+      displayName?: string;
       /** @enum {string} */
       membershipKind: "internal" | "external";
       isManager: boolean;
@@ -2176,6 +2214,7 @@ export interface components {
       id: string;
       /** Format: email */
       email: string;
+      displayName?: string;
       active: boolean;
       /** @enum {string} */
       membershipKind: "internal" | "external";
@@ -2186,6 +2225,9 @@ export interface components {
     };
     SetHistoryModeRequest: {
       mode: components["schemas"]["HistoryMode"];
+    };
+    UpdateProfileRequest: {
+      displayName: string;
     };
     SetInvitePolicyRequest: {
       policy: components["schemas"]["InvitePolicy"];
@@ -2469,6 +2511,17 @@ export interface components {
       /** @description True when pending work exists in projects the administrator cannot access */
       blocked: boolean;
     };
+    SprintSummary: {
+      items: components["schemas"]["SprintSummaryItem"][];
+    };
+    SprintSummaryItem: {
+      item: components["schemas"]["WorkItem"];
+      /**
+       * @description Current state for an open sprint or the recorded close outcome
+       * @enum {string}
+       */
+      outcome: "current" | "completed" | "carried" | "backlog";
+    };
     CloseSprintRequest: {
       /** Format: uuid */
       destinationSprintId?: string;
@@ -2484,6 +2537,7 @@ export interface components {
       /** Format: uuid */
       accountId: string;
       email: string;
+      displayName?: string;
     };
     DirectConversation: {
       /** Format: int64 */
@@ -2493,6 +2547,7 @@ export interface components {
       /** Format: uuid */
       peerId: string;
       peerEmail: string;
+      peerDisplayName?: string;
     };
     OpenDirectConversationRequest: {
       /** Format: uuid */
@@ -3468,6 +3523,49 @@ export interface operations {
         content?: never;
       };
       /** @description Only ask and none can be chosen by the person */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin or CSRF token rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateProfile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateProfileRequest"];
+      };
+    };
+    responses: {
+      /** @description Profile updated */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid display name */
       400: {
         headers: {
           [name: string]: unknown;
@@ -5819,6 +5917,42 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WorkItem"][];
+        };
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or invisible sprint */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSprintSummary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sprintId: components["parameters"]["SprintId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sprint summary */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SprintSummary"];
         };
       };
       /** @description No active session */

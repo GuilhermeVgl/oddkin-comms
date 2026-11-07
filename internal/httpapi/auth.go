@@ -180,6 +180,7 @@ func (h *identityAPI) GetCurrentAccount(w http.ResponseWriter, r *http.Request) 
 	response := gen.CurrentAccount{
 		Id:             openapi_types.UUID(uuid.UUID(session.AccountID.Bytes)),
 		Email:          openapi_types.Email(session.EmailNormalized),
+		DisplayName:    session.DisplayName,
 		MembershipKind: gen.CurrentAccountMembershipKind(session.MembershipKind),
 		IsAdmin:        session.IsAdmin,
 		HistoryMode:    gen.HistoryMode(session.HistoryMode),

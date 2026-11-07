@@ -252,7 +252,7 @@ func (h *workAPI) RemoveProjectMember(w http.ResponseWriter, r *http.Request, pr
 		if !ok {
 			return errResponded
 		}
-		if !access.access.Manager {
+		if !access.access.Manager && !session.IsAdmin {
 			return statusError(http.StatusForbidden)
 		}
 		if access.archived {

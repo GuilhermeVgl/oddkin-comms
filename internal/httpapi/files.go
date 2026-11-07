@@ -489,17 +489,46 @@ func (h *filesAPI) CompleteUpload(w http.ResponseWriter, r *http.Request, upload
 			return
 		}
 	}
-	changed, err := q.MarkAttachmentReady(ctx, sqlc.MarkAttachmentReadyParams{ID: attachment.ID, StoredSize: pgtype.Int8{Int64: size, Valid: true}})
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	if changed == 0 {
-		w.WriteHeader(http.StatusConflict)
+	err = h.inTx(ctx, func(txq *sqlc.Queries) error {
+		changed, updateErr := txq.MarkAttachmentReady(ctx, sqlc.MarkAttachmentReadyParams{ID: attachment.ID, StoredSize: pgtype.Int8{Int64: size, Valid: true}})
+		if updateErr != nil {
+			return updateErr
+		}
+		if changed == 0 {
+			return statusError(http.StatusConflict)
+		}
+		return emitForAttachment(ctx, txq, "attachment.created", attachment)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	attachment.StoredSize = pgtype.Int8{Int64: size, Valid: true}
 	writeJSON(w, http.StatusOK, toAttachment(attachment, session.EmailNormalized))
+}
+
+// emitForAttachment makes a ready file a first-class timeline event for every
+// participant who may download it. The event and database state commit together.
+func emitForAttachment(ctx context.Context, q *sqlc.Queries, eventType string, attachment sqlc.Attachment) error {
+	if attachment.ConversationID.Valid {
+		conversation, err := q.GetConversation(ctx, attachment.ConversationID)
+		if err != nil {
+			return err
+		}
+		recipients, err := conversationRecipients(ctx, q, conversation)
+		if err != nil {
+			return err
+		}
+		return emitEvent(ctx, q, recipients, eventSpec{
+			Type: eventType, ResourceID: attachment.ID, ProjectID: conversation.ProjectID, ConversationID: conversation.ID,
+		})
+	}
+	recipients, err := projectRecipients(ctx, q, attachment.ProjectID, work.FilesDownload)
+	if err != nil {
+		return err
+	}
+	return emitEvent(ctx, q, recipients, eventSpec{
+		Type: eventType, ResourceID: attachment.ID, ProjectID: attachment.ProjectID, Permission: work.FilesDownload,
+	})
 }
 
 // completionParts checks that the client lists every part, in order, and
@@ -628,8 +657,13 @@ func (h *filesAPI) DeleteAttachment(w http.ResponseWriter, r *http.Request, atta
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	if err = q.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "deleted"}); err != nil {
-		serverError(w, r, err)
+	err = h.inTx(ctx, func(txq *sqlc.Queries) error {
+		if updateErr := txq.MarkAttachmentReleased(ctx, sqlc.MarkAttachmentReleasedParams{ID: attachment.ID, State: "deleted"}); updateErr != nil {
+			return updateErr
+		}
+		return emitForAttachment(ctx, txq, "attachment.deleted", attachment)
+	})
+	if respondError(w, r, err) {
 		return
 	}
 	// The object stays 30 days (see ReleaseStorage) so a database restore still finds it.

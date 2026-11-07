@@ -546,7 +546,7 @@ func (h *chatAPI) ListDirectContacts(w http.ResponseWriter, r *http.Request) {
 	}
 	contacts := make([]gen.DirectContact, 0, len(rows))
 	for _, row := range rows {
-		contacts = append(contacts, gen.DirectContact{AccountId: fromPG(row.AccountID), Email: row.EmailNormalized})
+		contacts = append(contacts, gen.DirectContact{AccountId: fromPG(row.AccountID), Email: row.EmailNormalized, DisplayName: displayName(row.DisplayName)})
 	}
 	writeJSON(w, http.StatusOK, contacts)
 }
@@ -565,7 +565,7 @@ func (h *chatAPI) ListDirectConversations(w http.ResponseWriter, r *http.Request
 	}
 	conversations := make([]gen.DirectConversation, 0, len(rows))
 	for _, row := range rows {
-		conversations = append(conversations, gen.DirectConversation{Id: fromPG(row.ID), PeerId: fromPG(row.PeerID), PeerEmail: row.PeerEmail, Unread: row.Unread})
+		conversations = append(conversations, gen.DirectConversation{Id: fromPG(row.ID), PeerId: fromPG(row.PeerID), PeerEmail: row.PeerEmail, PeerDisplayName: displayName(row.PeerDisplayName), Unread: row.Unread})
 	}
 	writeJSON(w, http.StatusOK, conversations)
 }
@@ -614,7 +614,7 @@ func (h *chatAPI) OpenDirectConversation(w http.ResponseWriter, r *http.Request)
 	if conversation.Created {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, gen.DirectConversation{Id: fromPG(conversation.ID), PeerId: fromPG(peer), PeerEmail: account.EmailNormalized, Unread: 0})
+	writeJSON(w, status, gen.DirectConversation{Id: fromPG(conversation.ID), PeerId: fromPG(peer), PeerEmail: account.EmailNormalized, PeerDisplayName: displayName(account.DisplayName), Unread: 0})
 }
 
 var errInvalidMention = errors.New("mention outside the conversation")

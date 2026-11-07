@@ -235,7 +235,7 @@ func (h *workAPI) ListProjectMembers(w http.ResponseWriter, r *http.Request, pro
 	for _, row := range rows {
 		members = append(members, gen.ProjectMember{
 			AccountId: fromPG(row.AccountID), Email: openapi_types.Email(row.EmailNormalized),
-			MembershipKind: gen.ProjectMemberMembershipKind(row.MembershipKind), IsManager: row.IsManager,
+			DisplayName: displayName(row.DisplayName), MembershipKind: gen.ProjectMemberMembershipKind(row.MembershipKind), IsManager: row.IsManager,
 		})
 	}
 	writeJSON(w, http.StatusOK, members)
@@ -266,7 +266,8 @@ func (h *workAPI) AddProjectMember(w http.ResponseWriter, r *http.Request, proje
 	if project, projectErr := q.GetProject(ctx, pgUUID(projectId)); projectErr == nil {
 		policy = project.InvitePolicy
 	}
-	if !access.access.Manager && !mayBringPeopleIn(policy, access.access, false) {
+	orgAdmin := session.IsAdmin && access.access.Kind == "internal"
+	if !mayBringPeopleIn(policy, access.access, orgAdmin) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -284,17 +285,22 @@ func (h *workAPI) AddProjectMember(w http.ResponseWriter, r *http.Request, proje
 		return
 	}
 	// Only a manager brings in an external person; the policy lets others add internal colleagues.
-	if !access.access.Manager && target.MembershipKind != "internal" {
+	if !access.access.Manager && !orgAdmin && target.MembershipKind != "internal" {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	// A project manager never promotes an external member to manager.
-	manager := access.access.Manager && payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
+	manager := (access.access.Manager || orgAdmin) && payload.IsManager != nil && *payload.IsManager && target.MembershipKind == "internal"
 	err = h.inTx(ctx, func(q *sqlc.Queries) error {
 		if err := q.AddProjectMember(ctx, sqlc.AddProjectMemberParams{ProjectID: pgUUID(projectId), AccountID: target.AccountID, IsManager: manager}); err != nil {
 			return err
 		}
-		return refreshProjectDomains(ctx, q, pgUUID(projectId))
+		if err := refreshProjectDomains(ctx, q, pgUUID(projectId)); err != nil {
+			return err
+		}
+		// The new member must refresh immediately; otherwise their project list and
+		// manager-only controls remain stale until another event or a new session.
+		return announceProjectChanged(ctx, q, pgUUID(projectId))
 	})
 	if respondError(w, r, err) {
 		return

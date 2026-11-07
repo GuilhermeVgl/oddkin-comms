@@ -28,7 +28,7 @@ func (q *Queries) CountActiveAdmins(ctx context.Context, organizationID pgtype.U
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO account (email_normalized, password_hash)
 VALUES ($1, $2)
-RETURNING id, email_normalized, password_hash, active, created_at
+RETURNING id, email_normalized, password_hash, active, created_at, display_name
 `
 
 type CreateAccountParams struct {
@@ -45,6 +45,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -124,7 +125,7 @@ func (q *Queries) EnsureOrganizationMembership(ctx context.Context, arg EnsureOr
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email_normalized, password_hash, active, created_at
+SELECT id, email_normalized, password_hash, active, created_at, display_name
 FROM account
 WHERE email_normalized = $1
 `
@@ -138,6 +139,7 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, emailNormalized string)
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -220,7 +222,7 @@ func (q *Queries) ListOrganizationAdmins(ctx context.Context, organizationID pgt
 }
 
 const listOrganizationPeople = `-- name: ListOrganizationPeople :many
-SELECT a.id, a.email_normalized, a.active, m.membership_kind, m.is_admin
+SELECT a.id, a.email_normalized, a.display_name, a.active, m.membership_kind, m.is_admin
 FROM organization_membership AS m
 JOIN account AS a ON a.id = m.account_id
 WHERE m.organization_id = $1
@@ -230,6 +232,7 @@ ORDER BY a.email_normalized
 type ListOrganizationPeopleRow struct {
 	ID              pgtype.UUID
 	EmailNormalized string
+	DisplayName     string
 	Active          bool
 	MembershipKind  string
 	IsAdmin         bool
@@ -247,6 +250,7 @@ func (q *Queries) ListOrganizationPeople(ctx context.Context, organizationID pgt
 		if err := rows.Scan(
 			&i.ID,
 			&i.EmailNormalized,
+			&i.DisplayName,
 			&i.Active,
 			&i.MembershipKind,
 			&i.IsAdmin,
@@ -272,6 +276,20 @@ type SetAccountActiveParams struct {
 
 func (q *Queries) SetAccountActive(ctx context.Context, arg SetAccountActiveParams) error {
 	_, err := q.db.Exec(ctx, setAccountActive, arg.ID, arg.Active)
+	return err
+}
+
+const setAccountDisplayName = `-- name: SetAccountDisplayName :exec
+UPDATE account SET display_name = $2 WHERE id = $1
+`
+
+type SetAccountDisplayNameParams struct {
+	ID          pgtype.UUID
+	DisplayName string
+}
+
+func (q *Queries) SetAccountDisplayName(ctx context.Context, arg SetAccountDisplayNameParams) error {
+	_, err := q.db.Exec(ctx, setAccountDisplayName, arg.ID, arg.DisplayName)
 	return err
 }
 

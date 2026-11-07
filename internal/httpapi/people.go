@@ -3,12 +3,23 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+func displayName(value string) *string {
+	return &value
+}
+
+func normalizeDisplayName(raw string) (string, bool) {
+	name := strings.TrimSpace(raw)
+	return name, name != "" && name == raw && utf8.RuneCountInString(name) <= 80
+}
 
 // ListSessions shows the caller's own sessions, so a forgotten browser can be ended.
 func (h *identityAPI) ListSessions(w http.ResponseWriter, r *http.Request) {
@@ -81,10 +92,34 @@ func (h *identityAPI) ListOrganizationPeople(w http.ResponseWriter, r *http.Requ
 	for _, row := range rows {
 		people = append(people, gen.OrganizationPerson{
 			Id: fromPG(row.ID), Email: openapi_types.Email(row.EmailNormalized), Active: row.Active,
-			MembershipKind: gen.OrganizationPersonMembershipKind(row.MembershipKind), IsAdmin: row.IsAdmin,
+			DisplayName: displayName(row.DisplayName), MembershipKind: gen.OrganizationPersonMembershipKind(row.MembershipKind), IsAdmin: row.IsAdmin,
 		})
 	}
 	writeJSON(w, http.StatusOK, people)
+}
+
+// UpdateProfile lets each person choose the name shown to teammates.
+func (h *identityAPI) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var payload gen.UpdateProfileRequest
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	name, valid := normalizeDisplayName(payload.DisplayName)
+	if !valid {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := sqlc.New(h.auth.pool).SetAccountDisplayName(ctx, sqlc.SetAccountDisplayNameParams{ID: session.AccountID, DisplayName: name}); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // SetPersonActive ends all access of a deactivated account at once: its

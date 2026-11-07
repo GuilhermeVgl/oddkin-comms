@@ -304,6 +304,27 @@ paths:
           description: No active session
         "403":
           description: Origin or CSRF token rejected
+  /api/v1/account/profile:
+    patch:
+      operationId: updateProfile
+      summary: Change the current account display name
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "204":
+          description: Profile updated
+        "400":
+          description: Invalid display name
+        "401":
+          description: No active session
+        "403":
+          description: Origin or CSRF token rejected
   /api/v1/account/avatar:
     put:
       operationId: putAvatar
@@ -1479,6 +1500,25 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/WorkItem"
+        "401":
+          description: No active session
+        "404":
+          description: Unknown or invisible sprint
+  /api/v1/sprints/{sprintId}/summary:
+    parameters:
+      - $ref: "#/components/parameters/SprintId"
+    get:
+      operationId: getSprintSummary
+      summary: Activities and close outcomes visible to the account for one sprint
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sprint summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SprintSummary"
         "401":
           description: No active session
         "404":
@@ -3196,7 +3236,7 @@ components:
           maxLength: 1024
     CurrentAccount:
       type: object
-      required: [id, email, membershipKind, isAdmin, historyMode]
+      required: [id, email, displayName, membershipKind, isAdmin, historyMode]
       additionalProperties: false
       properties:
         id:
@@ -3205,6 +3245,7 @@ components:
         email:
           type: string
           format: email
+        displayName: { type: string }
         membershipKind:
           type: string
           enum: [internal, external]
@@ -3263,6 +3304,7 @@ components:
       properties:
         accountId: { type: string, format: uuid }
         email: { type: string, format: email }
+        displayName: { type: string }
         membershipKind: { type: string, enum: [internal, external] }
         isManager: { type: boolean }
     AddProjectMemberRequest:
@@ -3431,6 +3473,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
+        displayName: { type: string }
         active: { type: boolean }
         membershipKind: { type: string, enum: [internal, external] }
         isAdmin: { type: boolean }
@@ -3446,6 +3489,12 @@ components:
       additionalProperties: false
       properties:
         mode: { $ref: "#/components/schemas/HistoryMode" }
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      additionalProperties: false
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 80 }
     SetInvitePolicyRequest:
       type: object
       required: [policy]
@@ -3778,6 +3827,24 @@ components:
         blocked:
           type: boolean
           description: True when pending work exists in projects the administrator cannot access
+    SprintSummary:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SprintSummaryItem" }
+    SprintSummaryItem:
+      type: object
+      required: [item, outcome]
+      additionalProperties: false
+      properties:
+        item: { $ref: "#/components/schemas/WorkItem" }
+        outcome:
+          type: string
+          enum: [current, completed, carried, backlog]
+          description: Current state for an open sprint or the recorded close outcome
     CloseSprintRequest:
       type: object
       required: [decisions]
@@ -3802,6 +3869,7 @@ components:
       properties:
         accountId: { type: string, format: uuid }
         email: { type: string }
+        displayName: { type: string }
     DirectConversation:
       type: object
       required: [id, peerId, peerEmail, unread]
@@ -3811,6 +3879,7 @@ components:
         id: { type: string, format: uuid }
         peerId: { type: string, format: uuid }
         peerEmail: { type: string }
+        peerDisplayName: { type: string }
     OpenDirectConversationRequest:
       type: object
       required: [accountId]

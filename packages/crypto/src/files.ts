@@ -4,13 +4,13 @@ import { CryptoError, type ContentContext, type Crypto } from "./index";
 /**
  * Encrypted file objects (docs/adr/0019-encrypted-file-bodies.md):
  *
- *   "ODKF" | version(1) | manifest envelope (182) | record 1 | … | record N
+ *   "CSKF" | version(1) | manifest envelope (182) | record 1 | … | record N
  *
  * The manifest is a signed content envelope holding the file key, the
  * secretstream header, the original size, the record size and the record count.
  * Records are secretstream chunks of 256 KiB (the last may be shorter).
  */
-export const FILE_MAGIC = new Uint8Array([0x4f, 0x44, 0x4b, 0x46]);
+export const FILE_MAGIC = new Uint8Array([0x43, 0x53, 0x4b, 0x46]);
 export const FILE_VERSION = 1;
 export const FILE_RECORD_SIZE = 262144;
 export const FILE_RECORD_OVERHEAD = 17;

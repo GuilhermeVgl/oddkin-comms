@@ -212,30 +212,56 @@ func (h *chatAPI) SetMemberRole(w http.ResponseWriter, r *http.Request, projectI
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-	h.columnTx(w, r, projectId, func(ctx context.Context, q *sqlc.Queries) (int, any, error) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		access, found, err := lookupAccess(ctx, q, pgUUID(projectId), session.AccountID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return statusError(http.StatusNotFound)
+		}
+		if !access.access.Manager && !session.IsAdmin {
+			return statusError(http.StatusForbidden)
+		}
+		if access.archived {
+			return statusError(http.StatusConflict)
+		}
+		if err := q.LockProject(ctx, pgUUID(projectId)); err != nil {
+			return err
+		}
 		target := toPG(accountId)
 		targetAccess, found, err := lookupAccess(ctx, q, pgUUID(projectId), target)
 		if err != nil {
-			return 0, nil, err
+			return err
 		}
 		if !found {
-			return http.StatusNotFound, nil, nil
+			return statusError(http.StatusNotFound)
 		}
 		if targetAccess.access.Kind != "internal" {
-			return http.StatusBadRequest, nil, nil
+			return statusError(http.StatusBadRequest)
 		}
 		if !payload.IsManager && targetAccess.access.Manager {
 			managers, countErr := q.CountProjectManagers(ctx, pgUUID(projectId))
 			if countErr != nil {
-				return 0, nil, countErr
+				return countErr
 			}
 			if managers <= 1 {
-				return http.StatusConflict, nil, nil
+				return statusError(http.StatusConflict)
 			}
 		}
 		if _, err = q.SetProjectMemberManager(ctx, sqlc.SetProjectMemberManagerParams{ProjectID: pgUUID(projectId), AccountID: target, IsManager: payload.IsManager}); err != nil {
-			return 0, nil, err
+			return err
 		}
-		return http.StatusNoContent, nil, nil
+		return announceProjectChanged(ctx, q, pgUUID(projectId))
 	})
+	if respondError(w, r, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

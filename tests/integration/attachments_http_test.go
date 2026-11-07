@@ -121,6 +121,10 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 	if code := member.do(http.MethodPost, "/api/v1/uploads/"+upload.Id+"/complete", parts, nil); code != http.StatusOK {
 		t.Fatalf("complete must be idempotent: %d", code)
 	}
+	var createdEvents int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM user_event WHERE type = 'attachment.created' AND resource_id = $1`, ready.Id).Scan(&createdEvents); err != nil || createdEvents == 0 {
+		t.Fatalf("ready attachment was not announced: count=%d err=%v", createdEvents, err)
+	}
 
 	// Listing and downloads are authorized on every request.
 	var listed []struct{ Id string }
@@ -150,6 +154,10 @@ func TestAttachmentsUploadDownloadAndCleanup(t *testing.T) {
 	}
 	if code := admin.do(http.MethodDelete, "/api/v1/attachments/"+ready.Id, "", nil); code != http.StatusNoContent {
 		t.Fatalf("manager delete: %d", code)
+	}
+	var deletedEvents int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM user_event WHERE type = 'attachment.deleted' AND resource_id = $1`, ready.Id).Scan(&deletedEvents); err != nil || deletedEvents == 0 {
+		t.Fatalf("deleted attachment was not announced: count=%d err=%v", deletedEvents, err)
 	}
 	// The object outlives the deletion by 30 days, so a database restore still finds it.
 	if !memory.Has(objectKey) {

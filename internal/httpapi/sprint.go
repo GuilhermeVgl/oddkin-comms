@@ -271,6 +271,37 @@ func (h *workAPI) ListSprintWorkItems(w http.ResponseWriter, r *http.Request, sp
 	writeJSON(w, http.StatusOK, items)
 }
 
+// GetSprintSummary keeps the sprint's close outcomes visible after pending
+// work moves on. The same project projection used elsewhere prevents a recap
+// from revealing activity from projects the caller cannot read.
+func (h *workAPI) GetSprintSummary(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
+	session, ok := h.reader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	q := sqlc.New(h.auth.pool)
+	sprint, ok := visibleSprint(ctx, w, q, sprintId, session.AccountID)
+	if !ok {
+		return
+	}
+	rows, err := q.ListSprintSummaryItems(ctx, sqlc.ListSprintSummaryItemsParams{
+		SprintID: sprint.ID, AccountID: session.AccountID,
+	})
+	if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	items := make([]gen.SprintSummaryItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, gen.SprintSummaryItem{
+			Item: toWorkItem(row.WorkItem), Outcome: gen.SprintSummaryItemOutcome(row.Outcome),
+		})
+	}
+	writeJSON(w, http.StatusOK, gen.SprintSummary{Items: items})
+}
+
 func (h *workAPI) StartSprint(w http.ResponseWriter, r *http.Request, sprintId gen.SprintId) {
 	session, ok := h.mutator(w, r)
 	if !ok {

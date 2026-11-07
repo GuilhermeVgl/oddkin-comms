@@ -3,6 +3,7 @@ import type { WorkItem } from "./workItems";
 
 export type Sprint = Schemas["Sprint"];
 export type SprintClosePreview = Schemas["SprintClosePreview"];
+export type SprintSummary = Schemas["SprintSummary"];
 export type SprintDecision = NonNullable<
   Schemas["CloseSprintRequest"]["decisions"]
 >[number];
@@ -42,6 +43,17 @@ export async function listSprintWorkItems(
     { params: { path: { sprintId } } },
   );
   return ensure("listSprintWorkItems", response, data, 200);
+}
+
+export async function getSprintSummary(
+  client: Client,
+  sprintId: string,
+): Promise<SprintSummary> {
+  const { data, response } = await client.GET(
+    "/api/v1/sprints/{sprintId}/summary",
+    { params: { path: { sprintId } } },
+  );
+  return ensure("getSprintSummary", response, data, 200);
 }
 
 export async function getSprintClosePreview(
