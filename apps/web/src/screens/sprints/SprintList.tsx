@@ -36,6 +36,9 @@ export function PlannedSprints({
             </div>
             <div className="row">
               <span className="sm muted grow">{list.length} atividades</span>
+              <a className="btn sm ghost" href={`#/sprints/${sprint.id}`}>
+                Ver resumo
+              </a>
               {canPlan ? (
                 <button
                   className="btn sm"
@@ -92,7 +95,9 @@ export function ClosedSprints({
       {closed.map((sprint) => (
         <div className="list-i" key={sprint.id}>
           <div className="grow col">
-            <b>{sprint.name}</b>
+            <a className="u-semibold" href={`#/sprints/${sprint.id}`}>
+              {sprint.name}
+            </a>
             <span className="xs muted">
               {fmtD(sprint.startsOn)} a {fmtD(sprint.endsOn)}
               {sprint.goal === "" ? "" : ` · ${sprint.goal}`}

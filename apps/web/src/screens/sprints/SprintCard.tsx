@@ -102,6 +102,9 @@ export function SprintCard({
           {fmtD(sprint.startsOn)} a {fmtD(sprint.endsOn)} · {left} dias
           restantes
         </span>
+        <a className="btn ghost" href={`#/sprints/${sprint.id}`}>
+          Ver resumo
+        </a>
         {canPlan ? (
           <button className="btn accent" onClick={onClose} type="button">
             <Icon name="check" size="sm" />

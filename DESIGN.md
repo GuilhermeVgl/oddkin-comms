@@ -6,7 +6,7 @@ Interface operacional baseada no protótipo interativo aprovado (`crewstead-prot
 
 ## Onde fica cada coisa
 
-- `apps/web/src/styles/` — CSS por responsabilidade, portado do protótipo: `tokens` (cores, raios, sombras, tema Carvão), `base`, `shell`, `controls`, `board`, `overlays`, `home`, `chat`, `call`, `team`, `login`, `palette`, `responsive`.
+- `apps/web/src/styles/` — CSS por responsabilidade, portado do protótipo: `tokens` (cores, raios, sombras, tema Carvão), `base`, `shell`, `controls`, `board`, `overlays`, `home`, `chat`, `call`, `team`, `login`, `palette`, `responsive`; módulos `ui-*` guardam composições específicas de tela, como `ui-sprints` para o resumo responsivo de sprint.
 - `apps/web/src/fonts/` — Schibsted Grotesk (interface), Archivo expandida (títulos e marca), JetBrains Mono (atalhos e dados) e Pixelify Sans (falas dos personagens), auto-hospedadas.
 - `apps/web/src/design/` — peças reutilizáveis: motor de sprites procedural (`sprites.ts`, `Sprite.tsx`), partículas de pixel, sons, preferências (`prefs.ts`), ícones, toasts, menus, diálogos, celebração e tela final de sprint.
 - `apps/web/src/shell/` — barra lateral, navegação móvel, cabeçalho, paleta Ctrl/Cmd K e notificações.

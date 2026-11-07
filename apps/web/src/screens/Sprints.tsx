@@ -10,10 +10,11 @@ import { PlanningTable } from "./sprints/PlanningTable";
 import { SprintBanners } from "./sprints/SprintBanners";
 import { SprintCard } from "./sprints/SprintCard";
 import { ClosedSprints, PlannedSprints } from "./sprints/SprintList";
+import { SprintOverview } from "./sprints/SprintOverview";
 import { backlogRows, rowsOfSprint, splitSprints } from "./sprints/sprintRules";
 import { taskEntries } from "./work/workRules";
 
-export function Sprints({ account }: { account: CurrentAccount }) {
+function SprintIndex({ account }: { account: CurrentAccount }) {
   const { projects, sprints, reload } = useWorkspace();
   const [newOpen, setNewOpen] = useState(false);
   const [closing, setClosing] = useState<Sprint | null>(null);
@@ -94,5 +95,19 @@ export function Sprints({ account }: { account: CurrentAccount }) {
         />
       )}
     </Page>
+  );
+}
+
+export function Sprints({
+  account,
+  sprintId = null,
+}: {
+  account: CurrentAccount;
+  sprintId?: string | null;
+}) {
+  return sprintId === null ? (
+    <SprintIndex account={account} />
+  ) : (
+    <SprintOverview account={account} sprintId={sprintId} />
   );
 }

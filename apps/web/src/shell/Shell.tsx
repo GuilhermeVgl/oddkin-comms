@@ -164,7 +164,7 @@ function Frame({
       case "work":
         return <Work account={account} itemId={route.arg} />;
       case "sprints":
-        return <Sprints account={account} />;
+        return <Sprints account={account} sprintId={route.arg} />;
       case "chat":
         return <Chat account={account} conversationId={route.arg} />;
       case "team":

@@ -2,7 +2,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderApp } from "../testing/AppHarness";
-import { ME, defaultWorld, type World } from "../testing/fakeApi";
+import {
+  ME,
+  createFakeApi,
+  defaultWorld,
+  type World,
+} from "../testing/fakeApi";
 import { Sprints } from "./Sprints";
 
 beforeEach(() => {
@@ -72,6 +77,57 @@ describe("Sprints", () => {
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Encerrar sprint/ }),
+    ).toBeTruthy();
+  });
+
+  it("opens a sprint summary with activities, projects and owners", async () => {
+    const world = defaultWorld();
+    world.sprints = [sprint({ state: "active" })];
+    world.items = world.items.map((item) => ({ ...item, sprintId: "s1" }));
+    await renderApp(<Sprints account={ME} sprintId="s1" />, { world });
+
+    expect(await screen.findByText("Resumo da sprint")).toBeTruthy();
+    expect(screen.getByText("Entregar o login")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Revisar contratos/ }),
+    ).toBeTruthy();
+    expect(screen.getByText("Por projeto")).toBeTruthy();
+    expect(screen.getByText("Responsáveis")).toBeTruthy();
+    const filters = screen.getByRole("group", { name: "Filtrar atividades" });
+    fireEvent.click(
+      within(filters).getByRole("button", { name: /Concluídas/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Publicar o site/ }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Revisar contratos/ }),
+    ).toBeNull();
+  });
+
+  it("keeps the recorded outcomes visible after a sprint closes", async () => {
+    const world = defaultWorld();
+    world.sprints = [sprint({ state: "closed" })];
+    const api = createFakeApi(world);
+    api.route("GET", /\/sprints\/s1\/summary$/, () => ({
+      items: [
+        { item: world.items[0], outcome: "carried" },
+        { item: world.items[2], outcome: "completed" },
+      ],
+    }));
+    await renderApp(<Sprints account={ME} sprintId="s1" />, { api });
+
+    const filters = await screen.findByRole("group", {
+      name: "Filtrar atividades",
+    });
+    expect(
+      within(filters).getByRole("button", { name: /Levadas adiante/ }),
+    ).toBeTruthy();
+    expect(
+      within(filters).getByRole("button", { name: /Ao backlog/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Revisar contratos/ }),
     ).toBeTruthy();
   });
 

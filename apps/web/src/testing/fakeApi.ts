@@ -7,6 +7,7 @@ import type {
   Epic,
   Message,
   Notification,
+  OrganizationPerson,
   Project,
   ProjectMember,
   Sprint,
@@ -22,6 +23,7 @@ export type World = {
   items: WorkItem[];
   epics: Epic[];
   members: Record<string, ProjectMember[]>;
+  people: OrganizationPerson[];
   sprints: Sprint[];
   conversations: Record<string, Conversation[]>;
   messages: Record<string, Message[]>;
@@ -55,6 +57,7 @@ export const ALL_PERMISSIONS = [
 export const ME: CurrentAccount = {
   id: "acc-ana",
   email: "ana@crewstead.test",
+  displayName: "Ana",
   membershipKind: "internal",
   isAdmin: true,
   historyMode: "ask",
@@ -130,6 +133,24 @@ export function defaultWorld(): World {
         },
       ],
     },
+    people: [
+      {
+        id: ME.id,
+        email: ME.email,
+        displayName: ME.displayName,
+        active: true,
+        membershipKind: "internal",
+        isAdmin: true,
+      },
+      {
+        id: "acc-bruno",
+        email: "bruno@crewstead.test",
+        displayName: "Bruno",
+        active: true,
+        membershipKind: "internal",
+        isAdmin: false,
+      },
+    ],
     sprints: [],
     conversations: {
       p1: [
@@ -337,7 +358,65 @@ function routes(): Route[] {
       /^\/api\/v1\/projects\/([^/]+)\/members$/,
       ({ world, match }) => world.members[match[1] ?? ""] ?? [],
     ],
+    [
+      "POST",
+      /^\/api\/v1\/projects\/([^/]+)\/members$/,
+      ({ world, match, body }) => {
+        const projectId = match[1] ?? "";
+        const input = body as { email: string; isManager?: boolean };
+        const person = world.people.find(
+          (entry) => entry.email === input.email,
+        );
+        if (person === undefined) return empty(400);
+        const list = world.members[projectId] ?? [];
+        if (!list.some((entry) => entry.accountId === person.id)) {
+          list.push({
+            accountId: person.id,
+            email: person.email,
+            membershipKind: person.membershipKind,
+            isManager:
+              person.membershipKind === "internal" && input.isManager === true,
+          });
+        }
+        world.members[projectId] = list;
+        return empty();
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/v1\/projects\/([^/]+)\/members\/([^/]+)$/,
+      ({ world, match, body }) => {
+        const member = (world.members[match[1] ?? ""] ?? []).find(
+          (entry) => entry.accountId === match[2],
+        );
+        if (member === undefined) return empty(404);
+        member.isManager = (body as { isManager: boolean }).isManager;
+        return empty();
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/v1\/projects\/([^/]+)\/members\/([^/]+)$/,
+      ({ world, match }) => {
+        const projectId = match[1] ?? "";
+        world.members[projectId] = (world.members[projectId] ?? []).filter(
+          (entry) => entry.accountId !== match[2],
+        );
+        return empty();
+      },
+    ],
     ["GET", /^\/api\/v1\/projects\/[^/]+\/key-domains$/, () => []],
+    ["GET", /^\/api\/v1\/organization\/people$/, ({ world }) => world.people],
+    [
+      "PUT",
+      /^\/api\/v1\/organization\/people\/([^/]+)\/active$/,
+      ({ world, match, body }) => {
+        const person = world.people.find((entry) => entry.id === match[1]);
+        if (person === undefined) return empty(404);
+        person.active = (body as { active: boolean }).active;
+        return empty();
+      },
+    ],
     [
       "GET",
       /^\/api\/v1\/projects\/([^/]+)\/conversations$/,
@@ -378,6 +457,28 @@ function routes(): Route[] {
         if (sprint === undefined) return empty(404);
         sprint.state = "active";
         return sprint;
+      },
+    ],
+    [
+      "GET",
+      /^\/api\/v1\/sprints\/([^/]+)\/summary$/,
+      ({ world, match }) => {
+        const sprint = world.sprints.find((entry) => entry.id === match[1]);
+        if (sprint === undefined) return empty(404);
+        const done = new Set(
+          Object.values(world.columns)
+            .flat()
+            .filter((column) => column.category === "done")
+            .map((column) => column.id),
+        );
+        return {
+          items: world.items
+            .filter((entry) => entry.sprintId === sprint.id)
+            .map((item) => ({
+              item,
+              outcome: done.has(item.columnId) ? "completed" : "current",
+            })),
+        };
       },
     ],
     [
