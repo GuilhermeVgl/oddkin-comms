@@ -79,8 +79,10 @@ export function useAttachmentList(client: Client, context: UploadContext) {
     void reload();
   }, [reload]);
 
-  // Only a resync reloads: uploads and removals reload the list themselves.
-  useReloadOn([], () => void reload());
+  useReloadOn(
+    ["attachment.created", "attachment.deleted"],
+    () => void reload(),
+  );
 
   return { items, names, allowed, reload, cryptoFor, domainKind };
 }

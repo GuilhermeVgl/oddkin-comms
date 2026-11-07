@@ -11,6 +11,22 @@
   padding: 10px 20px;
   border-bottom: 1px solid var(--line);
 }
+.file-message .file {
+  margin-top: 5px;
+}
+.attachment-outgoing {
+  padding-left: 58px;
+}
+.profile-name {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+}
+.profile-name > label {
+  font-size: 13px;
+  font-weight: 680;
+}
 
 /* Messages */
 .mstate.danger {

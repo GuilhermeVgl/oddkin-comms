@@ -1,4 +1,4 @@
-import type { CallRecord, Message } from "@crewstead/api-client";
+import type { Attachment, CallRecord, Message } from "@crewstead/api-client";
 import { describe, expect, it } from "vitest";
 import { fmtLong } from "../../design/format";
 import {
@@ -19,6 +19,9 @@ const message = (
 
 const call = (id: string, startedAt: string): CallRecord =>
   ({ id, startedAt }) as CallRecord;
+
+const attachment = (id: string, createdAt: string): Attachment =>
+  ({ id, createdAt }) as Attachment;
 
 describe("merging messages", () => {
   it("keeps messages ordered by sequence", () => {
@@ -89,7 +92,10 @@ describe("the conversation timeline", () => {
   ];
 
   it("labels only the first entry of each day", () => {
-    const timeline = buildTimeline(messages, [], { searching: false, now });
+    const timeline = buildTimeline(messages, [], [], {
+      searching: false,
+      now,
+    });
     expect(timeline.map((entry) => entry.day !== null)).toEqual([
       true,
       false,
@@ -108,13 +114,17 @@ describe("the conversation timeline", () => {
       call("late", "2026-10-21T10:00:00"),
       call("mid", "2026-10-20T10:30:00"),
     ];
-    const timeline = buildTimeline(messages, history, {
+    const timeline = buildTimeline(messages, [], history, {
       searching: false,
       now,
     });
     expect(
       timeline.map((entry) =>
-        entry.kind === "call" ? entry.record.id : entry.message.id,
+        entry.kind === "call"
+          ? entry.record.id
+          : entry.kind === "message"
+            ? entry.message.id
+            : entry.attachment.id,
       ),
     ).toEqual(["m1", "mid", "m2", "m3", "late"]);
   });
@@ -122,6 +132,7 @@ describe("the conversation timeline", () => {
   it("keeps the position of each message among the shown ones", () => {
     const timeline = buildTimeline(
       messages,
+      [],
       [call("c", "2026-10-20T10:30:00")],
       {
         searching: false,
@@ -137,6 +148,7 @@ describe("the conversation timeline", () => {
   it("leaves calls out while searching", () => {
     const timeline = buildTimeline(
       messages,
+      [],
       [call("c", "2026-10-20T10:30:00")],
       {
         searching: true,
@@ -147,11 +159,34 @@ describe("the conversation timeline", () => {
   });
 
   it("labels a call that starts a new day", () => {
-    const timeline = buildTimeline([], [call("c", "2026-10-26T08:00:00")], {
+    const timeline = buildTimeline([], [], [call("c", "2026-10-26T08:00:00")], {
       searching: false,
       now,
     });
     expect(timeline).toHaveLength(1);
     expect(timeline[0]?.day).toBe("Hoje");
+  });
+
+  it("places an uploaded file among the messages instead of in a fixed tray", () => {
+    const timeline = buildTimeline(
+      messages,
+      [
+        {
+          item: attachment("a1", "2026-10-20T10:30:00"),
+          name: "brief.pdf",
+        },
+      ],
+      [],
+      { searching: false, now },
+    );
+    expect(
+      timeline.map((entry) =>
+        entry.kind === "message"
+          ? entry.message.id
+          : entry.kind === "attachment"
+            ? entry.attachment.id
+            : entry.record.id,
+      ),
+    ).toEqual(["m1", "a1", "m2", "m3"]);
   });
 });

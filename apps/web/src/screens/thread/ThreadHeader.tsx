@@ -4,15 +4,13 @@ import { Avatar } from "../../design/primitives";
 import type { ThreadTarget } from "./types";
 import type { ActiveCall } from "./useCallBanner";
 
-/** Back button, title, who is in it, search, files toggle and the call button. */
+/** Back button, title, who is in it, search and the call button. */
 export function ThreadHeader({
   target,
   me,
   members,
   query,
   onQuery,
-  files,
-  onToggleFiles,
   call,
   canCall,
   onCall,
@@ -23,8 +21,6 @@ export function ThreadHeader({
   members: ProjectMember[];
   query: string;
   onQuery: (value: string) => void;
-  files: boolean;
-  onToggleFiles: () => void;
   call: ActiveCall | null;
   canCall: boolean;
   onCall: () => void;
@@ -76,15 +72,6 @@ export function ThreadHeader({
           value={query}
         />
       </div>
-      <button
-        aria-pressed={files}
-        className="btn sm"
-        onClick={onToggleFiles}
-        type="button"
-      >
-        <Icon name="clip" size="sm" />
-        Arquivos
-      </button>
       <button
         className="btn sm"
         disabled={!canCall}

@@ -1,4 +1,4 @@
-import type { CallRecord, Message } from "@crewstead/api-client";
+import type { Attachment, CallRecord, Message } from "@crewstead/api-client";
 import { fmtLong } from "../../design/format";
 
 /** Fresh messages replace loaded ones with the same id; the result is ordered by sequence. */
@@ -35,43 +35,53 @@ export function dayLabel(iso: string, now: Date): string {
 
 type Placed =
   | { kind: "message"; message: Message; index: number }
-  | { kind: "call"; record: CallRecord };
+  | { kind: "call"; record: CallRecord }
+  | { kind: "attachment"; attachment: Attachment; name: string };
 
 /** One row of the conversation; `day` is set when it starts a new day. */
 export type TimelineEntry = Placed & { day: string | null };
 
 /**
- * Messages and call records in one list, calls at the moment they started.
- * `history` is newest first, as the API returns it. While searching only
- * messages are shown.
+ * Messages, files and call records in one list at the moment they happened.
+ * `history` is newest first, as the API returns it. While searching, calls are
+ * hidden and the caller passes only messages and files matching the query.
  */
 export function buildTimeline(
   shown: Message[],
+  attachments: { item: Attachment; name: string }[],
   history: CallRecord[],
   { searching, now }: { searching: boolean; now: Date },
 ): TimelineEntry[] {
-  const placed: Placed[] = [];
-  const records = searching ? [] : [...history].reverse();
-  shown.forEach((message, index) => {
-    for (
-      let next = records[0];
-      next !== undefined && next.startedAt <= message.createdAt;
-      next = records[0]
-    ) {
-      placed.push({ kind: "call", record: next });
-      records.shift();
-    }
-    placed.push({ kind: "message", message, index });
-  });
-  for (const record of records) placed.push({ kind: "call", record });
+  const placed: Placed[] = shown.map((message, index) => ({
+    kind: "message",
+    message,
+    index,
+  }));
+  placed.push(
+    ...attachments.map(({ item, name }) => ({
+      kind: "attachment" as const,
+      attachment: item,
+      name,
+    })),
+  );
+  if (!searching)
+    placed.push(
+      ...history.map((record) => ({ kind: "call" as const, record })),
+    );
+  placed.sort((a, b) => entryTime(a).localeCompare(entryTime(b)));
 
   let lastDay = "";
   return placed.map((entry) => {
-    const iso =
-      entry.kind === "call" ? entry.record.startedAt : entry.message.createdAt;
+    const iso = entryTime(entry);
     const long = fmtLong(new Date(iso));
     const changed = long !== lastDay;
     lastDay = long;
     return { ...entry, day: changed ? dayLabel(iso, now) : null };
   });
+}
+
+function entryTime(entry: Placed): string {
+  if (entry.kind === "call") return entry.record.startedAt;
+  if (entry.kind === "attachment") return entry.attachment.createdAt;
+  return entry.message.createdAt;
 }

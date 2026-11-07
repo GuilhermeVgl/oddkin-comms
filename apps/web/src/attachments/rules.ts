@@ -39,6 +39,8 @@ export function describeUploadError(error: unknown): string {
       return "A chave dos arquivos mudou. Tente enviar novamente.";
     if (error.code === "domain_unavailable")
       return "A criptografia dos arquivos ainda está sendo preparada. Tente novamente em instantes.";
+    if (error.code === "bad_envelope")
+      return "O arquivo cifrado falhou na verificação. Atualize a página e tente novamente.";
   }
   if (error instanceof ApiStatusError) {
     if (error.status === 503)
@@ -116,6 +118,7 @@ export function attachmentDetail(
     "size" | "contentSize" | "uploaderEmail" | "bodyEncrypted" | "encrypted"
   >,
   formatBytes: (size: number) => string,
+  includeUploader = true,
 ): string {
   const suffix =
     item.bodyEncrypted === true
@@ -123,7 +126,8 @@ export function attachmentDetail(
       : item.encrypted
         ? " · nome cifrado, conteúdo sem cifra"
         : "";
-  return `${formatBytes(Number(item.contentSize ?? item.size))} · ${item.uploaderEmail}${suffix}`;
+  const uploader = includeUploader ? ` · ${item.uploaderEmail}` : "";
+  return `${formatBytes(Number(item.contentSize ?? item.size))}${uploader}${suffix}`;
 }
 
 type Sealer = Pick<ContentCrypto, "isEncrypted" | "canWrite" | "encrypt">;

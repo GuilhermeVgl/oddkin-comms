@@ -4,8 +4,17 @@ import {
   type Message,
   type ProjectMember,
 } from "@crewstead/api-client";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Attachments } from "../Attachments";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
+import { UploadProgress } from "../attachments/AttachmentRows";
+import { useAttachmentList } from "../attachments/useAttachmentList";
+import { useAttachmentTransfer } from "../attachments/useAttachmentTransfer";
 import { Banner } from "../design/primitives";
 import { useMenu } from "../design/Menu";
 import { editChannelMessage } from "../e2ee/content";
@@ -42,10 +51,12 @@ export function Thread({
   target,
   me,
   onBack,
+  embedded = false,
 }: {
   target: ThreadTarget;
   me: { id: string; email: string };
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 }) {
   const { client } = useWorkspace();
   const chat = target.kind === "chat";
@@ -88,20 +99,43 @@ export function Thread({
   const unreadAtOpen = useUnreadAtOpen(target.id, kind);
   const emoji = useMenu<EmojiTarget>();
   const area = useRef<HTMLTextAreaElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [files, setFiles] = useState(false);
   const [editing, setEditing] = useState<Message | null>(null);
+  const attachmentContext = useMemo(
+    () => ({
+      contextType: "conversation" as const,
+      contextId: target.id,
+      ...(chat ? { projectId: target.projectId } : {}),
+    }),
+    [chat, target.id, chat ? target.projectId : null],
+  );
+  const attachmentList = useAttachmentList(client, attachmentContext);
+  const attachmentTransfer = useAttachmentTransfer({
+    client,
+    context: attachmentContext,
+    names: attachmentList.names,
+    reload: attachmentList.reload,
+    cryptoFor: attachmentList.cryptoFor,
+    domainKind: attachmentList.domainKind,
+  });
 
   const { reset: resetComposer } = composer;
   useEffect(() => {
     resetComposer();
     setEditing(null);
     setQuery("");
-    setFiles(false);
   }, [target.id]);
 
   const { follow } = scroll;
-  useLayoutEffect(follow, [messages, composer.outgoing, loaded, follow]);
+  useLayoutEffect(follow, [
+    messages,
+    composer.outgoing,
+    loaded,
+    attachmentList.items,
+    attachmentTransfer.progress,
+    follow,
+  ]);
 
   const byId = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
@@ -110,10 +144,26 @@ export function Thread({
   const mentionable = useMemo(() => mentionNames(members), [members]);
   const searching = query.trim() !== "";
   const shown = filterMessages(messages, query);
-  const timeline = buildTimeline(shown, callBanner.history, {
+  const attachmentNeedle = query.trim().toLocaleLowerCase();
+  const shownAttachments = (attachmentList.items ?? [])
+    .map((item) => ({
+      item,
+      name: attachmentList.names.get(item.id) ?? item.name,
+    }))
+    .filter(
+      ({ name }) =>
+        !searching || name.toLocaleLowerCase().includes(attachmentNeedle),
+    );
+  const timeline = buildTimeline(shown, shownAttachments, callBanner.history, {
     searching,
     now: new Date(),
   });
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file !== undefined) void attachmentTransfer.upload(file);
+  }
 
   const actions: MessageActions = {
     openReactions: (message, anchor) => emoji.toggle(anchor, message.id),
@@ -137,33 +187,24 @@ export function Thread({
   }
 
   return (
-    <section aria-label="Conversa" className="thread" id="thread">
-      <ThreadHeader
-        call={callBanner.call}
-        canCall={canCall}
-        files={files}
-        me={me}
-        members={members}
-        onBack={onBack}
-        onCall={() => void callBanner.startOrJoin()}
-        onQuery={setQuery}
-        onToggleFiles={() => setFiles((value) => !value)}
-        query={query}
-        target={target}
-      />
-      {files ? (
-        <div className="th-files">
-          <Attachments
-            canUpload={!chat || target.canUpload}
-            client={client}
-            context={{
-              contextType: "conversation",
-              contextId: target.id,
-              ...(chat ? { projectId: target.projectId } : {}),
-            }}
-          />
-        </div>
-      ) : null}
+    <section
+      aria-label={embedded ? `Mensagens de ${target.title}` : "Conversa"}
+      className={`thread${embedded ? " embedded" : ""}`}
+      id={embedded ? undefined : "thread"}
+    >
+      {embedded ? null : (
+        <ThreadHeader
+          call={callBanner.call}
+          canCall={canCall}
+          me={me}
+          members={members}
+          onBack={onBack ?? (() => undefined)}
+          onCall={() => void callBanner.startOrJoin()}
+          onQuery={setQuery}
+          query={query}
+          target={target}
+        />
+      )}
       {chat ? null : (
         <DmBanner
           dm={dm}
@@ -175,7 +216,7 @@ export function Thread({
         aria-label="Mensagens"
         aria-live="polite"
         className="msgs"
-        id="msgs"
+        id={embedded ? undefined : "msgs"}
         onScroll={(event) => scroll.onScroll(event.currentTarget)}
         ref={scroll.box}
         tabIndex={0}
@@ -187,31 +228,58 @@ export function Thread({
           canReact={canReact}
           chat={chat}
           firstUnread={firstUnreadIndex(shown.length, unreadAtOpen)}
-          loaded={loaded}
+          loaded={loaded && attachmentList.items !== null}
           me={me}
           mentionable={mentionable}
           moderator={chat && target.moderator}
           onOpenCall={callBanner.openCall}
           onRetry={(entry) => void composer.send(entry)}
+          onDownloadAttachment={(id) => {
+            const item = attachmentList.items?.find((entry) => entry.id === id);
+            if (item !== undefined) void attachmentTransfer.download(item);
+          }}
+          onRemoveAttachment={(id) => {
+            const item = attachmentList.items?.find((entry) => entry.id === id);
+            if (item !== undefined) void attachmentTransfer.remove(item);
+          }}
           outgoing={composer.outgoing}
           searching={searching}
           timeline={timeline}
         />
+        {attachmentTransfer.progress === null ? null : (
+          <div className="attachment-outgoing">
+            <UploadProgress progress={attachmentTransfer.progress} />
+          </div>
+        )}
       </div>
       {canSend ? (
-        <Composer
-          areaRef={area}
-          draft={composer.draft}
-          meEmail={me.email}
-          mentionPool={members}
-          onAttach={() => setFiles(true)}
-          onCancelReply={() => composer.setReplyTo(null)}
-          onDraft={composer.setDraft}
-          onEmoji={(anchor) => emoji.toggle(anchor, "compose")}
-          onSend={() => void composer.send()}
-          replyTo={composer.replyTo}
-          title={target.title}
-        />
+        <>
+          {!embedded && (!chat || target.canUpload) ? (
+            <input
+              aria-label="Enviar arquivo"
+              disabled={attachmentTransfer.progress !== null}
+              hidden
+              onChange={handleFile}
+              ref={filePicker}
+              type="file"
+            />
+          ) : null}
+          <Composer
+            attachments={!embedded && (!chat || target.canUpload)}
+            areaRef={area}
+            draft={composer.draft}
+            formId={embedded ? "call-composer" : "comp"}
+            meEmail={me.email}
+            mentionPool={members}
+            onAttach={() => filePicker.current?.click()}
+            onCancelReply={() => composer.setReplyTo(null)}
+            onDraft={composer.setDraft}
+            onEmoji={(anchor) => emoji.toggle(anchor, "compose")}
+            onSend={() => void composer.send()}
+            replyTo={composer.replyTo}
+            title={target.title}
+          />
+        </>
       ) : (
         <Banner icon="lock" style={{ margin: "10px 20px 18px" }}>
           Seu perfil neste projeto permite ler, mas não enviar mensagens.

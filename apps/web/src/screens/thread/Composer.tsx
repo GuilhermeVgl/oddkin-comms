@@ -25,6 +25,8 @@ export function Composer({
   onSend,
   onAttach,
   onEmoji,
+  attachments = true,
+  formId = "comp",
 }: {
   title: string;
   draft: string;
@@ -38,6 +40,8 @@ export function Composer({
   onSend: () => void;
   onAttach: () => void;
   onEmoji: (anchor: HTMLElement) => void;
+  attachments?: boolean;
+  formId?: string;
 }) {
   const [mention, setMention] = useState<string | null>(null);
 
@@ -46,7 +50,7 @@ export function Composer({
       <form
         aria-label="Escrever mensagem"
         className="composer"
-        id="comp"
+        id={formId}
         onSubmit={(event) => {
           event.preventDefault();
           onSend();
@@ -91,14 +95,16 @@ export function Composer({
           value={draft}
         />
         <div className="cb">
-          <button
-            aria-label="Anexar arquivo"
-            className="iconbtn cb-tool"
-            onClick={onAttach}
-            type="button"
-          >
-            <Icon name="clip" />
-          </button>
+          {attachments ? (
+            <button
+              aria-label="Anexar arquivo"
+              className="iconbtn cb-tool"
+              onClick={onAttach}
+              type="button"
+            >
+              <Icon name="clip" />
+            </button>
+          ) : null}
           <button
             aria-label="Mencionar pessoa"
             className="iconbtn cb-tool"

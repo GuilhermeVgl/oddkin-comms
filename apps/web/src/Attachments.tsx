@@ -1,5 +1,5 @@
 import type { UploadContext } from "@crewstead/api-client";
-import React, { useRef } from "react";
+import React, { useRef, type RefObject } from "react";
 import { AttachmentRow, UploadProgress } from "./attachments/AttachmentRows";
 import { useAttachmentList } from "./attachments/useAttachmentList";
 import { useAttachmentTransfer } from "./attachments/useAttachmentTransfer";
@@ -10,12 +10,17 @@ export function Attachments({
   client,
   context,
   canUpload = true,
+  pickerRef,
+  compact = false,
 }: {
   client: Client;
   context: UploadContext;
   canUpload?: boolean;
+  pickerRef?: RefObject<HTMLInputElement | null>;
+  compact?: boolean;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  const localInput = useRef<HTMLInputElement>(null);
+  const input = pickerRef ?? localInput;
   const list = useAttachmentList(client, context);
   const { items, names, allowed } = list;
   const transfer = useAttachmentTransfer({
@@ -35,31 +40,12 @@ export function Attachments({
   }
 
   if (!allowed) return null;
-  return (
-    <section aria-label="Arquivos">
-      <div className="row attach-head">
-        <h3 className="h2 grow">Anexos</h3>
-        {canUpload ? (
-          <button
-            className="btn sm"
-            disabled={progress !== null}
-            onClick={() => input.current?.click()}
-            type="button"
-          >
-            <Icon name="clip" size="sm" />
-            Anexar arquivo
-          </button>
-        ) : null}
-        <input
-          aria-label="Enviar arquivo"
-          hidden
-          onChange={handleFile}
-          ref={input}
-          type="file"
-        />
-      </div>
-      {items === null ? <p className="muted sm">Carregando…</p> : null}
-      {items !== null && items.length === 0 && progress === null ? (
+  const content = (
+    <>
+      {items === null && !compact ? (
+        <p className="muted sm">Carregando…</p>
+      ) : null}
+      {items !== null && items.length === 0 && progress === null && !compact ? (
         <p className="muted sm">Nenhum anexo.</p>
       ) : null}
       {(items ?? []).map((item) => (
@@ -72,6 +58,43 @@ export function Attachments({
         />
       ))}
       {progress !== null ? <UploadProgress progress={progress} /> : null}
-    </section>
+    </>
+  );
+  return (
+    <>
+      <input
+        aria-label="Enviar arquivo"
+        disabled={!canUpload || progress !== null}
+        hidden
+        onChange={handleFile}
+        ref={input}
+        type="file"
+      />
+      {compact ? (
+        (items?.length ?? 0) > 0 || progress !== null ? (
+          <section aria-label="Arquivos" className="attach-tray">
+            {content}
+          </section>
+        ) : null
+      ) : (
+        <section aria-label="Arquivos">
+          <div className="row attach-head">
+            <h3 className="h2 grow">Anexos</h3>
+            {canUpload ? (
+              <button
+                className="btn sm"
+                disabled={progress !== null}
+                onClick={() => input.current?.click()}
+                type="button"
+              >
+                <Icon name="clip" size="sm" />
+                Anexar arquivo
+              </button>
+            ) : null}
+          </div>
+          {content}
+        </section>
+      )}
+    </>
   );
 }

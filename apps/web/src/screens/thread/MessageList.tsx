@@ -2,6 +2,7 @@ import type { Message } from "@crewstead/api-client";
 import { Banner } from "../../design/primitives";
 import { Duo } from "../../design/Sprite";
 import { CallRecordRow } from "../CallRecordRow";
+import { AttachmentMessageRow } from "../../attachments/AttachmentRows";
 import { DaySeparator } from "./DaySeparator";
 import { MessageRow, type MessageActions } from "./MessageRow";
 import { OutgoingRow } from "./OutgoingRow";
@@ -56,6 +57,8 @@ export function MessageList({
   actions,
   onOpenCall,
   onRetry,
+  onDownloadAttachment,
+  onRemoveAttachment,
 }: {
   timeline: TimelineEntry[];
   byId: Map<string, Message>;
@@ -72,6 +75,8 @@ export function MessageList({
   actions: MessageActions;
   onOpenCall: (callId: string) => void;
   onRetry: (entry: Outgoing) => void;
+  onDownloadAttachment: (id: string) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
   return (
     <>
@@ -91,6 +96,20 @@ export function MessageList({
                 meEmail={me.email}
                 onJoin={() => onOpenCall(entry.record.id)}
                 record={entry.record}
+              />
+            </div>
+          );
+        if (entry.kind === "attachment")
+          return (
+            <div key={`attachment-${entry.attachment.id}`}>
+              {entry.day === null ? null : <DaySeparator label={entry.day} />}
+              <AttachmentMessageRow
+                item={entry.attachment}
+                me={me}
+                moderator={moderator}
+                name={entry.name}
+                onDownload={() => onDownloadAttachment(entry.attachment.id)}
+                onRemove={() => onRemoveAttachment(entry.attachment.id)}
               />
             </div>
           );

@@ -1,8 +1,13 @@
 import type { DirectConversation } from "@crewstead/api-client";
-import { nameOf } from "../../design/people";
+import { displayNameOf } from "../../design/people";
 import type { Channel } from "../../inbox";
-import { can, type ProjectState } from "../../workspace";
+import type { ProjectState } from "../../workspace";
 import type { ThreadTarget } from "./types";
+
+function can(state: ProjectState, permission: string): boolean {
+  const granted = state.project.permissions as string[] | undefined;
+  return granted === undefined || granted.includes(permission);
+}
 
 /** Resolves a conversation id to the same thread model used by Messages. */
 export function threadTargetFor(
@@ -39,7 +44,7 @@ export function threadTargetFor(
   return {
     kind: "dm",
     id: dm.id,
-    title: nameOf(dm.peerEmail),
+    title: displayNameOf(dm.peerEmail, dm.peerDisplayName),
     subtitle: "Conversa direta",
     peerEmail: dm.peerEmail,
     peerId: dm.peerId,

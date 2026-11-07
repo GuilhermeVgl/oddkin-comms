@@ -1,6 +1,6 @@
 import type { ProjectMember } from "@crewstead/api-client";
 import { Menu } from "../../design/Menu";
-import { nameOf } from "../../design/people";
+import { displayNameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 
 /** People matching what was typed after "@"; picking one completes the mention. */
@@ -27,7 +27,7 @@ export function MentionMenu({
           type="button"
         >
           <Avatar email={member.email} id={member.accountId} size="sm" />
-          {nameOf(member.email)}
+          {displayNameOf(member.email, member.displayName)}
         </button>
       ))}
     </Menu>

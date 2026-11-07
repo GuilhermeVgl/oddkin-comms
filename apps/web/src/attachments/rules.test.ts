@@ -1,4 +1,4 @@
-import { ApiStatusError } from "@crewstead/api-client";
+import { ApiStatusError, EncryptionError } from "@crewstead/api-client";
 import { describe, expect, it } from "vitest";
 import {
   attachmentDetail,
@@ -62,6 +62,12 @@ describe("describeUploadError", () => {
       "Não foi possível enviar o arquivo. Tente novamente.",
     );
     expect(describeUploadError(new Error("x"))).toContain("Tente novamente");
+  });
+
+  it("identifies a file rejected by cryptographic verification", () => {
+    expect(describeUploadError(new EncryptionError(400, "bad_envelope"))).toBe(
+      "O arquivo cifrado falhou na verificação. Atualize a página e tente novamente.",
+    );
   });
 });
 

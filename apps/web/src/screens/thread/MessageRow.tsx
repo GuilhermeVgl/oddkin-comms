@@ -1,9 +1,11 @@
 import type { Message } from "@crewstead/api-client";
 import { fmtClock } from "../../design/format";
 import { Icon } from "../../design/icons";
-import { nameOf } from "../../design/people";
+import { displayNameOf } from "../../design/people";
 import { Avatar } from "../../design/primitives";
 import { Rich } from "../../design/rich";
+import type { Person } from "../../workspace";
+import { useWorkspace } from "../../workspace";
 import { DeleteButton } from "./DeleteButton";
 
 /** What the message toolbar and reactions can do; the thread decides how. */
@@ -15,7 +17,19 @@ export type MessageActions = {
   remove: (message: Message) => Promise<void>;
 };
 
-function Quote({ quoted }: { quoted: Message | undefined }) {
+function messageName(message: Message, people: Map<string, Person>): string {
+  const person =
+    message.authorId === undefined ? undefined : people.get(message.authorId);
+  return displayNameOf(message.authorEmail, person?.displayName);
+}
+
+function Quote({
+  quoted,
+  people,
+}: {
+  quoted: Message | undefined;
+  people: Map<string, Person>;
+}) {
   if (quoted === undefined || quoted.deleted)
     return (
       <div className="quote">
@@ -26,7 +40,7 @@ function Quote({ quoted }: { quoted: Message | undefined }) {
   return (
     <div className="quote">
       <Icon name="reply" size="sm" />
-      <b>{nameOf(quoted.authorEmail)}</b>
+      <b>{messageName(quoted, people)}</b>
       <span>{quoted.body}</span>
     </div>
   );
@@ -134,9 +148,13 @@ export function MessageRow({
   mentionable: Set<string>;
   actions: MessageActions;
 }) {
+  const { people } = useWorkspace();
+  const author = messageName(message, people);
+  const person =
+    message.authorId === undefined ? undefined : people.get(message.authorId);
   return (
     <article
-      aria-label={`${nameOf(message.authorEmail)}: ${message.body.slice(0, 80)}`}
+      aria-label={`${author}: ${message.body.slice(0, 80)}`}
       className="msg"
       data-mid={message.id}
       tabIndex={0}
@@ -144,17 +162,20 @@ export function MessageRow({
       <Avatar
         email={message.authorEmail}
         id={message.authorId ?? message.authorEmail}
+        name={person?.displayName}
         size="lg"
       />
       <div className="mb">
         <div className="mh">
-          <b>{nameOf(message.authorEmail)}</b>
+          <b>{author}</b>
           <time>{fmtClock(message.createdAt)}</time>
           {message.editedAt !== undefined && !message.deleted ? (
             <span className="ed">(editada)</span>
           ) : null}
         </div>
-        {message.replyToId === undefined ? null : <Quote quoted={quoted} />}
+        {message.replyToId === undefined ? null : (
+          <Quote people={people} quoted={quoted} />
+        )}
         {message.deleted ? (
           <div className="tx muted">Mensagem removida</div>
         ) : (
