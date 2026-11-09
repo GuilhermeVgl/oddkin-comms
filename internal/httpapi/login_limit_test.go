@@ -2,9 +2,28 @@ package httpapi
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func TestLoginClientAddressOnlyAcceptsLoopbackProxy(t *testing.T) {
+	request := httptest.NewRequest("POST", "http://example.test/", nil)
+	request.Header.Set("X-Crewstead-Client-IP", "203.0.113.7")
+	request.RemoteAddr = "127.0.0.1:1234"
+	if got := loginClientAddress(request); got != "203.0.113.7" {
+		t.Fatalf("trusted proxy: %s", got)
+	}
+	request.RemoteAddr = "198.51.100.10:1234"
+	if got := loginClientAddress(request); got != "198.51.100.10" {
+		t.Fatalf("untrusted client: %s", got)
+	}
+	request.RemoteAddr = "127.0.0.1:1234"
+	request.Header.Set("X-Crewstead-Client-IP", "bad, 203.0.113.7")
+	if got := loginClientAddress(request); got != "127.0.0.1" {
+		t.Fatalf("invalid address: %s", got)
+	}
+}
 
 func TestLoginLimiterBlocksRepeatedFailuresAndRecovers(t *testing.T) {
 	limiter := newLoginLimiter()

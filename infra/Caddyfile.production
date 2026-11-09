@@ -1,9 +1,17 @@
+{
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
 :8080 {
 	encode zstd gzip
 
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8081 {
 			header_up X-Forwarded-Proto https
+			header_up X-Crewstead-Client-IP {client_ip}
 		}
 	}
 

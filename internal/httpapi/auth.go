@@ -109,7 +109,7 @@ func (h *identityAPI) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email, err := identity.NormalizeEmail(string(payload.Email))
-	ip := clientAddress(r.RemoteAddr)
+	ip := loginClientAddress(r)
 	now := time.Now()
 	if !h.auth.limiter.allow("ip:"+ip, 100, now) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -311,4 +311,16 @@ func clientAddress(remote string) string {
 		return remote
 	}
 	return host
+}
+
+// Only the local Caddy proxy can provide the address it verified upstream.
+func loginClientAddress(r *http.Request) string {
+	remote := clientAddress(r.RemoteAddr)
+	peer := net.ParseIP(remote)
+	if peer != nil && peer.IsLoopback() {
+		if address := net.ParseIP(r.Header.Get("X-Crewstead-Client-IP")); address != nil {
+			return address.String()
+		}
+	}
+	return remote
 }

@@ -26,6 +26,7 @@ O ambiente da Contabo usa `config/deploy.yml`. A imagem de produção contém a 
 - O navegador usa `https://storage.5-253-232-59.sslip.io` apenas para transferências diretas por URLs pré-assinados.
 - Os dados ficam em diretórios persistentes gerenciados pelo Kamal, fora do ciclo de vida dos containers.
 - Todas as variáveis enviadas pelo Kamal vêm do `.env.production` local e ignorado pelo Git. A cópia `/root/.crewstead-secrets` na VPS preserva a origem das credenciais de infraestrutura geradas na primeira instalação.
+- O Caddy de produção confia nos endereços privados da rede Docker para obter o IP pelo proxy e sobrescreve `X-Crewstead-Client-IP` antes de encaminhar à API. Somente a conexão local do Caddy pode fornecer esse cabeçalho à API; não exponha a porta interna da API ou o Caddy a proxies não confiáveis. Ao adicionar outro proxy, revise a cadeia de confiança e teste cabeçalhos falsificados.
 
 Para um novo deploy, com a chave SSH autorizada e o arquivo remoto de segredos já criado:
 
