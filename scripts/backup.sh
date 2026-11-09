@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Daily PostgreSQL backup, encrypted before it leaves the host (SPEC 15.4).
 #
 #   BACKUP_DIR              where files go (default: ./backups)
@@ -9,7 +9,7 @@
 #
 # The dump holds ciphertext, key envelopes, device directory, policies and the
 # audit log: a restore also needs a device or recovery key that can decrypt.
-set -eu
+set -euo pipefail
 
 dir=${BACKUP_DIR:-./backups}
 keep_daily=${KEEP_DAILY:-14}

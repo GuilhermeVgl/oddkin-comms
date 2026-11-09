@@ -1,11 +1,11 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Restores an encrypted backup into an EMPTY database. It never drops anything:
 # restore into a fresh database, check it, then point the API at it.
 #
 #   restore.sh <backup.dump.enc> <postgres-url-of-empty-database>
 #
 # BACKUP_PASSPHRASE_FILE must hold the passphrase used by backup.sh.
-set -eu
+set -euo pipefail
 
 if [ "$#" -ne 2 ]; then
   echo "usage: $0 <backup.dump.enc> <postgres-url>" >&2
