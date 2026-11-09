@@ -3,7 +3,6 @@ import {
   callTitle,
   elapsedSeconds,
   formatClock,
-  orderParticipants,
   participantsCount,
   prejoinSubtitle,
   rotationNotice,
@@ -31,22 +30,6 @@ describe("callTitle", () => {
     expect(callTitle({ conversationId: "zz" }, channels, dms)).toBe(
       "Conversa direta",
     );
-  });
-});
-
-describe("orderParticipants", () => {
-  it("keeps the order when nobody shares", () => {
-    expect(orderParticipants(["a", "b"], undefined)).toEqual(["a", "b"]);
-  });
-
-  it("puts the presenter first", () => {
-    expect(orderParticipants(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
-  });
-
-  it("does not change the list it was given", () => {
-    const list = ["a", "b"];
-    orderParticipants(list, "b");
-    expect(list).toEqual(["a", "b"]);
   });
 });
 

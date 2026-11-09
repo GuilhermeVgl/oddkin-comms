@@ -14,16 +14,6 @@ export function callTitle(
   return direct === undefined ? "Conversa direta" : nameOf(direct.peerEmail);
 }
 
-/** The presenter goes first so the stage can feature them. */
-export function orderParticipants<T>(
-  participants: readonly T[],
-  sharer: T | undefined,
-): T[] {
-  return sharer === undefined
-    ? [...participants]
-    : [sharer, ...participants.filter((participant) => participant !== sharer)];
-}
-
 export type StageFocus = "screen" | "people";
 export type StageTile<T> = { kind: "camera" | "screen"; participant: T };
 
