@@ -24,8 +24,12 @@ var linkExtraPattern = regexp.MustCompile(`^[A-Za-z0-9_=&.-]{1,300}$`)
 var errInvitationDeliveryNotConfigured = errors.New("invitation delivery key is not configured")
 
 func (h *identityAPI) CreateInvitation(w http.ResponseWriter, r *http.Request) {
-	session, ok := h.invitationInviter(w, r)
+	session, ok := h.mutator(w, r)
 	if !ok {
+		return
+	}
+	if len(h.auth.invitationDeliveryKey) != identity.InvitationDeliveryKeySize {
+		serverError(w, r, errInvitationDeliveryNotConfigured)
 		return
 	}
 
@@ -102,29 +106,6 @@ func (h *identityAPI) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(response)
-}
-
-// invitationInviter authenticates the person creating an invitation: same
-// origin, an active session, a valid CSRF token and a configured delivery key.
-func (h *identityAPI) invitationInviter(w http.ResponseWriter, r *http.Request) (sqlc.FindActiveSessionByTokenHashRow, bool) {
-	if !sameOrigin(r) {
-		w.WriteHeader(http.StatusForbidden)
-		return sqlc.FindActiveSessionByTokenHashRow{}, false
-	}
-	session, status := h.activeSession(r)
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-		return session, false
-	}
-	if !identity.VerifyCSRFToken(r.Header.Get("X-CSRF-Token"), session.CsrfHash) {
-		w.WriteHeader(http.StatusForbidden)
-		return session, false
-	}
-	if len(h.auth.invitationDeliveryKey) != identity.InvitationDeliveryKeySize {
-		serverError(w, r, errInvitationDeliveryNotConfigured)
-		return session, false
-	}
-	return session, true
 }
 
 // invitationProject resolves the project an invitation belongs to, if any, and

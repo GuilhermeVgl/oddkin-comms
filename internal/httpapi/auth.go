@@ -206,17 +206,8 @@ func (h *identityAPI) LogoutAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *identityAPI) revoke(w http.ResponseWriter, r *http.Request, all bool) {
-	if !sameOrigin(r) {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	session, status := h.activeSession(r)
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-		return
-	}
-	if !identity.VerifyCSRFToken(r.Header.Get("X-CSRF-Token"), session.CsrfHash) {
-		w.WriteHeader(http.StatusForbidden)
+	session, ok := h.mutator(w, r)
+	if !ok {
 		return
 	}
 	queries := sqlc.New(h.auth.pool)
