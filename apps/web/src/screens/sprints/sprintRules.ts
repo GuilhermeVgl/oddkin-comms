@@ -27,10 +27,10 @@ export function backlogRows(rows: Row[]): Row[] {
 export function groupByProject(rows: Row[]): Map<string, Row[]> {
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
-    groups.set(row.state.project.id, [
-      ...(groups.get(row.state.project.id) ?? []),
-      row,
-    ]);
+    const id = row.state.project.id;
+    const group = groups.get(id);
+    if (group === undefined) groups.set(id, [row]);
+    else group.push(row);
   }
   return groups;
 }
