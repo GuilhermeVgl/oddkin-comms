@@ -1,5 +1,10 @@
 import type { Message, ProjectMember } from "@crewstead/api-client";
-import { useState, type RefObject } from "react";
+import {
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type RefObject,
+} from "react";
 import { Icon } from "../../design/icons";
 import { nameOf, firstNameOf } from "../../design/people";
 import { MentionMenu } from "./MentionMenu";
@@ -24,6 +29,7 @@ export function Composer({
   meEmail,
   onSend,
   onAttach,
+  onFiles,
   onEmoji,
   attachments = true,
   formId = "comp",
@@ -39,6 +45,7 @@ export function Composer({
   meEmail: string;
   onSend: () => void;
   onAttach: () => void;
+  onFiles?: (files: FileList) => void;
   onEmoji: (anchor: HTMLElement) => void;
   attachments?: boolean;
   formId?: string;
@@ -55,6 +62,28 @@ export function Composer({
           event.preventDefault();
           onSend();
         }}
+        onDragOver={
+          onFiles === undefined ? undefined : (event) => event.preventDefault()
+        }
+        onDrop={
+          onFiles === undefined
+            ? undefined
+            : (event: DragEvent<HTMLFormElement>) => {
+                event.preventDefault();
+                if (event.dataTransfer.files.length > 0)
+                  onFiles(event.dataTransfer.files);
+              }
+        }
+        onPaste={
+          onFiles === undefined
+            ? undefined
+            : (event: ClipboardEvent<HTMLFormElement>) => {
+                if (event.clipboardData.files.length > 0) {
+                  event.preventDefault();
+                  onFiles(event.clipboardData.files);
+                }
+              }
+        }
       >
         {replyTo === null ? null : (
           <div className="replybar">

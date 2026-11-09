@@ -159,10 +159,17 @@ export function Thread({
     now: new Date(),
   });
 
-  function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  function upload(file: File | undefined) {
     if (file !== undefined) void attachmentTransfer.upload(file);
+  }
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    upload(event.target.files?.[0]);
+    event.target.value = "";
+  }
+
+  function uploadFiles(files: FileList) {
+    upload(files[0]);
   }
 
   const actions: MessageActions = {
@@ -242,6 +249,7 @@ export function Thread({
             const item = attachmentList.items?.find((entry) => entry.id === id);
             if (item !== undefined) void attachmentTransfer.remove(item);
           }}
+          onPreviewAttachment={attachmentTransfer.preview}
           outgoing={composer.outgoing}
           searching={searching}
           timeline={timeline}
@@ -275,6 +283,7 @@ export function Thread({
             onCancelReply={() => composer.setReplyTo(null)}
             onDraft={composer.setDraft}
             onEmoji={(anchor) => emoji.toggle(anchor, "compose")}
+            onFiles={uploadFiles}
             onSend={() => void composer.send()}
             replyTo={composer.replyTo}
             title={target.title}

@@ -1,4 +1,5 @@
 import type { Attachment } from "@crewstead/api-client";
+import { useEffect, useState } from "react";
 import { bytes, fmtClock } from "../design/format";
 import { Icon } from "../design/icons";
 import { displayNameOf } from "../design/people";
@@ -80,6 +81,7 @@ export function AttachmentMessageRow({
   moderator,
   onDownload,
   onRemove,
+  onPreview,
 }: {
   item: Attachment;
   name: string;
@@ -87,6 +89,7 @@ export function AttachmentMessageRow({
   moderator: boolean;
   onDownload: () => void;
   onRemove: () => void;
+  onPreview?: (() => Promise<string | null>) | undefined;
 }) {
   const { people } = useWorkspace();
   const person =
@@ -116,7 +119,57 @@ export function AttachmentMessageRow({
           onRemove={removable ? onRemove : undefined}
           detail={attachmentDetail(item, bytes, false)}
         />
+        {onPreview === undefined ? null : (
+          <ImagePreview
+            name={name}
+            onDownload={onDownload}
+            preview={onPreview}
+          />
+        )}
       </div>
     </article>
+  );
+}
+
+function ImagePreview({
+  name,
+  onDownload,
+  preview,
+}: {
+  name: string;
+  onDownload: () => void;
+  preview: () => Promise<string | null>;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    void preview()
+      .then((next) => {
+        if (!active) {
+          if (next?.startsWith("blob:")) URL.revokeObjectURL(next);
+          return;
+        }
+        objectUrl = next?.startsWith("blob:") ? next : null;
+        setUrl(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+    };
+  }, [preview]);
+
+  if (url === null) return null;
+  return (
+    <button
+      aria-label={`Abrir imagem ${name}`}
+      className="attachment-image"
+      onClick={onDownload}
+      type="button"
+    >
+      <img alt={name} src={url} />
+    </button>
   );
 }

@@ -12,6 +12,7 @@ import {
   downloadEncryptedFile,
   uploadEncryptedFile,
 } from "../e2ee/encryptedFiles";
+import { decryptStream } from "../e2ee/fileTransfer";
 import type { DomainKind } from "../e2ee/keyring";
 import { resources, type ContentCrypto } from "../e2ee/projectCrypto";
 import type { Client } from "../e2ee/runtime";
@@ -26,6 +27,9 @@ import {
 function notify(message: string) {
   if (message !== "") toastError(message, { ms: 5200 });
 }
+
+// shortcut: 12 MiB per preview, stream-decrypt when larger image previews are needed.
+const MAX_IMAGE_PREVIEW_BYTES = 12 << 20;
 
 /** Uploading, downloading and removing attachments, with the progress of the current transfer. */
 export function useAttachmentTransfer(input: {
@@ -123,6 +127,45 @@ export function useAttachmentTransfer(input: {
     }
   }
 
+  /** A browser-safe URL for an image in the conversation. */
+  async function preview(item: Attachment): Promise<string | null> {
+    if (!item.contentType.startsWith("image/")) return null;
+    if (Number(item.contentSize ?? item.size) > MAX_IMAGE_PREVIEW_BYTES)
+      return null;
+    const url = await getDownloadUrl(client, item.id);
+    if (item.bodyEncrypted !== true) return url;
+    const uploaderId = item.uploaderId;
+    const signerDeviceId = item.bodySignerDeviceId;
+    if (uploaderId === undefined || signerDeviceId === undefined)
+      throw new Error("malformed encrypted attachment");
+    const crypto = await cryptoFor(false);
+    if (crypto === null) throw new Error("locked");
+    const response = await fetch(url);
+    if (!response.ok || response.body === null)
+      throw new Error(`download rejected (${response.status})`);
+    const chunks: Uint8Array[] = [];
+    await decryptStream({
+      body: response.body,
+      sink: {
+        write: async (chunk: Uint8Array) => void chunks.push(chunk),
+        close: async () => undefined,
+        abort: async () => {
+          chunks.length = 0;
+        },
+      },
+      openHead: (head: Uint8Array) =>
+        crypto.openFileHead({
+          attachmentId: item.id,
+          uploaderId,
+          signerDeviceId,
+          head,
+        }),
+    });
+    return URL.createObjectURL(
+      new Blob(chunks as BlobPart[], { type: item.contentType }),
+    );
+  }
+
   async function remove(item: Attachment) {
     try {
       await deleteAttachment(client, item.id);
@@ -132,5 +175,5 @@ export function useAttachmentTransfer(input: {
     }
   }
 
-  return { progress, upload, download, remove };
+  return { progress, upload, download, preview, remove };
 }

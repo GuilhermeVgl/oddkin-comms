@@ -1,4 +1,4 @@
-import type { Message } from "@crewstead/api-client";
+import type { Attachment, Message } from "@crewstead/api-client";
 import { Banner } from "../../design/primitives";
 import { Duo } from "../../design/Sprite";
 import { CallRecordRow } from "../CallRecordRow";
@@ -59,6 +59,7 @@ export function MessageList({
   onRetry,
   onDownloadAttachment,
   onRemoveAttachment,
+  onPreviewAttachment,
 }: {
   timeline: TimelineEntry[];
   byId: Map<string, Message>;
@@ -77,6 +78,7 @@ export function MessageList({
   onRetry: (entry: Outgoing) => void;
   onDownloadAttachment: (id: string) => void;
   onRemoveAttachment: (id: string) => void;
+  onPreviewAttachment: (attachment: Attachment) => Promise<string | null>;
 }) {
   return (
     <>
@@ -110,6 +112,11 @@ export function MessageList({
                 name={entry.name}
                 onDownload={() => onDownloadAttachment(entry.attachment.id)}
                 onRemove={() => onRemoveAttachment(entry.attachment.id)}
+                onPreview={
+                  entry.attachment.contentType.startsWith("image/")
+                    ? () => onPreviewAttachment(entry.attachment)
+                    : undefined
+                }
               />
             </div>
           );
