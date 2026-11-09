@@ -243,6 +243,26 @@ function routes(): Route[] {
       201,
     ],
     [
+      "DELETE",
+      /^\/api\/v1\/projects\/([^/]+)$/,
+      ({ world, match }) => {
+        const projectId = match[1] ?? "";
+        world.projects = world.projects.filter(
+          (entry) => entry.id !== projectId,
+        );
+        world.items = world.items.filter(
+          (entry) => entry.projectId !== projectId,
+        );
+        world.epics = world.epics.filter(
+          (entry) => entry.projectId !== projectId,
+        );
+        delete world.columns[projectId];
+        delete world.members[projectId];
+        delete world.conversations[projectId];
+        return empty();
+      },
+    ],
+    [
       "GET",
       /^\/api\/v1\/projects\/([^/]+)\/columns$/,
       ({ world, match }) => world.columns[match[1] ?? ""] ?? [],

@@ -73,3 +73,14 @@ export async function setProjectArchived(
   if (response.status !== 204)
     throw new ApiStatusError(response.status, "setProjectArchived");
 }
+
+export async function deleteProject(
+  client: Client,
+  projectId: string,
+): Promise<void> {
+  const { response } = await client.DELETE("/api/v1/projects/{projectId}", {
+    params: { path: { projectId } },
+  });
+  if (response.status !== 204)
+    throw new ApiStatusError(response.status, "deleteProject");
+}

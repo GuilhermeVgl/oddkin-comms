@@ -11,6 +11,7 @@ import {
   createComment,
   createSprint,
   createWorkItem,
+  deleteProject,
   deleteAvatar,
   getFollowing,
   listAvatars,
@@ -198,6 +199,14 @@ const cases: Case[] = [
     path: "/api/v1/projects/p1/archive",
     csrf: true,
     body: { archived: true },
+  },
+  {
+    name: "deleteProject",
+    call: (c) => deleteProject(c, P),
+    status: 204,
+    method: "DELETE",
+    path: "/api/v1/projects/p1",
+    csrf: true,
   },
   {
     name: "listBoardColumns",

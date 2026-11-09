@@ -2504,6 +2504,9 @@ type ServerInterface interface {
 	// CreateProject Create a project with the default board (organization administrators)
 	// (POST /api/v1/projects)
 	CreateProject(w http.ResponseWriter, r *http.Request)
+	// DeleteProject Permanently delete a project and all of its content (organization administrators)
+	// (DELETE /api/v1/projects/{projectId})
+	DeleteProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// GetProject Return one project the account belongs to
 	// (GET /api/v1/projects/{projectId})
 	GetProject(w http.ResponseWriter, r *http.Request, projectId ProjectId)
@@ -4381,6 +4384,32 @@ func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteProject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProject(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProject operation middleware
 func (siw *ServerInterfaceWrapper) GetProject(w http.ResponseWriter, r *http.Request) {
 
@@ -5920,6 +5949,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/logout-all", wrapper.LogoutAll)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.ListProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.CreateProject)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.DeleteProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/projects/{projectId}", wrapper.UpdateProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{projectId}/appearance", wrapper.SetProjectAppearance)

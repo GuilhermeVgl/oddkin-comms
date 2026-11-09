@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/GuilhermeVgl/crewstead-comms/internal/httpapi/gen"
+	"github.com/GuilhermeVgl/crewstead-comms/internal/platform/objectstore"
 	"github.com/GuilhermeVgl/crewstead-comms/internal/store/sqlc"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -180,6 +181,65 @@ func (h *chatAPI) SetProjectArchived(w http.ResponseWriter, r *http.Request, pro
 			return err
 		}
 		return emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: pgUUID(projectId), ProjectID: pgUUID(projectId)})
+	})
+	if respondError(w, r, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteProject permanently removes the project graph after releasing every
+// attachment body. Database foreign keys cascade the remaining project data.
+func (h *chatAPI) DeleteProject(w http.ResponseWriter, r *http.Request, projectId gen.ProjectId) {
+	session, ok := h.mutator(w, r)
+	if !ok {
+		return
+	}
+	if !session.IsAdmin {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	projectID := pgUUID(projectId)
+	err := h.inTx(ctx, func(q *sqlc.Queries) error {
+		if _, found := loadAccess(ctx, w, q, projectID, session.AccountID); !found {
+			return errResponded
+		}
+		if err := q.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		recipients, err := projectRecipients(ctx, q, projectID, "")
+		if err != nil {
+			return err
+		}
+		attachments, err := q.ListProjectAttachmentsForDeletion(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if len(attachments) > 0 && h.auth.store == nil {
+			return statusError(http.StatusServiceUnavailable)
+		}
+		for _, attachment := range attachments {
+			if attachment.ObjectRemoved {
+				continue
+			}
+			state := "deleted"
+			if attachment.State == "uploading" || attachment.State == "aborted" {
+				state = "aborted"
+			}
+			if err = objectstore.Release(ctx, h.auth.store, state, attachment.ObjectKey, attachment.UploadID); err != nil {
+				return statusError(http.StatusServiceUnavailable)
+			}
+		}
+		changed, err := q.DeleteProject(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			return statusError(http.StatusNotFound)
+		}
+		return emitEvent(ctx, q, recipients, eventSpec{Type: "project.changed", ResourceID: projectID})
 	})
 	if respondError(w, r, err) {
 		return

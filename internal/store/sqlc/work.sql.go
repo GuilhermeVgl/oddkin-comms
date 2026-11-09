@@ -1186,6 +1186,18 @@ func (q *Queries) DeleteMessageReactions(ctx context.Context, messageID pgtype.U
 	return err
 }
 
+const deleteProject = `-- name: DeleteProject :execrows
+DELETE FROM project WHERE id = $1
+`
+
+func (q *Queries) DeleteProject(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProject, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const directMessagesAllowed = `-- name: DirectMessagesAllowed :one
 SELECT EXISTS (
     SELECT 1
@@ -3603,6 +3615,56 @@ LIMIT 100
 
 func (q *Queries) ListPendingRelease(ctx context.Context) ([]Attachment, error) {
 	rows, err := q.db.Query(ctx, listPendingRelease)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Attachment
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.ProjectID,
+			&i.WorkItemID,
+			&i.ConversationID,
+			&i.UploaderID,
+			&i.State,
+			&i.ObjectKey,
+			&i.UploadID,
+			&i.Name,
+			&i.ContentType,
+			&i.DeclaredSize,
+			&i.PartSize,
+			&i.PartCount,
+			&i.StoredSize,
+			&i.ObjectRemoved,
+			&i.CreatedAt,
+			&i.ReadyAt,
+			&i.Encrypted,
+			&i.NameEnc,
+			&i.ContentAuthorID,
+			&i.ContentSignerDeviceID,
+			&i.ReleasedAt,
+			&i.BodyEncrypted,
+			&i.BodySignerDeviceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectAttachmentsForDeletion = `-- name: ListProjectAttachmentsForDeletion :many
+SELECT id, organization_id, project_id, work_item_id, conversation_id, uploader_id, state, object_key, upload_id, name, content_type, declared_size, part_size, part_count, stored_size, object_removed, created_at, ready_at, encrypted, name_enc, content_author_id, content_signer_device_id, released_at, body_encrypted, body_signer_device_id FROM attachment WHERE project_id = $1 ORDER BY created_at, id
+`
+
+func (q *Queries) ListProjectAttachmentsForDeletion(ctx context.Context, projectID pgtype.UUID) ([]Attachment, error) {
+	rows, err := q.db.Query(ctx, listProjectAttachmentsForDeletion, projectID)
 	if err != nil {
 		return nil, err
 	}

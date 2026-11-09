@@ -1,4 +1,5 @@
 import {
+  deleteProject,
   setProjectAppearance,
   setProjectArchived,
 } from "@crewstead/api-client";
@@ -11,9 +12,11 @@ import { useWorkspace, type ProjectState } from "../../workspace";
 import { SWATCHES } from "./teamRules";
 
 export function EditProjectDialog({
+  canDelete,
   state,
   onClose,
 }: {
+  canDelete: boolean;
   state: ProjectState;
   onClose: () => void;
 }) {
@@ -67,6 +70,38 @@ export function EditProjectDialog({
       }).then(
         (done) =>
           done !== undefined && toast("Projeto arquivado.", { icon: "check" }),
+      );
+    });
+  }
+
+  function remove() {
+    onClose();
+    void confirmDialog({
+      title: `Excluir ${project.name} permanentemente?`,
+      body: (
+        <div className="col gap8">
+          <p>
+            Atividades, mensagens, arquivos, chamadas, membros e chaves deste
+            projeto serão excluídos em cascade.
+          </p>
+          <p className="muted">
+            Esta ação é definitiva e não pode ser desfeita.
+          </p>
+        </div>
+      ),
+      ok: "Excluir permanentemente",
+      danger: true,
+    }).then((confirmed) => {
+      if (confirmed !== true) return;
+      void run(async () => {
+        await deleteProject(client, project.id);
+        return true;
+      }).then(
+        (done) =>
+          done !== undefined &&
+          toast("Projeto e todo o seu conteúdo foram excluídos.", {
+            icon: "check",
+          }),
       );
     });
   }
@@ -140,6 +175,11 @@ export function EditProjectDialog({
           <button className="btn danger" onClick={archive} type="button">
             Arquivar projeto
           </button>
+          {canDelete ? (
+            <button className="btn danger" onClick={remove} type="button">
+              Excluir projeto
+            </button>
+          ) : null}
           <span className="grow" />
           <button className="btn" onClick={onClose} type="button">
             Cancelar

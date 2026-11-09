@@ -209,6 +209,12 @@ SELECT id FROM conversation WHERE project_id = $1 AND kind = 'channel' ORDER BY 
 -- name: SetProjectArchived :exec
 UPDATE project SET archived = $2, version = version + 1 WHERE id = $1;
 
+-- name: ListProjectAttachmentsForDeletion :many
+SELECT * FROM attachment WHERE project_id = $1 ORDER BY created_at, id;
+
+-- name: DeleteProject :execrows
+DELETE FROM project WHERE id = $1;
+
 -- name: ListConversations :many
 SELECT c.*, GREATEST(c.last_seq - COALESCE(r.last_seq, 0), 0)::bigint AS unread
 FROM conversation AS c

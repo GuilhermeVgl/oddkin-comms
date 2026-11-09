@@ -367,7 +367,8 @@ export interface paths {
     get: operations["getProject"];
     put?: never;
     post?: never;
-    delete?: never;
+    /** Permanently delete a project and all of its content (organization administrators) */
+    delete: operations["deleteProject"];
     options?: never;
     head?: never;
     /** Encrypt the project name and description (project managers) */
@@ -3952,6 +3953,54 @@ export interface operations {
       };
       /** @description Unknown or inaccessible project */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  deleteProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: components["parameters"]["ProjectId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Project and dependent content deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No active session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Origin, CSRF token, or administrator role rejected */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown or inaccessible project */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Attachment storage could not be cleaned up */
+      503: {
         headers: {
           [name: string]: unknown;
         };

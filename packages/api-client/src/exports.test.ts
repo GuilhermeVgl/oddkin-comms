@@ -35,6 +35,7 @@ const expectedRuntimeExports = [
   "deleteAvatar",
   "deleteBoardColumn",
   "deleteMessage",
+  "deleteProject",
   "editMessage",
   "editMessageRaw",
   "encryptComment",

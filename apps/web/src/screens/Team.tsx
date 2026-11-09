@@ -51,7 +51,7 @@ export function Team({ account }: { account: CurrentAccount }) {
       cta={
         manager || canInvite ? (
           <>
-            {current?.project.isManager ? (
+            {manager ? (
               <button
                 className="btn"
                 onClick={() => setEditing(true)}
@@ -110,7 +110,11 @@ export function Team({ account }: { account: CurrentAccount }) {
         </div>
       )}
       {editing && current !== null ? (
-        <EditProjectDialog onClose={() => setEditing(false)} state={current} />
+        <EditProjectDialog
+          canDelete={account.isAdmin}
+          onClose={() => setEditing(false)}
+          state={current}
+        />
       ) : null}
       {invite && current !== null ? (
         <InviteDialog
