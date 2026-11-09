@@ -13,6 +13,8 @@ import { decryptItems } from "../../e2ee/content";
 import { Page } from "../../shell/Page";
 import { useWorkspace } from "../../workspace";
 import { ProjectDot } from "../ProjectDot";
+import { Drawer } from "../Drawer";
+import type { DrawerEntry } from "../drawer/types";
 import { PRIORITY_ICON, PRIORITY_LABEL } from "../priority";
 
 type SummaryEntry = SprintSummary["items"][number];
@@ -121,7 +123,13 @@ function SummaryHero({
   );
 }
 
-function ActivityRow({ entry }: { entry: SummaryEntry }) {
+function ActivityRow({
+  entry,
+  onOpen,
+}: {
+  entry: SummaryEntry;
+  onOpen: (entry: DrawerEntry) => void;
+}) {
   const { people, projects } = useWorkspace();
   const state = projects?.find(
     (project) => project.project.id === entry.item.projectId,
@@ -136,7 +144,10 @@ function ActivityRow({ entry }: { entry: SummaryEntry }) {
   return (
     <button
       className="spv-activity"
-      onClick={() => go(`work/${entry.item.id}`)}
+      disabled={state === undefined}
+      onClick={() =>
+        state === undefined ? undefined : onOpen({ item: entry.item, state })
+      }
       type="button"
     >
       <span className={`spv-outcome ${entry.outcome}`} aria-hidden="true">
@@ -286,6 +297,7 @@ export function SprintOverview({
   const [failed, setFailed] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [reload, setReload] = useState(0);
+  const [selected, setSelected] = useState<DrawerEntry | null>(null);
 
   useEffect(() => {
     if (projects === null) return;
@@ -414,7 +426,11 @@ export function SprintOverview({
           </div>
           <div className="spv-activity-list">
             {shown.map((entry) => (
-              <ActivityRow entry={entry} key={entry.item.id} />
+              <ActivityRow
+                entry={entry}
+                key={entry.item.id}
+                onOpen={setSelected}
+              />
             ))}
             {shown.length === 0 ? (
               <div className="spv-empty">
@@ -432,6 +448,16 @@ export function SprintOverview({
           <PeopleBreakdown entries={all} />
         </aside>
       </div>
+      {selected === null ? null : (
+        <Drawer
+          entry={selected}
+          meId={account.id}
+          onClose={() => {
+            setSelected(null);
+            setReload((value) => value + 1);
+          }}
+        />
+      )}
     </Page>
   );
 }

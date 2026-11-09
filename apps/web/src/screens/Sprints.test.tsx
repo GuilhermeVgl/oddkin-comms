@@ -105,6 +105,25 @@ describe("Sprints", () => {
     ).toBeNull();
   });
 
+  it("opens an activity drawer without leaving the sprint summary", async () => {
+    const world = defaultWorld();
+    world.sprints = [sprint({ state: "active" })];
+    world.items = world.items.map((item) => ({ ...item, sprintId: "s1" }));
+    await renderApp(<Sprints account={ME} sprintId="s1" />, { world });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Revisar contratos/ }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: /Detalhe da atividade: Revisar contratos/,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("Resumo da sprint")).toBeTruthy();
+    expect(window.location.hash).toBe("#/sprints");
+  });
+
   it("keeps the recorded outcomes visible after a sprint closes", async () => {
     const world = defaultWorld();
     world.sprints = [sprint({ state: "closed" })];
