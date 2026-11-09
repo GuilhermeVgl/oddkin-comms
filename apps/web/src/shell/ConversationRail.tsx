@@ -11,7 +11,13 @@ import { useWorkspace } from "../workspace";
 import { useCalls } from "./calls";
 
 /** Slack-like persistent rail: calls, project channels and direct messages. */
-export function ConversationRail() {
+export function ConversationRail({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const route = useRoute();
   const { projects, client } = useWorkspace();
   const { channels, dms, contacts, reloadChat } = useInbox();
@@ -48,18 +54,30 @@ export function ConversationRail() {
   return (
     <aside aria-label="Conversas e chamadas" className="conversation-rail">
       <div className="rail-title">
-        <div>
+        <div className="rail-heading">
           <h2>Conversas</h2>
           <span>Mensagens e chamadas</span>
         </div>
-        <button
-          aria-label="Abrir mensagens"
-          className="iconbtn mini"
-          onClick={() => go("chat")}
-          type="button"
-        >
-          <Icon name="chat" size="sm" />
-        </button>
+        <div className="rail-actions">
+          <button
+            aria-label="Abrir mensagens"
+            className="iconbtn mini rail-open-chat"
+            onClick={() => go("chat")}
+            type="button"
+          >
+            <Icon name="chat" size="sm" />
+          </button>
+          <button
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expandir conversas" : "Recolher conversas"}
+            className="iconbtn mini"
+            onClick={onToggle}
+            title={collapsed ? "Expandir conversas" : "Recolher conversas"}
+            type="button"
+          >
+            <Icon name={collapsed ? "right" : "left"} size="sm" />
+          </button>
+        </div>
       </div>
       {calls.invitations.length > 0 ? (
         <section aria-label="Chamadas recebidas" className="rail-calls">

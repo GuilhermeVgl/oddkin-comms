@@ -3,8 +3,13 @@
   height: 100%;
 }
 #app.has-shell {
+  --conversation-width: 292px;
+  --side-width: 224px;
   display: grid;
-  grid-template-columns: 224px 292px minmax(0, 1fr);
+  grid-template-columns: var(--side-width) var(--conversation-width) minmax(
+      0,
+      1fr
+    );
 }
 .side {
   background: var(--side);
@@ -16,11 +21,18 @@
   min-height: 0;
   border-right: 1px solid var(--side-line);
 }
-.brand {
+.side-head {
   display: flex;
   align-items: center;
+  min-height: 38px;
+}
+.brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 10px;
-  padding: 2px 8px 14px;
+  min-width: 0;
+  padding: 2px 8px 8px;
   color: var(--papel);
   text-decoration: none;
 }
@@ -33,6 +45,21 @@
   font-variation-settings: "wdth" 125;
   letter-spacing: -0.005em;
   text-transform: uppercase;
+}
+.side-toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--side-muted);
+}
+.side-toggle:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--side-ink);
 }
 .orgbtn {
   display: flex;
@@ -208,6 +235,14 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
 }
+.rail-heading {
+  min-width: 0;
+}
+.rail-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
 .rail-title h2 {
   font-size: 18px;
   font-weight: 760;
@@ -268,6 +303,52 @@
 .rail-answer {
   color: var(--brand-ink);
   background: var(--surface);
+}
+@media (min-width: 901px) {
+  #app[data-side-collapsed="true"] {
+    --side-width: 76px;
+  }
+  #app[data-conversations-collapsed="true"] {
+    --conversation-width: 58px;
+  }
+  #app[data-side-collapsed="true"] .side {
+    padding-inline: 10px;
+  }
+  #app[data-side-collapsed="true"] .brand,
+  #app[data-side-collapsed="true"] .orgbtn .nm,
+  #app[data-side-collapsed="true"] .orgbtn > .i,
+  #app[data-side-collapsed="true"] .nav-label,
+  #app[data-side-collapsed="true"] .me .nm,
+  #app[data-side-collapsed="true"] .me > .i,
+  #app[data-side-collapsed="true"] .mascot-dock {
+    display: none;
+  }
+  #app[data-side-collapsed="true"] .side-head,
+  #app[data-side-collapsed="true"] .orgbtn,
+  #app[data-side-collapsed="true"] .nav a,
+  #app[data-side-collapsed="true"] .me {
+    justify-content: center;
+  }
+  #app[data-side-collapsed="true"] .nav a,
+  #app[data-side-collapsed="true"] .me,
+  #app[data-side-collapsed="true"] .orgbtn {
+    padding-inline: 0;
+  }
+  #app[data-side-collapsed="true"] .nav .badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+  #app[data-conversations-collapsed="true"] .rail-heading,
+  #app[data-conversations-collapsed="true"] .rail-open-chat,
+  #app[data-conversations-collapsed="true"] .rail-calls,
+  #app[data-conversations-collapsed="true"] .rail-scroll {
+    display: none;
+  }
+  #app[data-conversations-collapsed="true"] .rail-title {
+    justify-content: center;
+    padding-inline: 0;
+  }
 }
 .top {
   display: flex;

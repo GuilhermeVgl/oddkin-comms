@@ -34,10 +34,14 @@ type MenuKind = "org" | "me";
 
 export function Sidebar({
   account,
+  collapsed,
   onLogout,
+  onToggle,
 }: {
   account: CurrentAccount;
+  collapsed: boolean;
   onLogout: () => void;
+  onToggle: () => void;
 }) {
   const route = useRoute();
   const { branding } = useOrganization();
@@ -78,10 +82,22 @@ export function Sidebar({
 
   return (
     <aside aria-label="Navegação principal" className="side">
-      <a aria-label={`${APP_NAME}, início`} className="brand" href="#/home">
-        <Logo />
-        <span>{APP_NAME}</span>
-      </a>
+      <div className="side-head">
+        <a aria-label={`${APP_NAME}, início`} className="brand" href="#/home">
+          <Logo />
+          <span>{APP_NAME}</span>
+        </a>
+        <button
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expandir navegação" : "Recolher navegação"}
+          className="side-toggle"
+          onClick={onToggle}
+          title={collapsed ? "Expandir navegação" : "Recolher navegação"}
+          type="button"
+        >
+          <Icon name={collapsed ? "right" : "left"} size="sm" />
+        </button>
+      </div>
       <button className="orgbtn" onClick={toggle("org")} type="button">
         <TeamLogo />
         <span className="nm">{branding.name || "Equipe"}</span>

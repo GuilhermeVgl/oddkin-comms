@@ -40,6 +40,22 @@ const TITLES = {
   settings: "Configurações",
 } as const;
 
+const SHELL_LAYOUT_KEY = "crewstead.shell.layout";
+
+function storedLayout() {
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(SHELL_LAYOUT_KEY) ?? "{}",
+    ) as { side?: boolean; conversations?: boolean };
+    return {
+      side: value.side ?? window.innerWidth <= 1100,
+      conversations: value.conversations ?? false,
+    };
+  } catch {
+    return { side: window.innerWidth <= 1100, conversations: false };
+  }
+}
+
 function useOffline(): boolean {
   const [offline, setOffline] = useState(!navigator.onLine);
   const first = React.useRef(true);
@@ -124,6 +140,15 @@ function Frame({
   const [palette, setPalette] = useState(false);
   const [newItem, setNewItem] = useState<{ projectId?: string } | null>(null);
   const [gate, setGate] = useState(false);
+  const [layout, setLayout] = useState(storedLayout);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify(layout));
+    } catch {
+      // Private browsing may reject persistence; the controls still work.
+    }
+  }, [layout]);
 
   useEffect(() => {
     document.title = `${APP_NAME} · ${TITLES[route.name]}`;
@@ -186,11 +211,28 @@ function Frame({
         data-chat-open={
           route.name === "chat" && route.arg !== null ? "true" : "false"
         }
+        data-conversations-collapsed={layout.conversations}
         data-route={route.name}
+        data-side-collapsed={layout.side}
         id="app"
       >
-        <Sidebar account={account} onLogout={onLogout} />
-        <ConversationRail />
+        <Sidebar
+          account={account}
+          collapsed={layout.side}
+          onLogout={onLogout}
+          onToggle={() =>
+            setLayout((value) => ({ ...value, side: !value.side }))
+          }
+        />
+        <ConversationRail
+          collapsed={layout.conversations}
+          onToggle={() =>
+            setLayout((value) => ({
+              ...value,
+              conversations: !value.conversations,
+            }))
+          }
+        />
         <div className="main" key={route.name}>
           <ApprovalNotice />
           {screen}
