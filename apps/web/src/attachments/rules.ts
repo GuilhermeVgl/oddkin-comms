@@ -11,6 +11,25 @@ import type { ContentCrypto, EncryptedField } from "../e2ee/projectCrypto";
 
 export const MAX_BYTES = 500_000_000;
 
+const imageTypes: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+};
+
+export function previewImageType(
+  contentType: string,
+  name: string,
+): string | null {
+  if (Object.values(imageTypes).includes(contentType)) return contentType;
+  if (contentType !== "application/octet-stream" && contentType !== "")
+    return null;
+  return imageTypes[name.split(".").pop()?.toLowerCase() ?? ""] ?? null;
+}
+
 export type AttachmentCryptoScope =
   { type: "project"; id: string } | { type: "conversation"; id: string };
 

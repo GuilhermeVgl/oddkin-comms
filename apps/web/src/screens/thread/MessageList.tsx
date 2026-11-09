@@ -3,6 +3,7 @@ import { Banner } from "../../design/primitives";
 import { Duo } from "../../design/Sprite";
 import { CallRecordRow } from "../CallRecordRow";
 import { AttachmentMessageRow } from "../../attachments/AttachmentRows";
+import { previewImageType } from "../../attachments/rules";
 import { DaySeparator } from "./DaySeparator";
 import { MessageRow, type MessageActions } from "./MessageRow";
 import { OutgoingRow } from "./OutgoingRow";
@@ -113,7 +114,8 @@ export function MessageList({
                 onDownload={() => onDownloadAttachment(entry.attachment.id)}
                 onRemove={() => onRemoveAttachment(entry.attachment.id)}
                 onPreview={
-                  entry.attachment.contentType.startsWith("image/")
+                  previewImageType(entry.attachment.contentType, entry.name) !==
+                  null
                     ? () => onPreviewAttachment(entry.attachment)
                     : undefined
                 }

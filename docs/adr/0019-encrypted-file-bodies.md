@@ -44,7 +44,7 @@ Cada arquivo tem uma chave aleatória de 32 bytes. Ela nunca sai do navegador em
 
 ## O que continua fora
 
-- O tipo MIME e a prévia: o tipo fica `application/octet-stream` no servidor e o cliente usa a extensão do nome. Prévia de imagem gerada no cliente não foi feita.
+- Novos corpos cifrados usam `application/octet-stream` no servidor. No chat, o cliente identifica PNG, JPEG, GIF, WebP e AVIF pela extensão do nome decifrado e gera prévia em memória até 12 MiB, após verificar o arquivo completo; outros formatos e arquivos maiores continuam disponíveis para download. Arquivos enviados antes desta mudança podem ter o tipo MIME armazenado no servidor.
 - Revogação não apaga arquivos já baixados nem URLs já emitidas. Rotação protege **novos** arquivos; os antigos continuam legíveis por quem guardou a chave da geração em que foram feitos (SPEC 10.3).
 - Escrever em disco com `showSaveFilePicker` exige Chromium; o caminho OPFS foi implementado mas não medido em celular.
 - Os testes atuais cobrem a aritmética de tamanho e a validação do manifesto no servidor. Ainda faltam testes do fluxo completo no cliente, inclusive truncamento, reordenação e troca de anexo. **Não** foram medidos: envio e download reais de 500 MB com memória observada, CORS do R2 e navegadores móveis.

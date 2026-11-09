@@ -42,7 +42,7 @@ export async function uploadEncryptedFile(input: {
   const session = await createUpload(
     input.client,
     input.context,
-    { name: file.name, type: file.type, size: sealer.encryptedSize },
+    { name: file.name, type: "", size: sealer.encryptedSize },
     input.nameEncryption,
     { id: input.id, signerDeviceId },
   );

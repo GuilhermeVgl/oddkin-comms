@@ -1,6 +1,7 @@
 import { ApiStatusError, EncryptionError } from "@crewstead/api-client";
 import { describe, expect, it } from "vitest";
 import {
+  previewImageType,
   attachmentDetail,
   attachmentCryptoScope,
   describeDownloadError,
@@ -12,6 +13,17 @@ import {
   nameSource,
   sealFileName,
 } from "./rules";
+
+it("recognizes safe images by decrypted name when the MIME type is private", () => {
+  expect(previewImageType("application/octet-stream", "foto.PNG")).toBe(
+    "image/png",
+  );
+  expect(previewImageType("image/jpeg", "foto")).toBe("image/jpeg");
+  expect(previewImageType("image/svg+xml", "image.svg")).toBeNull();
+  expect(
+    previewImageType("application/octet-stream", "arquivo.pdf"),
+  ).toBeNull();
+});
 
 describe("isUploadSizeAllowed", () => {
   it("accepts 1 byte up to 500 MB and nothing else", () => {

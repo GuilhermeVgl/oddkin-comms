@@ -21,6 +21,7 @@ import {
   describeUploadError,
   isUploadSizeAllowed,
   mustEncryptBody,
+  previewImageType,
   sealFileName,
 } from "./rules";
 
@@ -129,7 +130,11 @@ export function useAttachmentTransfer(input: {
 
   /** A browser-safe URL for an image in the conversation. */
   async function preview(item: Attachment): Promise<string | null> {
-    if (!item.contentType.startsWith("image/")) return null;
+    const imageType = previewImageType(
+      item.contentType,
+      names.get(item.id) ?? item.name,
+    );
+    if (imageType === null) return null;
     if (Number(item.contentSize ?? item.size) > MAX_IMAGE_PREVIEW_BYTES)
       return null;
     const url = await getDownloadUrl(client, item.id);
@@ -162,7 +167,7 @@ export function useAttachmentTransfer(input: {
         }),
     });
     return URL.createObjectURL(
-      new Blob(chunks as BlobPart[], { type: item.contentType }),
+      new Blob(chunks as BlobPart[], { type: imageType }),
     );
   }
 
