@@ -39,6 +39,9 @@ export function BoardColumnView({
   const placeholderAt = over?.col === column.id ? over.index : -1;
   const dropping = over?.col === column.id;
   const visible = cards.filter((entry) => entry.item.id !== dragging);
+  const visiblePositions = new Map(
+    visible.map((entry, index) => [entry.item.id, index]),
+  );
   return (
     <section
       aria-label={`${column.name}, ${cards.length} atividades`}
@@ -83,9 +86,7 @@ export function BoardColumnView({
         ) : null}
         {cards.flatMap((entry, index) => {
           const out: React.ReactNode[] = [];
-          const visibleIndex = visible.findIndex(
-            (value) => value.item.id === entry.item.id,
-          );
+          const visibleIndex = visiblePositions.get(entry.item.id) ?? -1;
           if (placeholderAt >= 0 && visibleIndex === placeholderAt)
             out.push(<div className="ph" key={`ph-${index}`} />);
           out.push(
