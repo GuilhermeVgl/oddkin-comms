@@ -283,7 +283,13 @@ export function Thread({
             onCancelReply={() => composer.setReplyTo(null)}
             onDraft={composer.setDraft}
             onEmoji={(anchor) => emoji.toggle(anchor, "compose")}
-            onFiles={uploadFiles}
+            onFiles={
+              !embedded &&
+              (!chat || target.canUpload) &&
+              attachmentTransfer.progress === null
+                ? uploadFiles
+                : undefined
+            }
             onSend={() => void composer.send()}
             replyTo={composer.replyTo}
             title={target.title}

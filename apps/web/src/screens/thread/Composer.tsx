@@ -45,7 +45,7 @@ export function Composer({
   meEmail: string;
   onSend: () => void;
   onAttach: () => void;
-  onFiles?: (files: FileList) => void;
+  onFiles?: ((files: FileList) => void) | undefined;
   onEmoji: (anchor: HTMLElement) => void;
   attachments?: boolean;
   formId?: string;
