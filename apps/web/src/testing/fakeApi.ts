@@ -549,9 +549,10 @@ function routes(): Route[] {
       /^\/api\/v1\/conversations\/([^/]+)\/messages$/,
       ({ world, match, url }) => {
         const after = Number(url.searchParams.get("after") ?? 0);
-        return (world.messages[match[1] ?? ""] ?? []).filter(
-          (entry) => entry.seq > after,
-        );
+        const limit = Number(url.searchParams.get("limit") ?? 50);
+        return (world.messages[match[1] ?? ""] ?? [])
+          .filter((entry) => entry.seq > after)
+          .slice(0, limit);
       },
     ],
     [

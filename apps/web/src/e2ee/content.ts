@@ -766,7 +766,7 @@ export async function migrateOwnMessages(
       }
     }
     const last = page[page.length - 1];
-    if (page.length < 100 || last === undefined) break;
+    if (page.length < 50 || last === undefined) break;
     after = last.seq;
   }
   return { migrated, failed };

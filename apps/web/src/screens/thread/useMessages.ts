@@ -12,7 +12,7 @@ import { useWorkspace } from "../../workspace";
 import { latestSeq, mergeMessages } from "./timeline";
 
 const POLL_MS = 30_000;
-const PAGE = 100;
+const PAGE = 50;
 const MAX_PAGES = 5;
 
 /**
