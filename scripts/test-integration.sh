@@ -23,9 +23,9 @@ DATABASE_URL="$TEST_DATABASE_URL" go run ./cmd/migrate
 if [ -n "${GO_COVER_PROFILE:-}" ]; then
   TEST_DATABASE_URL="$TEST_DATABASE_URL" go test -race -count=1 -tags=integration \
     -covermode=atomic \
-    -coverpkg=./internal/commitcheck,./internal/httpapi,./internal/identity,./internal/installation,./internal/jobs,./internal/platform/migration,./internal/work \
+    -coverpkg=./internal/calls,./internal/commitcheck,./internal/feed,./internal/httpapi,./internal/identity,./internal/installation,./internal/jobs,./internal/keys,./internal/platform/migration,./internal/platform/objectstore,./internal/platform/resendmail,./internal/work \
     -coverprofile="$GO_COVER_PROFILE" \
-    ./internal/commitcheck ./internal/httpapi ./internal/identity ./internal/installation ./internal/jobs ./internal/work ./tests/integration/...
+    ./internal/... ./tests/integration/...
 else
   TEST_DATABASE_URL="$TEST_DATABASE_URL" go test -race -count=1 -tags=integration ./tests/integration/...
 fi
