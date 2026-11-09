@@ -32,6 +32,10 @@ type socket struct {
 }
 
 func dialEvents(t *testing.T, ctx context.Context, server *httptest.Server, client *workClient, cursor string) *socket {
+	return dialEventsBeforeResume(t, ctx, server, client, cursor, func() {})
+}
+
+func dialEventsBeforeResume(t *testing.T, ctx context.Context, server *httptest.Server, client *workClient, cursor string, beforeResume func()) *socket {
 	t.Helper()
 	headers := http.Header{}
 	headers.Set("Origin", server.URL)
@@ -44,6 +48,7 @@ func dialEvents(t *testing.T, ctx context.Context, server *httptest.Server, clie
 	if hello := s.next(ctx); hello.Type != "hello" {
 		t.Fatalf("expected hello, got %+v", hello)
 	}
+	beforeResume()
 	if err := wsjson.Write(ctx, conn, map[string]string{"type": "resume", "cursor": cursor}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,17 +139,17 @@ func TestEventsNotificationsAndReadCursors(t *testing.T) {
 
 	socketCtx, socketCancel := context.WithCancel(ctx)
 	defer socketCancel()
-	memberSocket := dialEvents(t, socketCtx, server, member, "")
-
 	// Assignment produces a work-item event and a notification for the assignee only.
 	var column struct{ Id, Category string }
 	var columns []struct{ Id, Category string }
 	admin.do(http.MethodGet, base+"/columns", "", &columns)
 	column = columns[0]
 	body := fmt.Sprintf(`{"kind":"task","title":"Para o membro","assigneeId":%q,"columnId":%q}`, ids["evt-member@example.test"], column.Id)
-	if code := admin.do(http.MethodPost, base+"/work-items", body, nil); code != http.StatusCreated {
-		t.Fatalf("assign: %d", code)
-	}
+	memberSocket := dialEventsBeforeResume(t, socketCtx, server, member, "", func() {
+		if code := admin.do(http.MethodPost, base+"/work-items", body, nil); code != http.StatusCreated {
+			t.Fatalf("assign: %d", code)
+		}
+	})
 	memberSocket.expect(socketCtx, "work-item.changed")
 	memberSocket.expect(socketCtx, "notification.created")
 	var notes []struct {

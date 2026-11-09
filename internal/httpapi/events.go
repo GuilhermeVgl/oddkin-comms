@@ -264,13 +264,17 @@ func (h *chatAPI) EventsSocket(w http.ResponseWriter, r *http.Request) {
 		defer writeCancel()
 		return wsjson.Write(writeCtx, conn, frame)
 	})
+	q := sqlc.New(h.auth.pool)
+	head, err := q.UserEventHead(ctx, session.AccountID)
+	if err != nil {
+		return
+	}
 	if err = write(serverFrame{Type: "hello", ProtocolVersion: protocolVersion, HeartbeatSecs: int(heartbeatInterval.Seconds()), RetentionDays: 7}); err != nil {
 		return
 	}
 
 	frames := readClientFrames(ctx, cancel, conn)
-	q := sqlc.New(h.auth.pool)
-	last, resumed := h.awaitResume(ctx, conn, frames, q, session.AccountID, write)
+	last, resumed := h.awaitResume(ctx, conn, frames, q, session.AccountID, head, write)
 	if !resumed {
 		return
 	}
@@ -302,14 +306,17 @@ func readClientFrames(ctx context.Context, cancel context.CancelFunc, conn *webs
 // awaitResume waits for the client's resume frame and returns the sequence
 // to replay from. It closes the connection and reports false when the client
 // misbehaves, times out or needs a fresh snapshot.
-func (h *chatAPI) awaitResume(ctx context.Context, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, write frameWriter) (int64, bool) {
+func (h *chatAPI) awaitResume(ctx context.Context, conn *websocket.Conn, frames <-chan clientFrame, q *sqlc.Queries, account pgtype.UUID, head int64, write frameWriter) (int64, bool) {
 	select {
 	case frame := <-frames:
 		if frame.Type != "resume" {
 			_ = conn.Close(websocket.StatusPolicyViolation, "resume expected")
 			return 0, false
 		}
-		start, resumable := h.resumePoint(ctx, q, account, frame.Cursor)
+		start, resumable := head, true
+		if frame.Cursor != "" {
+			start, resumable = h.resumePoint(ctx, q, account, frame.Cursor)
+		}
 		if !resumable {
 			_ = write(serverFrame{Type: "sync_required"})
 			_ = conn.Close(websocket.StatusNormalClosure, "sync required")
@@ -399,16 +406,11 @@ func (h *chatAPI) eventFrame(account pgtype.UUID, event sqlc.UserEvent) serverFr
 	return frame
 }
 
-// resumePoint returns the sequence after which the feed is replayed. An empty
-// cursor starts at the current head; a foreign, forged or expired cursor
-// requires a fresh snapshot.
+// resumePoint validates a cursor and returns the sequence after which to replay.
 func (h *chatAPI) resumePoint(ctx context.Context, q *sqlc.Queries, account pgtype.UUID, cursor string) (int64, bool) {
 	head, err := q.UserEventHead(ctx, account)
 	if err != nil {
 		return 0, false
-	}
-	if cursor == "" {
-		return head, true
 	}
 	seq, valid := h.auth.parseCursor(account, cursor)
 	if !valid || seq > head {
