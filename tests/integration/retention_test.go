@@ -39,6 +39,11 @@ func TestRetentionRemovesOnlyWhatIsPastItsPeriod(t *testing.T) {
 	session(2, "40 days", "1 day", &old)    // revoked long ago
 	session(3, "2 days", "5 days", &recent) // revoked yesterday
 	session(4, "1 hour", "7 days", nil)     // in use
+	if _, err := pool.Exec(ctx, `INSERT INTO user_event (account_id, seq, event_id, type, resource_id, occurred_at)
+		VALUES ($1, 1, gen_random_uuid(), 'test', gen_random_uuid(), now() - interval '8 days'),
+		       ($1, 2, gen_random_uuid(), 'test', gen_random_uuid(), now() - interval '1 day')`, accountID); err != nil {
+		t.Fatal(err)
+	}
 
 	purged, err := jobs.PurgeExpired(ctx, pool, jobs.DefaultRetention())
 	if err != nil {
@@ -48,6 +53,9 @@ func TestRetentionRemovesOnlyWhatIsPastItsPeriod(t *testing.T) {
 		t.Fatalf("sessions removed: %d", purged.Sessions)
 	}
 	var remaining int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM user_event WHERE account_id = $1`, accountID).Scan(&remaining); err != nil || remaining != 1 {
+		t.Fatalf("remaining events: %d %v", remaining, err)
+	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM auth_session WHERE account_id = $1`, accountID).Scan(&remaining); err != nil || remaining != 2 {
 		t.Fatalf("remaining sessions: %d %v", remaining, err)
 	}

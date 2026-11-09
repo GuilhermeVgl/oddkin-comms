@@ -38,7 +38,7 @@ O acesso usa HTTPS/WSS com nomes temporários do `sslip.io`: `crewstead`, `stora
 
 ## Retenção
 
-Um job diário (`retention`) remove sessões e links de redefinição vencidos (14 dias), chamadas encerradas e seus webhooks (30 dias) e a auditoria de recuperação (180 dias). Arquivos apagados pelo usuário ficam no bucket por 30 dias e só então são eliminados, para que uma restauração do banco ainda encontre o objeto. Mensagens apagadas viram tombstone na base ativa, mas o texto cifrado antigo pode continuar nos backups até a retenção deles expirar.
+Um job diário (`retention`) remove sessões e links de redefinição vencidos (14 dias), eventos com mais de sete dias, chamadas encerradas e seus webhooks (30 dias) e a auditoria de recuperação (180 dias). Arquivos apagados pelo usuário ficam no bucket por 30 dias e só então são eliminados, para que uma restauração do banco ainda encontre o objeto. Mensagens apagadas viram tombstone na base ativa, mas o texto cifrado antigo pode continuar nos backups até a retenção deles expirar.
 
 ## Backup e restauração
 

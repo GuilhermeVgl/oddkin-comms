@@ -65,13 +65,13 @@ func (worker *retentionWorker) Work(ctx context.Context, _ *river.Job[RetentionA
 	if err != nil {
 		return err
 	}
-	slog.Info("retention applied", "sessions", removed.Sessions, "resets", removed.Resets, "calls", removed.Calls, "webhooks", removed.Webhooks, "audit", removed.Audit)
+	slog.Info("retention applied", "sessions", removed.Sessions, "resets", removed.Resets, "calls", removed.Calls, "webhooks", removed.Webhooks, "audit", removed.Audit, "events", removed.Events)
 	return nil
 }
 
 // Purged counts the rows each rule removed.
 type Purged struct {
-	Sessions, Resets, Calls, Webhooks, Audit int64
+	Sessions, Resets, Calls, Webhooks, Audit, Events int64
 }
 
 // PurgeExpired deletes what is past its retention. Every rule is a plain
@@ -96,6 +96,9 @@ func PurgeExpired(ctx context.Context, pool *pgxpool.Pool, retention Retention) 
 	}
 	if purged.Audit, err = q.PurgeOldRecoveryAudit(ctx, retention.AuditDays); err != nil {
 		return purged, fmt.Errorf("purge audit: %w", err)
+	}
+	if purged.Events, err = q.PruneUserEvents(ctx); err != nil {
+		return purged, fmt.Errorf("purge events: %w", err)
 	}
 	return purged, nil
 }
