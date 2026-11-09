@@ -27,12 +27,12 @@ A ideia é ajudar a equipe a manter o contexto do trabalho e celebrar cada avan�
 
 ## Stack
 
-| Camada | Tecnologias |
-| --- | --- |
-| Backend | Go · PostgreSQL · pgx/sqlc · River |
-| Frontend | React · TypeScript · Vite · Tailwind |
-| Comunicação | WebSocket · LiveKit/WebRTC |
-| Infraestrutura | Docker Compose · Cloudflare R2 |
+| Camada         | Tecnologias                          |
+| -------------- | ------------------------------------ |
+| Backend        | Go · PostgreSQL · pgx/sqlc · River   |
+| Frontend       | React · TypeScript · Vite · Tailwind |
+| Comunicação    | WebSocket · LiveKit/WebRTC           |
+| Infraestrutura | Docker Compose · Cloudflare R2       |
 
 ## Rodar localmente
 

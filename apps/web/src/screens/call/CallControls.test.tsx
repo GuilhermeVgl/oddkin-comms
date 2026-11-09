@@ -95,9 +95,7 @@ describe("CallControls", () => {
 
   it("lets the presenter swap the shared screen and people", () => {
     const handlers = controls({ sharing: true, shareFocus: "screen" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Destacar pessoas" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Destacar pessoas" }));
     expect(handlers.onToggleShareFocus).toHaveBeenCalled();
   });
 
