@@ -97,6 +97,7 @@ describe("preserveReadableProjects", () => {
 
     const [merged] = preserveReadableProjects([previous], [incoming]);
     expect(merged?.items[0]?.title).toContain("Conteúdo cifrado");
+    expect(merged?.epics[0]?.title).toContain("Conteúdo cifrado");
   });
 });
 

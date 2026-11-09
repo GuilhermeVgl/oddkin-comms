@@ -13,33 +13,12 @@ function sameRevision(
   return left.contentRevision === right.contentRevision;
 }
 
-function preserveItem(
-  previous: WorkItem | undefined,
-  incoming: WorkItem,
+function preserveText<T extends WorkItem | Epic>(
+  previous: T | undefined,
+  incoming: T,
   previousStatus: ContentStatus | undefined,
   incomingStatus: ContentStatus | undefined,
-): WorkItem {
-  if (
-    previous === undefined ||
-    !incoming.encrypted ||
-    !sameRevision(previous, incoming) ||
-    !readable(previousStatus) ||
-    incomingStatus !== "locked"
-  )
-    return incoming;
-  return {
-    ...incoming,
-    title: previous.title,
-    description: previous.description,
-  };
-}
-
-function preserveEpic(
-  previous: Epic | undefined,
-  incoming: Epic,
-  previousStatus: ContentStatus | undefined,
-  incomingStatus: ContentStatus | undefined,
-): Epic {
+): T {
   if (
     previous === undefined ||
     !incoming.encrypted ||
@@ -75,31 +54,27 @@ export function preserveReadableProjects(
     )
       return state;
 
-    const previousItems = new Map(before.items.map((item) => [item.id, item]));
-    const previousEpics = new Map(before.epics.map((epic) => [epic.id, epic]));
     const status = new Map(state.status);
-    const items = state.items.map((item) => {
-      const kept = preserveItem(
-        previousItems.get(item.id),
-        item,
-        before.status.get(item.id),
-        state.status.get(item.id),
-      );
-      if (kept !== item)
-        status.set(item.id, before.status.get(item.id) ?? "ok");
-      return kept;
-    });
-    const epics = state.epics.map((epic) => {
-      const kept = preserveEpic(
-        previousEpics.get(epic.id),
-        epic,
-        before.status.get(epic.id),
-        state.status.get(epic.id),
-      );
-      if (kept !== epic)
-        status.set(epic.id, before.status.get(epic.id) ?? "ok");
-      return kept;
-    });
+    const previousStatus = before.status;
+    function preserveList<T extends WorkItem | Epic>(
+      previous: T[],
+      incoming: T[],
+    ): T[] {
+      const byId = new Map(previous.map((item) => [item.id, item]));
+      return incoming.map((item) => {
+        const oldStatus = previousStatus.get(item.id);
+        const kept = preserveText(
+          byId.get(item.id),
+          item,
+          oldStatus,
+          state.status.get(item.id),
+        );
+        if (kept !== item) status.set(item.id, oldStatus ?? "ok");
+        return kept;
+      });
+    }
+    const items = preserveList(before.items, state.items);
+    const epics = preserveList(before.epics, state.epics);
     const project =
       state.project.encrypted && sameRevision(before.project, state.project)
         ? {
