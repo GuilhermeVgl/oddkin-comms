@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { Attachment } from "@crewstead/api-client";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { expect, it, vi } from "vitest";
 import { renderApp } from "../testing/AppHarness";
 import { AttachmentMessageRow } from "./AttachmentRows";
@@ -72,4 +73,33 @@ it("injects an uploaded image into the message stream", async () => {
   );
   screen.getByRole("button", { name: "Abrir imagem mood.png" }).click();
   expect(download).toHaveBeenCalledOnce();
+});
+
+it("does not reload the image when the conversation rerenders", async () => {
+  const preview = vi.fn(async () => "https://cdn.crewstead.test/mood.png");
+  function Conversation() {
+    const [, rerender] = useState(0);
+    return (
+      <>
+        <button onClick={() => rerender((value) => value + 1)}>
+          Atualizar
+        </button>
+        <AttachmentMessageRow
+          item={{ ...attachment, contentType: "image/png" }}
+          me={{ id: "acc-ana", email: "ana@crewstead.test" }}
+          moderator={false}
+          name="mood.png"
+          onDownload={vi.fn()}
+          onPreview={() => preview()}
+          onRemove={vi.fn()}
+        />
+      </>
+    );
+  }
+  await renderApp(<Conversation />);
+  await waitFor(() =>
+    expect(screen.getByRole("img", { name: "mood.png" })).toBeTruthy(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Atualizar" }));
+  expect(preview).toHaveBeenCalledTimes(1);
 });

@@ -1,5 +1,5 @@
 import type { Attachment } from "@crewstead/api-client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bytes, fmtClock } from "../design/format";
 import { Icon } from "../design/icons";
 import { displayNameOf } from "../design/people";
@@ -121,6 +121,7 @@ export function AttachmentMessageRow({
         />
         {onPreview === undefined ? null : (
           <ImagePreview
+            key={item.id}
             name={name}
             onDownload={onDownload}
             preview={onPreview}
@@ -141,11 +142,14 @@ function ImagePreview({
   preview: () => Promise<string | null>;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
 
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    void preview()
+    void previewRef
+      .current()
       .then((next) => {
         if (!active) {
           if (next?.startsWith("blob:")) URL.revokeObjectURL(next);
@@ -159,7 +163,7 @@ function ImagePreview({
       active = false;
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
-  }, [preview]);
+  }, []);
 
   if (url === null) return null;
   return (
